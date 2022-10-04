@@ -103,11 +103,11 @@ impl<'a> WebServer<'a> {
                 (Method::Post, ["authority", zone]) => self.record_create(&mut request, zone),
                 (Method::Delete, ["authority", zone]) => self.record_delete(&mut request, zone),
                 (Method::Post, ["authority", zone, "delete_record"]) => self.record_delete(&mut request, zone),
-                (Method::Get, ["authority", zone]) => self.zone_view(&request, zone),
+                (Method::Get, ["authority.html", zone]) => self.zone_view(&request, zone),
                 (Method::Post, ["authority"]) => self.zone_create(&mut request),
-                (Method::Get, ["authority"]) => self.zone_list(&request),
-                (Method::Get, ["cache"]) => self.cacheinfo(&request),
-                (Method::Get, []) => self.index(&request),
+                (Method::Get, ["authority.json"]) => self.zone_list(&request),
+                (Method::Get, ["cache.html"]) => self.cacheinfo(&request),
+                (Method::Get, ["index.html"]) => self.index(&request),
                 (_, _) => self.not_found(&request),
             };
 
@@ -134,76 +134,6 @@ impl<'a> WebServer<'a> {
 
     }
 
-    fn handle_requests(self, requests: tiny_http::IncomingRequests){
-        for mut request in requests {
-            log::info!("HTTP {:?} {:?}", request.method(), request.url());
-
-            let mut content = String::new();
-            request.as_reader().read_to_string(&mut content).unwrap();
-            log::info!("key: {}", content);
-
-            let url = request.url().to_string();
-            let method = request.method();
-
-            // let mut sessions :Vec<ckitl::Session> = Vec::new();
-            // if Path::new("/opt/atlas/dat/sessions.bin").exists() {
-			// 	sessions = ckitl::load_sessions(Arc::clone(&self.ckitl_server)).unwrap().sessions;
-			// }
-
-            let mut session_authenticated = true;
-            let mut session_key = "";
-			// for session in &sessions{
-			// 	if content.contains(&session.id) || request.url().contains(&session.id) {
-			// 		session_authenticated = true;
-            //         session_key = session.id.as_str();
-			// 	} 
-			// }
-
-
-            if session_authenticated{
-
-                let formated_key = format!("?key={}", session_key).as_str();
-
-                let formated_authority_key = format!("authority?key={}", session_key).as_str();
-                let formated_cache_key = format!("cache?key={}", session_key).as_str();
-
-                let url_parts: Vec<&str> = url.split('/').filter(|x| x != &"").collect();
-                let response = match (method, url_parts.as_slice()) {
-                    (Method::Post, ["authority", zone, formated_key]) => self.record_create(&mut request, zone),
-                    (Method::Delete, ["authority", zone, formated_key]) => self.record_delete(&mut request, zone),
-                    (Method::Post, ["authority", zone, "delete_record", formated_key]) => self.record_delete(&mut request, zone),
-                    (Method::Get, ["authority", zone, formated_key]) => self.zone_view(&request, zone),
-                    (Method::Post, [formated_authority_key]) => self.zone_create(&mut request),
-                    (Method::Get, [formated_authority_key]) => self.zone_list(&request),
-                    (Method::Get, [formated_cache_key]) => self.cacheinfo(&request),
-                    (Method::Get, [formated_key]) => self.index(&request),
-                    (_, _) => self.not_found(&request),
-                };
-                let header = tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap();
-                let response_result = match response {
-                    Ok(response) => request.respond(response.with_header(header)),
-                    Err(err) if request.json_output() => {
-                        log::info!("Request failed: {:?}", err);
-                        let error = serde_json::to_string(&serde_json::json!({
-                            "message": err.to_string(),
-                        }))
-                        .unwrap();
-                        request.respond(Response::from_string(error).with_header(header))
-                    }
-                    Err(err) => {
-                        log::info!("Request failed: {:?}", err);
-                        request.respond(Response::from_string(err.to_string()).with_header(header))
-                    }
-                };
-    
-                if let Err(err) = response_result {
-                    log::info!("Failed to write response to client: {:?}", err);
-                }
-            }
-
-
-        } 
-    }
 
 
     fn response_from_media_type<R>(
