@@ -1,6 +1,6 @@
 [package]
 name = "atlas"
-version = "0.1.01"
+version = "0.0.1"
 authors = ["emil", "p0indexter", "PixelCoda"]
 edition = "2018"
 
