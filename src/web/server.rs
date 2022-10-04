@@ -103,11 +103,11 @@ impl<'a> WebServer<'a> {
                 (Method::Post, ["authority", zone]) => self.record_create(&mut request, zone),
                 (Method::Delete, ["authority", zone]) => self.record_delete(&mut request, zone),
                 (Method::Post, ["authority", zone, "delete_record"]) => self.record_delete(&mut request, zone),
-                (Method::Get, ["authority.html", zone]) => self.zone_view(&request, zone),
+                (Method::Get, ["authority", zone]) => self.zone_view(&request, zone),
                 (Method::Post, ["authority"]) => self.zone_create(&mut request),
-                (Method::Get, ["authority.json"]) => self.zone_list(&request),
-                (Method::Get, ["cache.html"]) => self.cacheinfo(&request),
-                (Method::Get, ["index.html"]) => self.index(&request),
+                (Method::Get, ["authority"]) => self.zone_list(&request),
+                (Method::Get, ["cache"]) => self.cacheinfo(&request),
+                (Method::Get, []) => self.index(&request),
                 (_, _) => self.not_found(&request),
             };
 
