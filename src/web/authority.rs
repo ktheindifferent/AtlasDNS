@@ -29,14 +29,11 @@ impl FormDataDecodable<ZoneCreateRequest> for ZoneCreateRequest {
         let mut d: HashMap<_, _> = fields.into_iter().collect();
 
         let domain = d
-            .remove("domain")
-            .ok_or_else(|| WebError::MissingField("domain"))?;
+            .remove("domain").ok_or(WebError::MissingField("domain"))?;
         let m_name = d
-            .remove("m_name")
-            .ok_or_else(|| WebError::MissingField("m_name"))?;
+            .remove("m_name").ok_or(WebError::MissingField("m_name"))?;
         let r_name = d
-            .remove("r_name")
-            .ok_or_else(|| WebError::MissingField("r_name"))?;
+            .remove("r_name").ok_or(WebError::MissingField("r_name"))?;
 
         Ok(ZoneCreateRequest {
             domain,
@@ -64,21 +61,18 @@ impl FormDataDecodable<RecordRequest> for RecordRequest {
         let mut d: HashMap<_, _> = fields.into_iter().collect();
 
         let recordtype = d
-            .remove("recordtype")
-            .ok_or_else(|| WebError::MissingField("recordtype"))?;
+            .remove("recordtype").ok_or(WebError::MissingField("recordtype"))?;
         let domain = d
-            .remove("domain")
-            .ok_or_else(|| WebError::MissingField("domain"))?;
+            .remove("domain").ok_or(WebError::MissingField("domain"))?;
 
         let ttl = d
             .get("ttl")
-            .and_then(|x| x.parse::<u32>().ok())
-            .ok_or_else(|| WebError::MissingField("ttl"))?;
+            .and_then(|x| x.parse::<u32>().ok()).ok_or(WebError::MissingField("ttl"))?;
 
         Ok(RecordRequest {
             recordtype,
             domain,
-            ttl: ttl,
+            ttl,
             host: d.remove("host"),
         })
     }
@@ -86,6 +80,7 @@ impl FormDataDecodable<RecordRequest> for RecordRequest {
 
 impl RecordRequest {
     fn into_resourcerecord(self) -> Option<DnsRecord> {
+        log::info!("{:?}", self);
         match self.recordtype.as_str() {
             "A" => {
                 let addr = self.host.and_then(|x| x.parse::<Ipv4Addr>().ok())?;
@@ -99,18 +94,18 @@ impl RecordRequest {
             "AAAA" => {
                 let addr = self.host.and_then(|x| x.parse::<Ipv6Addr>().ok())?;
 
-                Some(DnsRecord::AAAA {
+                Some(DnsRecord::Aaaa {
                     domain: self.domain,
                     addr,
                     ttl: TransientTtl(self.ttl),
                 })
             }
-            "CNAME" => {
+            "Cname" => {
                 let host = self.host?;
 
-                Some(DnsRecord::CNAME {
+                Some(DnsRecord::Cname {
                     domain: self.domain,
-                    host: host,
+                    host,
                     ttl: TransientTtl(self.ttl),
                 })
             }
@@ -161,7 +156,7 @@ pub fn zone_create(context: &ServerContext, request: ZoneCreateRequest) -> Resul
 pub fn zone_view(context: &ServerContext, zone: &str) -> Result<serde_json::Value> {
     let zones = context.authority.read().map_err(|_| WebError::LockError)?;
 
-    let zone = zones.get_zone(zone).ok_or_else(|| WebError::ZoneNotFound)?;
+    let zone = zones.get_zone(zone).ok_or(WebError::ZoneNotFound)?;
 
     let mut records = Vec::new();
     for (id, rr) in zone.records.iter().enumerate() {
@@ -180,13 +175,11 @@ pub fn zone_view(context: &ServerContext, zone: &str) -> Result<serde_json::Valu
 
 pub fn record_create(context: &ServerContext, zone: &str, request: RecordRequest) -> Result<()> {
     let rr = request
-        .into_resourcerecord()
-        .ok_or_else(|| WebError::InvalidRequest)?;
+        .into_resourcerecord().ok_or(WebError::InvalidRequest)?;
 
     let mut zones = context.authority.write().map_err(|_| WebError::LockError)?;
     let zone = zones
-        .get_zone_mut(zone)
-        .ok_or_else(|| WebError::ZoneNotFound)?;
+        .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
     zone.add_record(&rr);
 
     zones.save()?;
@@ -196,13 +189,11 @@ pub fn record_create(context: &ServerContext, zone: &str, request: RecordRequest
 
 pub fn record_delete(context: &ServerContext, zone: &str, request: RecordRequest) -> Result<()> {
     let rr = request
-        .into_resourcerecord()
-        .ok_or_else(|| WebError::InvalidRequest)?;
+        .into_resourcerecord().ok_or(WebError::InvalidRequest)?;
 
     let mut zones = context.authority.write().map_err(|_| WebError::LockError)?;
     let zone = zones
-        .get_zone_mut(zone)
-        .ok_or_else(|| WebError::ZoneNotFound)?;
+        .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
     zone.delete_record(&rr);
 
     zones.save()?;

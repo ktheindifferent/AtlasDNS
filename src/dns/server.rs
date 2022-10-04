@@ -30,7 +30,7 @@ macro_rules! return_or_report {
         match $x {
             Ok(res) => res,
             Err(_) => {
-                println!($message);
+                log::info!($message);
                 return;
             }
         }
@@ -42,7 +42,7 @@ macro_rules! ignore_or_report {
         match $x {
             Ok(_) => {}
             Err(_) => {
-                println!($message);
+                log::info!($message);
                 return;
             }
         };
@@ -73,15 +73,19 @@ fn resolve_cnames(
 
     for ref rec in lookup_list {
         match **rec {
-            DnsRecord::CNAME { ref host, .. } | DnsRecord::SRV { ref host, .. } => {
+            DnsRecord::Cname { ref host, .. } | DnsRecord::Srv { ref host, .. } => {
                 if let Ok(result2) = resolver.resolve(host, QueryType::A, true) {
                     let new_unmatched = result2.get_unresolved_cnames();
-                    results.push(result2);
-
+                    results.push(result2.clone());
+                    log::info!("{:?}", result2);
                     resolve_cnames(&new_unmatched, results, resolver, depth + 1);
                 }
             }
-            _ => {}
+            _ => {
+
+                log::info!("NO_CNAME_MATCH");
+
+            }
         }
     }
 }
@@ -96,20 +100,26 @@ fn resolve_cnames(
 /// This function will always return a valid packet, even if the request could not
 /// be performed, since we still want to send something back to the client.
 pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
+    log::info!("execute_query");
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_available = context.allow_recursive;
     packet.header.response = true;
 
     if request.header.recursion_desired && !context.allow_recursive {
+        log::info!("REFUSED");
         packet.header.rescode = ResultCode::REFUSED;
     } else if request.questions.is_empty() {
         packet.header.rescode = ResultCode::FORMERR;
+        log::info!("FORMERR");
     } else {
         let mut results = Vec::new();
 
         let question = &request.questions[0];
         packet.questions.push(question.clone());
+
+        log::info!("question.qtype: {:?}", question.qtype);
+
 
         let mut resolver = context.create_resolver(context.clone());
         let rescode = match resolver.resolve(
@@ -122,13 +132,13 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
 
                 let unmatched = result.get_unresolved_cnames();
                 results.push(result);
-
+           
                 resolve_cnames(&unmatched, &mut results, &mut resolver, 0);
-
+                log::info!("resolve_cnames");
                 rescode
             }
             Err(err) => {
-                println!(
+                log::info!(
                     "Failed to resolve {:?} {}: {:?}",
                     question.qtype, question.name, err
                 );
@@ -169,10 +179,10 @@ pub struct DnsUdpServer {
 impl DnsUdpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsUdpServer {
         DnsUdpServer {
-            context: context,
+            context,
             request_queue: Arc::new(Mutex::new(VecDeque::new())),
             request_cond: Arc::new(Condvar::new()),
-            thread_count: thread_count,
+            thread_count,
         }
     }
 }
@@ -191,7 +201,7 @@ impl DnsServer for DnsUdpServer {
             let socket_clone = match socket.try_clone() {
                 Ok(x) => x,
                 Err(e) => {
-                    println!("Failed to clone socket when starting UDP server: {:?}", e);
+                    log::info!("Failed to clone socket when starting UDP server: {:?}", e);
                     continue;
                 }
             };
@@ -201,6 +211,7 @@ impl DnsServer for DnsUdpServer {
             let request_queue = self.request_queue.clone();
 
             let name = "DnsUdpServer-request-".to_string() + &thread_id.to_string();
+            log::info!("DnsUdpServer-request");
             let _ = Builder::new().name(name).spawn(move || {
                 loop {
                     // Acquire lock, and wait on the condition until data is
@@ -213,7 +224,7 @@ impl DnsServer for DnsUdpServer {
                     {
                         Some(x) => x,
                         None => {
-                            println!("Not expected to happen!");
+                            log::info!("Not expected to happen!");
                             continue;
                         }
                     };
@@ -222,7 +233,7 @@ impl DnsServer for DnsUdpServer {
 
                     // Check for EDNS
                     if request.resources.len() == 1 {
-                        if let DnsRecord::OPT { packet_len, .. } = request.resources[0] {
+                        if let DnsRecord::Opt { packet_len, .. } = request.resources[0] {
                             size_limit = packet_len as usize;
                         }
                     }
@@ -231,8 +242,12 @@ impl DnsServer for DnsUdpServer {
                     // resolver
                     let mut res_buffer = VectorPacketBuffer::new();
 
+                    log::info!("req: {:?}", request.clone());
+
                     let mut packet = execute_query(context.clone(), &request);
                     let _ = packet.write(&mut res_buffer, size_limit);
+
+                    
 
                     // Fire off the response
                     let len = res_buffer.pos();
@@ -249,6 +264,7 @@ impl DnsServer for DnsUdpServer {
         }
 
         // Start servicing requests
+        log::info!("DnsUdpServer-incoming");
         let _ = Builder::new()
             .name("DnsUdpServer-incoming".into())
             .spawn(move || {
@@ -264,7 +280,7 @@ impl DnsServer for DnsUdpServer {
                     let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
                         Ok(x) => x,
                         Err(e) => {
-                            println!("Failed to read from UDP socket: {:?}", e);
+                            log::info!("Failed to read from UDP socket: {:?}", e);
                             continue;
                         }
                     };
@@ -273,7 +289,7 @@ impl DnsServer for DnsUdpServer {
                     let request = match DnsPacket::from_buffer(&mut req_buffer) {
                         Ok(x) => x,
                         Err(e) => {
-                            println!("Failed to parse UDP query packet: {:?}", e);
+                            log::info!("Failed to parse UDP query packet: {:?}", e);
                             continue;
                         }
                     };
@@ -286,7 +302,7 @@ impl DnsServer for DnsUdpServer {
                             self.request_cond.notify_one();
                         }
                         Err(e) => {
-                            println!("Failed to send UDP request for processing: {}", e);
+                            log::info!("Failed to send UDP request for processing: {}", e);
                         }
                     }
                 }
@@ -306,9 +322,9 @@ pub struct DnsTcpServer {
 impl DnsTcpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsTcpServer {
         DnsTcpServer {
-            context: context,
+            context,
             senders: Vec::new(),
-            thread_count: thread_count,
+            thread_count,
         }
     }
 }
@@ -354,6 +370,7 @@ impl DnsServer for DnsTcpServer {
                     };
 
                     let mut res_buffer = VectorPacketBuffer::new();
+                    log::info!("req: {:?}", request.clone());
 
                     let mut packet = execute_query(context.clone(), &request);
                     ignore_or_report!(
@@ -389,7 +406,7 @@ impl DnsServer for DnsTcpServer {
                     let stream = match wrap_stream {
                         Ok(stream) => stream,
                         Err(err) => {
-                            println!("Failed to accept TCP connection: {:?}", err);
+                            log::info!("Failed to accept TCP connection: {:?}", err);
                             continue;
                         }
                     };
@@ -399,7 +416,7 @@ impl DnsServer for DnsTcpServer {
                     match self.senders[thread_no].send(stream) {
                         Ok(_) => {}
                         Err(e) => {
-                            println!(
+                            log::info!(
                                 "Failed to send TCP request for processing on thread {}: {}",
                                 thread_no, e
                             );
@@ -450,8 +467,8 @@ mod tests {
                     addr: "127.0.0.1".parse::<Ipv4Addr>().unwrap(),
                     ttl: TransientTtl(3600),
                 });
-            } else if qname == "www.facebook.com" && qtype == QueryType::CNAME {
-                packet.answers.push(DnsRecord::CNAME {
+            } else if qname == "www.facebook.com" && qtype == QueryType::Cname {
+                packet.answers.push(DnsRecord::Cname {
                     domain: "www.facebook.com".to_string(),
                     host: "cdn.facebook.com".to_string(),
                     ttl: TransientTtl(3600),
@@ -461,8 +478,8 @@ mod tests {
                     addr: "127.0.0.1".parse::<Ipv4Addr>().unwrap(),
                     ttl: TransientTtl(3600),
                 });
-            } else if qname == "www.microsoft.com" && qtype == QueryType::CNAME {
-                packet.answers.push(DnsRecord::CNAME {
+            } else if qname == "www.microsoft.com" && qtype == QueryType::Cname {
+                packet.answers.push(DnsRecord::Cname {
                     domain: "www.microsoft.com".to_string(),
                     host: "cdn.microsoft.com".to_string(),
                     ttl: TransientTtl(3600),
@@ -507,12 +524,12 @@ mod tests {
         {
             let res = execute_query(
                 context.clone(),
-                &build_query("www.facebook.com", QueryType::CNAME),
+                &build_query("www.facebook.com", QueryType::Cname),
             );
             assert_eq!(2, res.answers.len());
 
             match res.answers[0] {
-                DnsRecord::CNAME { ref domain, .. } => {
+                DnsRecord::Cname { ref domain, .. } => {
                     assert_eq!("www.facebook.com", domain);
                 }
                 _ => panic!(),
@@ -530,12 +547,12 @@ mod tests {
         {
             let res = execute_query(
                 context.clone(),
-                &build_query("www.microsoft.com", QueryType::CNAME),
+                &build_query("www.microsoft.com", QueryType::Cname),
             );
             assert_eq!(2, res.answers.len());
 
             match res.answers[0] {
-                DnsRecord::CNAME { ref domain, .. } => {
+                DnsRecord::Cname { ref domain, .. } => {
                     assert_eq!("www.microsoft.com", domain);
                 }
                 _ => panic!(),
@@ -575,7 +592,7 @@ mod tests {
         // Send a query without a question, which should fail with an error code
         {
             let query_packet = DnsPacket::new();
-            let res = execute_query(context.clone(), &query_packet);
+            let res = execute_query(context, &query_packet);
             assert_eq!(ResultCode::FORMERR, res.header.rescode);
             assert_eq!(0, res.answers.len());
         };
@@ -600,7 +617,7 @@ mod tests {
 
         // We expect this to set the server failure rescode
         {
-            let res = execute_query(context2.clone(), &build_query("yahoo.com", QueryType::A));
+            let res = execute_query(context2, &build_query("yahoo.com", QueryType::A));
             assert_eq!(ResultCode::SERVFAIL, res.header.rescode);
             assert_eq!(0, res.answers.len());
         };

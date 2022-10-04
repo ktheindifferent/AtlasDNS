@@ -37,9 +37,9 @@ pub struct Zone {
 impl Zone {
     pub fn new(domain: String, m_name: String, r_name: String) -> Zone {
         Zone {
-            domain: domain,
-            m_name: m_name,
-            r_name: r_name,
+            domain,
+            m_name,
+            r_name,
             serial: 0,
             refresh: 0,
             retry: 0,
@@ -71,7 +71,7 @@ impl<'a> Zones {
     }
 
     pub fn load(&mut self) -> Result<()> {
-        let zones_dir = Path::new("zones").read_dir()?;
+        let zones_dir = Path::new("/opt/atlas/zones").read_dir()?;
 
         for wrapped_filename in zones_dir {
             let filename = match wrapped_filename {
@@ -112,7 +112,7 @@ impl<'a> Zones {
     }
 
     pub fn save(&mut self) -> Result<()> {
-        let zones_dir = Path::new("zones");
+        let zones_dir = Path::new("/opt/atlas/zones");
         for zone in self.zones.values() {
             let filename = zones_dir.join(Path::new(&zone.domain));
             let mut zone_file = match File::create(&filename) {
@@ -209,6 +209,9 @@ impl Authority {
             None => return None,
         };
 
+        log::info!("zone: {:?}", zone);
+
+
         let mut packet = DnsPacket::new();
         packet.header.authoritative_answer = true;
 
@@ -218,12 +221,23 @@ impl Authority {
                 None => continue,
             };
 
-            if &domain != qname {
-                continue;
-            }
+            // TODO - Wildcard and @ support
+
+            log::info!("qname: {:?}", qname);
+            log::info!("domain: {:?}", domain);
+
+            // if &domain != qname {
+            //     continue;
+            // }
 
             let rtype = rec.get_querytype();
-            if qtype == rtype || (qtype == QueryType::A && rtype == QueryType::CNAME) {
+
+            log::info!("qtype: {:?}", qtype);
+            log::info!("rtype: {:?}", rtype);
+
+
+            
+            if qtype == rtype || (qtype == QueryType::A && rtype == QueryType::Cname) {
                 packet.answers.push(rec.clone());
             }
         }
@@ -231,7 +245,7 @@ impl Authority {
         if packet.answers.is_empty() {
             packet.header.rescode = ResultCode::NXDOMAIN;
 
-            packet.authorities.push(DnsRecord::SOA {
+            packet.authorities.push(DnsRecord::Soa {
                 domain: zone.domain.clone(),
                 m_name: zone.m_name.clone(),
                 r_name: zone.r_name.clone(),

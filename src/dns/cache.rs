@@ -70,7 +70,7 @@ pub struct DomainEntry {
 impl DomainEntry {
     pub fn new(domain: String) -> DomainEntry {
         DomainEntry {
-            domain: domain,
+            domain,
             record_types: HashMap::new(),
             hits: 0,
             updates: 0,
@@ -81,8 +81,8 @@ impl DomainEntry {
         self.updates += 1;
 
         let new_set = RecordSet::NoRecords {
-            qtype: qtype,
-            ttl: ttl,
+            qtype,
+            ttl,
             timestamp: Local::now(),
         };
 
@@ -114,7 +114,7 @@ impl DomainEntry {
 
         let new_set = RecordSet::Records {
             qtype: rec.get_querytype(),
-            records: records,
+            records,
         };
 
         self.record_types.insert(rec.get_querytype(), new_set);
@@ -223,7 +223,7 @@ impl Cache {
             CacheState::PositiveCache => {
                 let mut qr = DnsPacket::new();
                 self.fill_queryresult(qname, qtype, &mut qr.answers, true);
-                self.fill_queryresult(qname, QueryType::NS, &mut qr.authorities, false);
+                self.fill_queryresult(qname, QueryType::Ns, &mut qr.authorities, false);
 
                 Some(qr)
             }
@@ -361,7 +361,7 @@ mod tests {
             addr: "127.0.0.2".parse().unwrap(),
             ttl: TransientTtl(0),
         });
-        records.push(DnsRecord::CNAME {
+        records.push(DnsRecord::Cname {
             domain: "www.microsoft.com".to_string(),
             host: "www.somecdn.com".to_string(),
             ttl: TransientTtl(3600),
@@ -376,13 +376,13 @@ mod tests {
             panic!();
         }
 
-        // Test for failed lookup, since no CNAME's are known for this domain
-        if cache.lookup("www.google.com", QueryType::CNAME).is_some() {
+        // Test for failed lookup, since no Cname's are known for this domain
+        if cache.lookup("www.google.com", QueryType::Cname).is_some() {
             panic!();
         }
 
-        // Check for successful CNAME lookup
-        if let Some(packet) = cache.lookup("www.microsoft.com", QueryType::CNAME) {
+        // Check for successful Cname lookup
+        if let Some(packet) = cache.lookup("www.microsoft.com", QueryType::Cname) {
             assert_eq!(records[2], packet.answers[0]);
         } else {
             panic!();
@@ -403,7 +403,7 @@ mod tests {
         cache.store(&records2);
 
         // And now it should succeed, since the record has been store
-        if !cache.lookup("www.yahoo.com", QueryType::A).is_some() {
+        if cache.lookup("www.yahoo.com", QueryType::A).is_none() {
             panic!();
         }
 

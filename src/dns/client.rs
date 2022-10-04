@@ -103,7 +103,17 @@ impl DnsNetworkClient {
 
         packet.header.id = self.seq.fetch_add(1, Ordering::SeqCst) as u16;
         if packet.header.id + 1 == 0xFFFF {
-            self.seq.compare_and_swap(0xFFFF, 0, Ordering::SeqCst);
+            let res = self.seq.compare_exchange(0xFFFF, 0, Ordering::SeqCst, Ordering::SeqCst);
+
+            match res {
+                Ok(v) => log::info!("DNS_TCP_COMPARE_EXCHANGE: {:?}", v),
+                Err(e) => {
+                    log::info!("DNS_TCP_COMPARE_EXCHANGE_ERROR: {:?}", e);
+                }
+            }
+
+
+
         }
 
         packet.header.questions = 1;
@@ -150,7 +160,15 @@ impl DnsNetworkClient {
 
         packet.header.id = self.seq.fetch_add(1, Ordering::SeqCst) as u16;
         if packet.header.id + 1 == 0xFFFF {
-            self.seq.compare_and_swap(0xFFFF, 0, Ordering::SeqCst);
+            let res = self.seq.compare_exchange(0xFFFF, 0, Ordering::SeqCst, Ordering::SeqCst);
+            match res {
+                Ok(v) => log::info!("DNS_UDP_COMPARE_EXCHANGE: {:?}", v),
+                Err(e) => {
+                    log::info!("DNS_UDP_COMPARE_EXCHANGE_ERROR: {:?}", e);
+                }
+            }
+
+
         }
 
         packet.header.questions = 1;
@@ -171,7 +189,7 @@ impl DnsNetworkClient {
             pending_queries.push(PendingQuery {
                 seq: packet.header.id,
                 timestamp: Local::now(),
-                tx: tx,
+                tx,
             });
         }
 
@@ -231,7 +249,7 @@ impl DnsClient for DnsNetworkClient {
                         let packet = match DnsPacket::from_buffer(&mut res_buffer) {
                             Ok(packet) => packet,
                             Err(err) => {
-                                println!(
+                                log::info!(
                                     "DnsNetworkClient failed to parse packet with error: {}",
                                     err
                                 );
@@ -258,7 +276,7 @@ impl DnsClient for DnsNetworkClient {
                             if let Some(idx) = matched_query {
                                 pending_queries.remove(idx);
                             } else {
-                                println!("Discarding response for: {:?}", packet.questions[0]);
+                                log::info!("Discarding response for: {:?}", packet.questions[0]);
                             }
                         }
                     }
@@ -310,7 +328,7 @@ impl DnsClient for DnsNetworkClient {
             return Ok(packet);
         }
 
-        println!("Truncated response - resending as TCP");
+        log::info!("Truncated response - resending as TCP");
         self.send_tcp_query(qname, qtype, server, recursive)
     }
 }
@@ -329,7 +347,7 @@ pub mod tests {
 
     impl<'a> DnsStubClient {
         pub fn new(callback: Box<StubCallback>) -> DnsStubClient {
-            DnsStubClient { callback: callback }
+            DnsStubClient { callback }
         }
     }
 
@@ -370,7 +388,7 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(res.questions[0].name, "google.com");
-        assert!(res.answers.len() > 0);
+        assert!(!res.answers.is_empty());
 
         match res.answers[0] {
             DnsRecord::A { ref domain, .. } => {
@@ -388,7 +406,7 @@ pub mod tests {
             .unwrap();
 
         assert_eq!(res.questions[0].name, "google.com");
-        assert!(res.answers.len() > 0);
+        assert!(!res.answers.is_empty());
 
         match res.answers[0] {
             DnsRecord::A { ref domain, .. } => {

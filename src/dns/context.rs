@@ -46,6 +46,7 @@ pub struct ServerContext {
     pub client: Box<dyn DnsClient + Sync + Send>,
     pub dns_port: u16,
     pub api_port: u16,
+    pub ssl_api_port: u16,
     pub resolve_strategy: ResolveStrategy,
     pub allow_recursive: bool,
     pub enable_udp: bool,
@@ -69,6 +70,7 @@ impl ServerContext {
             client: Box::new(DnsNetworkClient::new(34255)),
             dns_port: 53,
             api_port: 5380,
+            ssl_api_port: 5343,
             resolve_strategy: ResolveStrategy::Recursive,
             allow_recursive: true,
             enable_udp: true,
@@ -78,7 +80,7 @@ impl ServerContext {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
             },
-            zones_dir: "zones",
+            zones_dir: "/opt/atlas/zones",
         }
     }
 
@@ -125,6 +127,7 @@ pub mod tests {
             client: Box::new(DnsStubClient::new(callback)),
             dns_port: 53,
             api_port: 5380,
+            ssl_api_port: 5343,
             resolve_strategy: ResolveStrategy::Recursive,
             allow_recursive: true,
             enable_udp: true,
@@ -134,7 +137,7 @@ pub mod tests {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
             },
-            zones_dir: "zones",
+            zones_dir: "/opt/atlas/zones",
         })
     }
 }

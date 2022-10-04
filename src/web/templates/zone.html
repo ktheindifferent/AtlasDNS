@@ -18,48 +18,60 @@ fieldset {
 </style>
 {{/inline}}
 {{#*inline "content"}}
-<fieldset>
-    <legend>Current Records</legend>
 
-    <table class="record_table">
-        <tr>
-            <th>#</th>
-            <th>Domain</th>
-            <th>Type</th>
-            <th>TTL</th>
-        </tr>
-        {{#each records}}
-        <tr>
-            <td>{{id}}</td>
-            <td>{{record.domain}}</td>
-            <td>{{record.type}}</td>
-            <td>{{record.ttl}}</td>
-            {{#if record.host}}
-            <td>{{record.host}}</td>
-            {{/if}}
-            {{#if record.addr}}
-            <td>{{record.addr}}</td>
-            {{/if}}
-            <td>
-                <form method="POST" action="/authority/{{../zone}}/delete_record">
-                    <input type="hidden" name="domain" value="{{record.domain}}" />
-                    <input type="hidden" name="recordtype" value="{{record.type}}" />
-                    <input type="hidden" name="ttl" value="{{record.ttl}}" />
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">Records for {{zone}}
+
+            <button type="button" class="float-right btn btn-sm btn-primary" data-toggle="modal" data-target="#newZone">
+                New Record <i class="fa fa-plus"></i>
+            </button>
+              
+        </h6>
+    </div>
+    <div class="card-body" style="height:100%;">
+
+        <fieldset>
+            <table class="record_table table table-striped table-bordered">
+                <tr>
+                    <th>#</th>
+                    <th>Domain</th>
+                    <th>Type</th>
+                    <th>TTL</th>
+                </tr>
+                {{#each records}}
+                <tr>
+                    <td>{{id}}</td>
+                    <td>{{record.domain}}</td>
+                    <td>{{record.type}}</td>
+                    <td>{{record.ttl}}</td>
                     {{#if record.host}}
-                    <input type="hidden" name="host" value="{{record.host}}" />
+                    <td>{{record.host}}</td>
                     {{/if}}
                     {{#if record.addr}}
-                    <input type="hidden" name="host" value="{{record.addr}}" />
+                    <td>{{record.addr}}</td>
                     {{/if}}
+                    <td>
+                        <form method="POST" action="/authority/{{../zone}}/delete_record">
+                            <input type="hidden" name="domain" value="{{record.domain}}" />
+                            <input type="hidden" name="recordtype" value="{{record.type}}" />
+                            <input type="hidden" name="ttl" value="{{record.ttl}}" />
+                            {{#if record.host}}
+                            <input type="hidden" name="host" value="{{record.host}}" />
+                            {{/if}}
+                            {{#if record.addr}}
+                            <input type="hidden" name="host" value="{{record.addr}}" />
+                            {{/if}}
 
-                    <button type="submit">Delete</button>
-                </form>
-            </td>
-        </tr>
-        {{/each}}
-    </table>
-
-</fieldset>
+                            <button type="submit">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {{/each}}
+            </table>
+        </fieldset>
+    </div>
+</div>
 
 <fieldset>
     <legend>New Record</legend>

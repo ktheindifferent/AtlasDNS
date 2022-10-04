@@ -6,10 +6,14 @@ use std::sync::Arc;
 
 use getopts::Options;
 
-use hermes::dns::context::{ResolveStrategy, ServerContext};
-use hermes::dns::protocol::{DnsRecord, TransientTtl};
-use hermes::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
-use hermes::web::server::WebServer;
+use atlas::dns::context::{ResolveStrategy, ServerContext};
+use atlas::dns::protocol::{DnsRecord, TransientTtl};
+use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
+use atlas::web::server::WebServer;
+
+use simple_logger::SimpleLogger;
+
+use log::LevelFilter;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -17,6 +21,10 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn main() {
+
+    SimpleLogger::new().with_colors(true).init().unwrap();
+
+
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
@@ -60,10 +68,10 @@ fn main() {
                         port: 53,
                     };
                     index_rootservers = false;
-                    println!("Running as forwarder");
+                    log::info!("Running as forwarder");
                 }
                 None => {
-                    println!("Forward parameter must be a valid Ipv4 address");
+                    log::info!("Forward parameter must be a valid Ipv4 address");
                     return;
                 }
             }
@@ -79,7 +87,7 @@ fn main() {
                     ctx.dns_port = port;
                 }
                 None => {
-                    println!("Port parameter must be a valid port");
+                    log::info!("Port parameter must be a valid port");
                     return;
                 }
             }
@@ -88,7 +96,7 @@ fn main() {
         match ctx.initialize() {
             Ok(_) => {}
             Err(e) => {
-                println!("Server failed to initialize: {:?}", e);
+                log::info!("Server failed to initialize: {:?}", e);
                 return;
             }
         }
@@ -98,34 +106,34 @@ fn main() {
         }
     }
 
-    println!("Listening on port {}", context.dns_port);
+    log::info!("Listening on port {}", context.dns_port);
 
     // Start DNS servers
     if context.enable_udp {
         let udp_server = DnsUdpServer::new(context.clone(), 20);
         if let Err(e) = udp_server.run_server() {
-            println!("Failed to bind UDP listener: {:?}", e);
+            log::info!("Failed to bind UDP listener: {:?}", e);
         }
     }
 
     if context.enable_tcp {
         let tcp_server = DnsTcpServer::new(context.clone(), 20);
         if let Err(e) = tcp_server.run_server() {
-            println!("Failed to bind TCP listener: {:?}", e);
+            log::info!("Failed to bind TCP listener: {:?}", e);
         }
     }
 
     // Start web server
     if context.enable_api {
         let webserver = WebServer::new(context.clone());
-        webserver.run_webserver();
+        webserver.run_webserver(true);
     }
 }
 
 fn get_rootservers() -> Vec<DnsRecord> {
     let mut rootservers = Vec::new();
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "a.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -135,13 +143,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "198.41.0.4".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "a.root-servers.net".to_string(),
         addr: "2001:503:ba3e::2:30".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "b.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -151,13 +159,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "192.228.79.201".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "b.root-servers.net".to_string(),
         addr: "2001:500:84::b".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "c.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -167,13 +175,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "192.33.4.12".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "c.root-servers.net".to_string(),
         addr: "2001:500:2::c".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "d.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -183,13 +191,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "199.7.91.13".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "d.root-servers.net".to_string(),
         addr: "2001:500:2d::d".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "e.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -200,7 +208,7 @@ fn get_rootservers() -> Vec<DnsRecord> {
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "f.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -210,13 +218,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "192.5.5.241".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "f.root-servers.net".to_string(),
         addr: "2001:500:2f::f".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "g.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -227,7 +235,7 @@ fn get_rootservers() -> Vec<DnsRecord> {
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "h.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -237,13 +245,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "198.97.190.53".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "h.root-servers.net".to_string(),
         addr: "2001:500:1::53".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "i.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -253,13 +261,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "192.36.148.17".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "i.root-servers.net".to_string(),
         addr: "2001:7fe::53".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "j.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -269,13 +277,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "192.58.128.30".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "j.root-servers.net".to_string(),
         addr: "2001:503:c27::2:30".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "k.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -285,13 +293,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "193.0.14.129".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "k.root-servers.net".to_string(),
         addr: "2001:7fd::1".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "l.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -301,13 +309,13 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "199.7.83.42".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "l.root-servers.net".to_string(),
         addr: "2001:500:3::42".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
 
-    rootservers.push(DnsRecord::NS {
+    rootservers.push(DnsRecord::Ns {
         domain: "".to_string(),
         host: "m.root-servers.net".to_string(),
         ttl: TransientTtl(3600000),
@@ -317,7 +325,7 @@ fn get_rootservers() -> Vec<DnsRecord> {
         addr: "202.12.27.33".parse().unwrap(),
         ttl: TransientTtl(3600000),
     });
-    rootservers.push(DnsRecord::AAAA {
+    rootservers.push(DnsRecord::Aaaa {
         domain: "m.root-servers.net".to_string(),
         addr: "2001:dc3::35".parse().unwrap(),
         ttl: TransientTtl(3600000),

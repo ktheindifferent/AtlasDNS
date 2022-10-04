@@ -23,7 +23,12 @@ pub trait DnsResolver {
     fn get_context(&self) -> Arc<ServerContext>;
 
     fn resolve(&mut self, qname: &str, qtype: QueryType, recursive: bool) -> Result<DnsPacket> {
-        if let QueryType::UNKNOWN(_) = qtype {
+
+
+        log::info!("attempting to resolve: {:?}", qname);
+
+        if let QueryType::Unknown(_) = qtype {
+            log::info!("unknown");
             let mut packet = DnsPacket::new();
             packet.header.rescode = ResultCode::NOTIMP;
             return Ok(packet);
@@ -32,21 +37,25 @@ pub trait DnsResolver {
         let context = self.get_context();
 
         if let Some(qr) = context.authority.query(qname, qtype) {
+            log::info!("context.authority.query");
             return Ok(qr);
         }
 
         if !recursive || !context.allow_recursive {
+            log::info!("REFUSED !allow_recursive");
             let mut packet = DnsPacket::new();
             packet.header.rescode = ResultCode::REFUSED;
             return Ok(packet);
         }
 
         if let Some(qr) = context.cache.lookup(qname, qtype) {
+            log::info!("context.cache.lookup");
             return Ok(qr);
         }
 
-        if qtype == QueryType::A || qtype == QueryType::AAAA {
-            if let Some(qr) = context.cache.lookup(qname, QueryType::CNAME) {
+        if qtype == QueryType::A || qtype == QueryType::Aaaa {
+            log::info!("context.cache.lookup2");
+            if let Some(qr) = context.cache.lookup(qname, QueryType::Cname) {
                 return Ok(qr);
             }
         }
@@ -68,8 +77,8 @@ pub struct ForwardingDnsResolver {
 impl ForwardingDnsResolver {
     pub fn new(context: Arc<ServerContext>, server: (String, u16)) -> ForwardingDnsResolver {
         ForwardingDnsResolver {
-            context: context,
-            server: server,
+            context,
+            server,
         }
     }
 }
@@ -101,7 +110,7 @@ pub struct RecursiveDnsResolver {
 
 impl RecursiveDnsResolver {
     pub fn new(context: Arc<ServerContext>) -> RecursiveDnsResolver {
-        RecursiveDnsResolver { context: context }
+        RecursiveDnsResolver { context }
     }
 }
 
@@ -123,7 +132,7 @@ impl DnsResolver for RecursiveDnsResolver {
             match self
                 .context
                 .cache
-                .lookup(&domain, QueryType::NS)
+                .lookup(&domain, QueryType::Ns)
                 .and_then(|qr| qr.get_unresolved_ns(&domain))
                 .and_then(|ns| self.context.cache.lookup(&ns, QueryType::A))
                 .and_then(|qr| qr.get_random_a())
@@ -136,11 +145,13 @@ impl DnsResolver for RecursiveDnsResolver {
             }
         }
 
-        let mut ns = tentative_ns.ok_or_else(|| ResolveError::NoServerFound)?;
+        log::info!("tentative_ns: {:?}", tentative_ns.clone());
+
+        let mut ns = tentative_ns.ok_or(ResolveError::NoServerFound)?;
 
         // Start querying name servers
         loop {
-            println!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
+            log::info!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
             let ns_copy = ns.clone();
 
@@ -148,27 +159,27 @@ impl DnsResolver for RecursiveDnsResolver {
             let response = self
                 .context
                 .client
-                .send_query(qname, qtype.clone(), server, false)?;
+                .send_query(qname, qtype, server, false)?;
 
             // If we've got an actual answer, we're done!
             if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
                 let _ = self.context.cache.store(&response.resources);
-                return Ok(response.clone());
+                return Ok(response);
             }
 
             if response.header.rescode == ResultCode::NXDOMAIN {
                 if let Some(ttl) = response.get_ttl_from_soa() {
                     let _ = self.context.cache.store_nxdomain(qname, qtype, ttl);
                 }
-                return Ok(response.clone());
+                return Ok(response);
             }
 
-            // Otherwise, try to find a new nameserver based on NS and a
+            // Otherwise, try to find a new nameserver based on Ns and a
             // corresponding A record in the additional section
             if let Some(new_ns) = response.get_resolved_ns(qname) {
-                // If there is such a record, we can retry the loop with that NS
+                // If there is such a record, we can retry the loop with that Ns
                 ns = new_ns.clone();
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
@@ -177,20 +188,20 @@ impl DnsResolver for RecursiveDnsResolver {
                 continue;
             }
 
-            // If not, we'll have to resolve the ip of a NS record
+            // If not, we'll have to resolve the ip of a Ns record
             let new_ns_name = match response.get_unresolved_ns(qname) {
                 Some(x) => x,
-                None => return Ok(response.clone()),
+                None => return Ok(response),
             };
 
-            // Recursively resolve the NS
+            // Recursively resolve the Ns
             let recursive_response = self.resolve(&new_ns_name, QueryType::A, true)?;
 
             // Pick a random IP and restart
             if let Some(new_ns) = recursive_response.get_random_a() {
                 ns = new_ns.clone();
             } else {
-                return Ok(response.clone());
+                return Ok(response);
             }
         }
     }
@@ -316,13 +327,13 @@ mod tests {
         let mut resolver = context.create_resolver(context.clone());
 
         // Expect failure when no name servers are available
-        if let Ok(_) = resolver.resolve("google.com", QueryType::A, true) {
+        if resolver.resolve("google.com", QueryType::A, true).is_ok() {
             panic!();
         }
 
         // Insert name server, but no corresponding A record
         let mut nameservers = Vec::new();
-        nameservers.push(DnsRecord::NS {
+        nameservers.push(DnsRecord::Ns {
             domain: "".to_string(),
             host: "a.myroot.net".to_string(),
             ttl: TransientTtl(3600),
@@ -380,14 +391,14 @@ mod tests {
         let mut resolver = context.create_resolver(context.clone());
 
         // Expect failure when no name servers are available
-        if let Ok(_) = resolver.resolve("google.com", QueryType::A, true) {
+        if resolver.resolve("google.com", QueryType::A, true).is_ok() {
             panic!();
         }
 
         // Insert root servers
         {
             let mut nameservers = Vec::new();
-            nameservers.push(DnsRecord::NS {
+            nameservers.push(DnsRecord::Ns {
                 domain: "".to_string(),
                 host: "a.myroot.net".to_string(),
                 ttl: TransientTtl(3600),
@@ -411,7 +422,7 @@ mod tests {
         // Insert TLD servers
         {
             let mut nameservers = Vec::new();
-            nameservers.push(DnsRecord::NS {
+            nameservers.push(DnsRecord::Ns {
                 domain: "com".to_string(),
                 host: "a.mytld.net".to_string(),
                 ttl: TransientTtl(3600),
@@ -435,7 +446,7 @@ mod tests {
         // Insert authoritative servers
         {
             let mut nameservers = Vec::new();
-            nameservers.push(DnsRecord::NS {
+            nameservers.push(DnsRecord::Ns {
                 domain: "google.com".to_string(),
                 host: "ns1.google.com".to_string(),
                 ttl: TransientTtl(3600),
@@ -471,7 +482,7 @@ mod tests {
             } else {
                 packet.header.rescode = ResultCode::NXDOMAIN;
 
-                packet.authorities.push(DnsRecord::SOA {
+                packet.authorities.push(DnsRecord::Soa {
                     domain: "google.com".to_string(),
                     r_name: "google.com".to_string(),
                     m_name: "google.com".to_string(),
@@ -491,7 +502,7 @@ mod tests {
 
         // Insert name servers
         let mut nameservers = Vec::new();
-        nameservers.push(DnsRecord::NS {
+        nameservers.push(DnsRecord::Ns {
             domain: "google.com".to_string(),
             host: "ns1.google.com".to_string(),
             ttl: TransientTtl(3600),
@@ -554,10 +565,10 @@ mod tests {
             // Check statistics for google entry
             assert_eq!("google.com", list[1].domain);
 
-            // Should have a NS record and an A record for a total of 2 record types
+            // Should have a Ns record and an A record for a total of 2 record types
             assert_eq!(2, list[1].record_types.len());
 
-            // Should have been hit two times for NS google.com and once for
+            // Should have been hit two times for Ns google.com and once for
             // A google.com
             assert_eq!(3, list[1].hits);
 
