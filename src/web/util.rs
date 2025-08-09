@@ -24,11 +24,17 @@ pub fn url_decode(instr: &str) -> String {
     while pos < len {
         let cur = src_buffer[pos] as char;
         if cur == '%' {
-            let a = hex_to_num(src_buffer[pos + 1] as char);
-            let b = hex_to_num(src_buffer[pos + 2] as char);
-            let new_char = ((a << 4) | b) as char;
-            buffer.push(new_char);
-            pos += 2;
+            // Check bounds before accessing pos + 1 and pos + 2
+            if pos + 2 < len {
+                let a = hex_to_num(src_buffer[pos + 1] as char);
+                let b = hex_to_num(src_buffer[pos + 2] as char);
+                let new_char = ((a << 4) | b) as char;
+                buffer.push(new_char);
+                pos += 2;
+            } else {
+                // Invalid URL encoding, just push the '%' character
+                buffer.push(cur);
+            }
         } else {
             buffer.push(cur);
         }

@@ -49,7 +49,7 @@ pub trait PacketBuffer {
         self.write(((val >> 24) & 0xFF) as u8)?;
         self.write(((val >> 16) & 0xFF) as u8)?;
         self.write(((val >> 8) & 0xFF) as u8)?;
-        self.write(((val >> 0) & 0xFF) as u8)?;
+        self.write((val & 0xFF) as u8)?;
 
         Ok(())
     }
@@ -95,7 +95,7 @@ pub trait PacketBuffer {
         let res = ((self.read()? as u32) << 24)
             | ((self.read()? as u32) << 16)
             | ((self.read()? as u32) << 8)
-            | ((self.read()? as u32) << 0);
+            | (self.read()? as u32);
 
         Ok(res)
     }
@@ -103,6 +103,11 @@ pub trait PacketBuffer {
     fn read_qname(&mut self, outstr: &mut String) -> Result<()> {
         let mut pos = self.pos();
         let mut jumped = false;
+        
+        // DNS name length limits per RFC 1035
+        const MAX_NAME_LENGTH: usize = 255;
+        const MAX_LABEL_LENGTH: usize = 63;
+        let mut total_length = 0;
 
         let mut delim = "";
         loop {
@@ -132,6 +137,11 @@ pub trait PacketBuffer {
             if len == 0 {
                 break;
             }
+            
+            // Check label length limit
+            if len as usize > MAX_LABEL_LENGTH {
+                return Err(BufferError::EndOfBuffer);
+            }
 
             outstr.push_str(delim);
 
@@ -139,6 +149,12 @@ pub trait PacketBuffer {
             outstr.push_str(&String::from_utf8_lossy(str_buffer).to_lowercase());
 
             delim = ".";
+            
+            // Track total name length
+            total_length += len as usize + 1; // +1 for the length byte itself
+            if total_length > MAX_NAME_LENGTH {
+                return Err(BufferError::EndOfBuffer);
+            }
 
             pos += len as usize;
         }
@@ -185,11 +201,18 @@ impl PacketBuffer for VectorPacketBuffer {
     }
 
     fn get(&mut self, pos: usize) -> Result<u8> {
+        if pos >= self.buffer.len() {
+            return Err(BufferError::EndOfBuffer);
+        }
         Ok(self.buffer[pos])
     }
 
     fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
-        Ok(&self.buffer[start..start + len as usize])
+        let end = start.saturating_add(len);
+        if end > self.buffer.len() {
+            return Err(BufferError::EndOfBuffer);
+        }
+        Ok(&self.buffer[start..end])
     }
 
     fn write(&mut self, val: u8) -> Result<()> {
@@ -235,7 +258,7 @@ impl<'a, T> StreamPacketBuffer<'a, T>
 where
     T: Read + 'a,
 {
-    pub fn new(stream: &'a mut T) -> StreamPacketBuffer<'_, T> {
+    pub fn new(stream: &'a mut T) -> StreamPacketBuffer<'a, T> {
         StreamPacketBuffer {
             stream,
             buffer: Vec::new(),
@@ -259,7 +282,7 @@ where
     fn read(&mut self) -> Result<u8> {
         while self.pos >= self.buffer.len() {
             let mut local_buffer = [0; 1];
-            self.stream.read(&mut local_buffer)?;
+            self.stream.read_exact(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
@@ -272,7 +295,7 @@ where
     fn get(&mut self, pos: usize) -> Result<u8> {
         while pos >= self.buffer.len() {
             let mut local_buffer = [0; 1];
-            self.stream.read(&mut local_buffer)?;
+            self.stream.read_exact(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
@@ -282,11 +305,11 @@ where
     fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
         while start + len > self.buffer.len() {
             let mut local_buffer = [0; 1];
-            self.stream.read(&mut local_buffer)?;
+            self.stream.read_exact(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
-        Ok(&self.buffer[start..start + len as usize])
+        Ok(&self.buffer[start..start + len])
     }
 
     fn write(&mut self, _: u8) -> Result<()> {
@@ -360,7 +383,7 @@ impl PacketBuffer for BytePacketBuffer {
         if start + len >= 512 {
             return Err(BufferError::EndOfBuffer);
         }
-        Ok(&self.buf[start..start + len as usize])
+        Ok(&self.buf[start..start + len])
     }
 
     fn write(&mut self, val: u8) -> Result<()> {

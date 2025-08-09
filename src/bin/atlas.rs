@@ -1,51 +1,48 @@
-//! hermes documentation
-
 use std::env;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
 use getopts::Options;
 
-use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::protocol::{DnsRecord, TransientTtl};
+use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::web::server::WebServer;
-
-use simple_logger::SimpleLogger;
-
-use log::LevelFilter;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
     print!("{}", opts.usage(&brief));
 }
 
+/// Main entry point for the Atlas DNS server
 fn main() {
-
-    SimpleLogger::new().with_colors(true).init().unwrap();
-
+    simple_logger::init().expect("Failed to initialize logger");
 
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
-    opts.optflag(
-        "a",
-        "authority",
-        "disable support for recursive lookups, and serve only local zones",
-    );
     opts.optopt(
         "f",
-        "forward",
-        "forward replies to specified dns server",
-        "SERVER",
+        "forward-address",
+        "Upstream DNS server for forwarding (e.g. 8.8.8.8)",
+        "FORWARDIP",
     );
-    opts.optopt("p", "port", "listen on specified port", "PORT");
+    opts.optflag(
+        "x",
+        "disable-api",
+        "Disable the Atlas web server API",
+    );
+    opts.optflag(
+        "j",
+        "zones-dir",
+        "The directory for the zone files",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+        Err(f) => panic!("{}", f.to_string()),
     };
 
     if opt_matches.opt_present("h") {
@@ -53,7 +50,7 @@ fn main() {
         return;
     }
 
-    let mut context = Arc::new(ServerContext::new());
+    let mut context = Arc::new(ServerContext::new().expect("Failed to initialize DNS server context"));
 
     if let Some(ctx) = Arc::get_mut(&mut context) {
         let mut index_rootservers = true;
@@ -62,36 +59,33 @@ fn main() {
                 .opt_str("f")
                 .and_then(|x| x.parse::<Ipv4Addr>().ok())
             {
-                Some(ip) => {
+                Some(addr) => {
                     ctx.resolve_strategy = ResolveStrategy::Forward {
-                        host: ip.to_string(),
+                        host: addr.to_string(),
                         port: 53,
                     };
                     index_rootservers = false;
-                    log::info!("Running as forwarder");
                 }
                 None => {
-                    log::info!("Forward parameter must be a valid Ipv4 address");
-                    return;
+                    log::info!("Forward address is not a valid IP - disabling forwarding");
                 }
             }
         }
 
-        if opt_matches.opt_present("a") {
-            ctx.allow_recursive = false;
+        if opt_matches.opt_present("x") {
+            ctx.enable_api = false;
         }
 
-        if opt_matches.opt_present("p") {
-            match opt_matches.opt_str("p").and_then(|x| x.parse::<u16>().ok()) {
-                Some(port) => {
-                    ctx.dns_port = port;
-                }
-                None => {
-                    log::info!("Port parameter must be a valid port");
-                    return;
-                }
+        match opt_matches.opt_str("j") {
+            Some(zones_dir) => {
+                ctx.zones_dir = Box::leak(zones_dir.into_boxed_str());
+            }
+            None => {
+                log::info!("Zones dir not specified, using default: {}", ctx.zones_dir);
             }
         }
+
+        // Skip trying to load zones from network - function not available
 
         match ctx.initialize() {
             Ok(_) => {}
@@ -130,206 +124,57 @@ fn main() {
     }
 }
 
+/// Returns the DNS records for all 13 root nameservers
+/// 
+/// This function creates NS, A, and AAAA records for the 13 root servers (a-m.root-servers.net)
+/// as defined by IANA. These records are essential for DNS resolution when starting from scratch.
 fn get_rootservers() -> Vec<DnsRecord> {
-    let mut rootservers = Vec::new();
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "a.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "a.root-servers.net".to_string(),
-        addr: "198.41.0.4".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "a.root-servers.net".to_string(),
-        addr: "2001:503:ba3e::2:30".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "b.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "b.root-servers.net".to_string(),
-        addr: "192.228.79.201".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "b.root-servers.net".to_string(),
-        addr: "2001:500:84::b".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "c.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "c.root-servers.net".to_string(),
-        addr: "192.33.4.12".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "c.root-servers.net".to_string(),
-        addr: "2001:500:2::c".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "d.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "d.root-servers.net".to_string(),
-        addr: "199.7.91.13".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "d.root-servers.net".to_string(),
-        addr: "2001:500:2d::d".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "e.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "e.root-servers.net".to_string(),
-        addr: "192.203.230.10".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "f.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "f.root-servers.net".to_string(),
-        addr: "192.5.5.241".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "f.root-servers.net".to_string(),
-        addr: "2001:500:2f::f".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "g.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "g.root-servers.net".to_string(),
-        addr: "192.112.36.4".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "h.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "h.root-servers.net".to_string(),
-        addr: "198.97.190.53".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "h.root-servers.net".to_string(),
-        addr: "2001:500:1::53".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "i.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "i.root-servers.net".to_string(),
-        addr: "192.36.148.17".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "i.root-servers.net".to_string(),
-        addr: "2001:7fe::53".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "j.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "j.root-servers.net".to_string(),
-        addr: "192.58.128.30".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "j.root-servers.net".to_string(),
-        addr: "2001:503:c27::2:30".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "k.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "k.root-servers.net".to_string(),
-        addr: "193.0.14.129".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "k.root-servers.net".to_string(),
-        addr: "2001:7fd::1".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "l.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "l.root-servers.net".to_string(),
-        addr: "199.7.83.42".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "l.root-servers.net".to_string(),
-        addr: "2001:500:3::42".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
-    rootservers.push(DnsRecord::Ns {
-        domain: "".to_string(),
-        host: "m.root-servers.net".to_string(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::A {
-        domain: "m.root-servers.net".to_string(),
-        addr: "202.12.27.33".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-    rootservers.push(DnsRecord::Aaaa {
-        domain: "m.root-servers.net".to_string(),
-        addr: "2001:dc3::35".parse().unwrap(),
-        ttl: TransientTtl(3600000),
-    });
-
+    // Root server data: (letter, IPv4, IPv6)
+    const ROOT_SERVERS: &[(&str, &str, Option<&str>)] = &[
+        ("a", "198.41.0.4", Some("2001:503:ba3e::2:30")),
+        ("b", "192.228.79.201", Some("2001:500:84::b")),
+        ("c", "192.33.4.12", Some("2001:500:2::c")),
+        ("d", "199.7.91.13", Some("2001:500:2d::d")),
+        ("e", "192.203.230.10", Some("2001:500:a8::e")),
+        ("f", "192.5.5.241", Some("2001:500:2f::f")),
+        ("g", "192.112.36.4", None),  // No IPv6 for g.root-servers.net
+        ("h", "128.63.2.53", Some("2001:500:1::803f:235")),
+        ("i", "192.36.148.17", Some("2001:7fe::53")),
+        ("j", "192.58.128.30", Some("2001:503:c27::2:30")),
+        ("k", "193.0.14.129", Some("2001:7fd::1")),
+        ("l", "199.7.83.42", Some("2001:500:3::42")),
+        ("m", "202.12.27.33", Some("2001:dc3::35")),
+    ];
+    
+    const ROOT_TTL: u32 = 3600000; // 1000 hours
+    let mut rootservers = Vec::with_capacity(ROOT_SERVERS.len() * 3);
+    
+    for &(letter, ipv4, ipv6_opt) in ROOT_SERVERS {
+        let hostname = format!("{}.root-servers.net", letter);
+        
+        // Add NS record pointing to this root server
+        rootservers.push(DnsRecord::Ns {
+            domain: String::new(), // Root domain
+            host: hostname.clone(),
+            ttl: TransientTtl(ROOT_TTL),
+        });
+        
+        // Add A (IPv4) record
+        rootservers.push(DnsRecord::A {
+            domain: hostname.clone(),
+            addr: ipv4.parse().expect("Invalid IPv4 address for root server"),
+            ttl: TransientTtl(ROOT_TTL),
+        });
+        
+        // Add AAAA (IPv6) record if available
+        if let Some(ipv6) = ipv6_opt {
+            rootservers.push(DnsRecord::Aaaa {
+                domain: hostname,
+                addr: ipv6.parse().expect("Invalid IPv6 address for root server"),
+                ttl: TransientTtl(ROOT_TTL),
+            });
+        }
+    }
+    
     rootservers
 }

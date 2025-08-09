@@ -35,11 +35,19 @@ impl ServerStatistics {
     }
 }
 
+/// DNS resolution strategy configuration
+#[derive(Clone, Debug)]
 pub enum ResolveStrategy {
+    /// Perform recursive resolution starting from root servers
     Recursive,
+    /// Forward all queries to an upstream DNS server
     Forward { host: String, port: u16 },
 }
 
+/// Main server context containing configuration and shared state
+/// 
+/// This struct holds all the configuration and runtime state needed by the DNS server,
+/// including the authority zones, cache, resolution strategy, and server settings.
 pub struct ServerContext {
     pub authority: Authority,
     pub cache: SynchronizedCache,
@@ -58,16 +66,16 @@ pub struct ServerContext {
 
 impl Default for ServerContext {
     fn default() -> Self {
-        ServerContext::new()
+        ServerContext::new().expect("Failed to create default ServerContext")
     }
 }
 
 impl ServerContext {
-    pub fn new() -> ServerContext {
-        ServerContext {
+    pub fn new() -> Result<ServerContext> {
+        Ok(ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
-            client: Box::new(DnsNetworkClient::new(34255)),
+            client: Box::new(DnsNetworkClient::new(34255)?),
             dns_port: 53,
             api_port: 5380,
             ssl_api_port: 5343,
@@ -81,7 +89,7 @@ impl ServerContext {
                 udp_query_count: AtomicUsize::new(0),
             },
             zones_dir: "/opt/atlas/zones",
-        }
+        })
     }
 
     pub fn initialize(&mut self) -> Result<()> {

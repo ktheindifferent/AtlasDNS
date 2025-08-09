@@ -392,7 +392,7 @@ impl DnsServer for DnsTcpServer {
                         "Failed to get packet data"
                     );
 
-                    ignore_or_report!(stream.write(data), "Failed to write response packet");
+                    ignore_or_report!(stream.write_all(data), "Failed to write response packet");
 
                     ignore_or_report!(stream.shutdown(Shutdown::Both), "Failed to shutdown socket");
                 }
@@ -498,7 +498,7 @@ mod tests {
         }));
 
         match Arc::get_mut(&mut context) {
-            Some(mut ctx) => {
+            Some(ctx) => {
                 ctx.resolve_strategy = ResolveStrategy::Forward {
                     host: "127.0.0.1".to_string(),
                     port: 53,
@@ -575,7 +575,7 @@ mod tests {
 
         // Disable recursive resolves to generate a failure
         match Arc::get_mut(&mut context) {
-            Some(mut ctx) => {
+            Some(ctx) => {
                 ctx.allow_recursive = false;
             }
             None => panic!(),
@@ -606,7 +606,7 @@ mod tests {
         }));
 
         match Arc::get_mut(&mut context2) {
-            Some(mut ctx) => {
+            Some(ctx) => {
                 ctx.resolve_strategy = ResolveStrategy::Forward {
                     host: "127.0.0.1".to_string(),
                     port: 53,

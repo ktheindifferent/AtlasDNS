@@ -75,14 +75,21 @@ unsafe impl Send for DnsNetworkClient {}
 unsafe impl Sync for DnsNetworkClient {}
 
 impl DnsNetworkClient {
-    pub fn new(port: u16) -> DnsNetworkClient {
-        DnsNetworkClient {
+    pub fn new(port: u16) -> Result<DnsNetworkClient> {
+        let socket = UdpSocket::bind(("0.0.0.0", port))
+            .map_err(|e| {
+                log::error!("Failed to bind UDP socket on port {}: {}", port, e);
+                ClientError::Io(std::io::Error::new(std::io::ErrorKind::AddrInUse, 
+                    format!("Cannot bind to port {}", port)))
+            })?;
+            
+        Ok(DnsNetworkClient {
             total_sent: AtomicUsize::new(0),
             total_failed: AtomicUsize::new(0),
             seq: AtomicUsize::new(0),
-            socket: UdpSocket::bind(("0.0.0.0", port)).unwrap(),
+            socket,
             pending_queries: Arc::new(Mutex::new(Vec::new())),
-        }
+        })
     }
 
     /// Send a DNS query using TCP transport
@@ -128,7 +135,7 @@ impl DnsNetworkClient {
         let mut socket = TcpStream::connect(server)?;
 
         write_packet_length(&mut socket, req_buffer.pos())?;
-        socket.write(&req_buffer.buf[0..req_buffer.pos])?;
+        socket.write_all(&req_buffer.buf[0..req_buffer.pos])?;
         socket.flush()?;
 
         let _ = read_packet_length(&mut socket)?;
@@ -380,7 +387,7 @@ pub mod tests {
 
     #[test]
     pub fn test_udp_client() {
-        let client = DnsNetworkClient::new(31456);
+        let client = DnsNetworkClient::new(31456).expect("Failed to create test client");
         client.run().unwrap();
 
         let res = client
@@ -400,7 +407,7 @@ pub mod tests {
 
     #[test]
     pub fn test_tcp_client() {
-        let client = DnsNetworkClient::new(31457);
+        let client = DnsNetworkClient::new(31457).expect("Failed to create test client");
         let res = client
             .send_tcp_query("google.com", QueryType::A, ("8.8.8.8", 53), true)
             .unwrap();

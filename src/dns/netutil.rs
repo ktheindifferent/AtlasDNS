@@ -13,7 +13,7 @@ pub fn write_packet_length(stream: &mut TcpStream, len: usize) -> Result<()> {
     len_buffer[0] = (len >> 8) as u8;
     len_buffer[1] = (len & 0xFF) as u8;
 
-    stream.write(&len_buffer)?;
+    stream.write_all(&len_buffer)?;
 
     Ok(())
 }
