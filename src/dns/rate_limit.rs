@@ -266,7 +266,7 @@ impl std::error::Error for RateLimitExceeded {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn test_rate_limiter_client_limit() {
@@ -316,5 +316,228 @@ mod tests {
         // Both should be rate limited
         assert!(limiter.check_allowed(client1).is_err());
         assert!(limiter.check_allowed(client2).is_err());
+    }
+
+    #[test]
+    fn test_global_rate_limit() {
+        let config = RateLimitConfig {
+            client_limit: 100,
+            client_window: Duration::from_secs(1),
+            global_limit: 10,
+            global_window: Duration::from_millis(100),
+            adaptive: false,
+            cleanup_interval: Duration::from_secs(60),
+        };
+        
+        let limiter = RateLimiter::new(config);
+        let client = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        
+        // Should allow up to global limit
+        for _ in 0..10 {
+            assert!(limiter.check_allowed(client).is_ok());
+            limiter.record_query(client);
+        }
+        
+        // Should fail when global limit exceeded
+        match limiter.check_allowed(client) {
+            Err(RateLimitExceeded::Global { limit, .. }) => {
+                assert_eq!(limit, 10);
+            }
+            _ => panic!("Expected global rate limit error"),
+        }
+    }
+
+    #[test]
+    fn test_ipv6_client() {
+        let config = RateLimitConfig {
+            client_limit: 3,
+            client_window: Duration::from_millis(100),
+            ..Default::default()
+        };
+        
+        let limiter = RateLimiter::new(config);
+        let client = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        
+        // IPv6 clients should work the same as IPv4
+        for _ in 0..3 {
+            assert!(limiter.check_allowed(client).is_ok());
+            limiter.record_query(client);
+        }
+        
+        assert!(limiter.check_allowed(client).is_err());
+    }
+
+    #[test]
+    fn test_block_duration_calculation() {
+        let config = RateLimitConfig {
+            client_limit: 2,
+            client_window: Duration::from_millis(100),
+            ..Default::default()
+        };
+        
+        let limiter = RateLimiter::new(config);
+        let client = IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1));
+        
+        // Exceed limit significantly
+        for _ in 0..5 {
+            limiter.record_query(client);
+        }
+        
+        match limiter.check_allowed(client) {
+            Err(RateLimitExceeded::Client { retry_after, .. }) => {
+                // Should have exponential backoff
+                assert!(retry_after > Duration::from_millis(100));
+            }
+            _ => panic!("Expected client rate limit error"),
+        }
+    }
+
+    #[test]
+    fn test_adaptive_rate_limiting() {
+        let config = RateLimitConfig {
+            client_limit: 100,
+            client_window: Duration::from_secs(1),
+            global_limit: 20,
+            global_window: Duration::from_millis(100),
+            adaptive: true,
+            cleanup_interval: Duration::from_secs(60),
+        };
+        
+        let limiter = RateLimiter::new(config);
+        let client = IpAddr::V4(Ipv4Addr::new(10, 10, 10, 10));
+        
+        // Make some queries but stay under 80% usage
+        for _ in 0..10 {
+            assert!(limiter.check_allowed(client).is_ok());
+            limiter.record_query(client);
+        }
+        
+        // Wait for window to reset
+        std::thread::sleep(Duration::from_millis(101));
+        
+        // Adaptive algorithm should adjust limits
+        // Make more queries to test adjusted limit
+        for _ in 0..15 {
+            limiter.record_query(client);
+        }
+        
+        // Should still have room due to adaptive adjustment
+        assert!(limiter.global.lock().unwrap().current_limit >= 20);
+    }
+
+    #[test]
+    fn test_error_display() {
+        let client_err = RateLimitExceeded::Client {
+            client: "192.168.1.1".to_string(),
+            limit: 100,
+            window: Duration::from_secs(1),
+            retry_after: Duration::from_millis(500),
+        };
+        
+        let display = format!("{}", client_err);
+        assert!(display.contains("192.168.1.1"));
+        assert!(display.contains("100"));
+        
+        let global_err = RateLimitExceeded::Global {
+            limit: 1000,
+            window: Duration::from_secs(1),
+            retry_after: Duration::from_millis(200),
+        };
+        
+        let display = format!("{}", global_err);
+        assert!(display.contains("Global"));
+        assert!(display.contains("1000"));
+    }
+
+    #[test]
+    fn test_default_config() {
+        let config = RateLimitConfig::default();
+        assert_eq!(config.client_limit, 100);
+        assert_eq!(config.client_window, Duration::from_secs(1));
+        assert_eq!(config.global_limit, 10000);
+        assert_eq!(config.global_window, Duration::from_secs(1));
+        assert!(config.adaptive);
+        assert_eq!(config.cleanup_interval, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+        
+        let config = RateLimitConfig {
+            client_limit: 50,
+            client_window: Duration::from_millis(500),
+            global_limit: 200,
+            global_window: Duration::from_millis(500),
+            ..Default::default()
+        };
+        
+        let limiter = Arc::new(RateLimiter::new(config));
+        let mut handles = vec![];
+        
+        // Spawn multiple threads accessing the rate limiter
+        for i in 0..4 {
+            let limiter_clone = Arc::clone(&limiter);
+            let handle = thread::spawn(move || {
+                let client = IpAddr::V4(Ipv4Addr::new(192, 168, 1, i));
+                let mut allowed = 0;
+                let mut denied = 0;
+                
+                for _ in 0..30 {
+                    match limiter_clone.check_allowed(client) {
+                        Ok(_) => {
+                            allowed += 1;
+                            limiter_clone.record_query(client);
+                        }
+                        Err(_) => denied += 1,
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+                
+                (allowed, denied)
+            });
+            handles.push(handle);
+        }
+        
+        // Wait for all threads and check results
+        for handle in handles {
+            let (allowed, denied) = handle.join().unwrap();
+            // Each thread should have some allowed and possibly some denied
+            assert!(allowed > 0);
+            // Total should be 30 attempts
+            assert_eq!(allowed + denied, 30);
+        }
+    }
+
+    #[test]
+    fn test_cleanup_old_entries() {
+        let config = RateLimitConfig {
+            client_limit: 5,
+            client_window: Duration::from_millis(50),
+            cleanup_interval: Duration::from_millis(100),
+            ..Default::default()
+        };
+        
+        let limiter = RateLimiter::new(config);
+        let client1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let client2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        
+        // Add queries for both clients
+        limiter.record_query(client1);
+        limiter.record_query(client2);
+        
+        // Wait for cleanup to run
+        std::thread::sleep(Duration::from_millis(200));
+        
+        // Old entries should be cleaned up
+        let clients = limiter.clients.lock().unwrap();
+        // Clients with old queries should be removed or have empty query lists
+        for entry in clients.values() {
+            let now = Instant::now();
+            for &query_time in &entry.queries {
+                assert!(now.duration_since(query_time) < Duration::from_millis(50));
+            }
+        }
     }
 }
