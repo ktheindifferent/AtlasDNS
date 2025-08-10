@@ -44,3 +44,12 @@ pub mod server;
 
 /// Internal network utilities
 mod netutil;
+
+/// Enhanced error types for DNS operations
+pub mod errors;
+
+/// Rate limiting for DNS queries
+pub mod rate_limit;
+
+/// Health check and monitoring
+pub mod health;
