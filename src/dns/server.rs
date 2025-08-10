@@ -15,7 +15,7 @@ use rand::random;
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::context::ServerContext;
 use crate::dns::netutil::{read_packet_length, write_packet_length};
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode};
 use crate::dns::resolve::DnsResolver;
 
 #[derive(Debug, Display, From, Error)]
@@ -97,68 +97,101 @@ fn resolve_cnames(
 /// active resolver and a query will be performed. It will also resolve some
 /// possible references within the query, such as CNAME hosts.
 ///
-/// This function will always return a valid packet, even if the request could not
-/// be performed, since we still want to send something back to the client.
-pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
-    log::info!("execute_query");
+/// Build the initial response packet with common headers
+fn build_response_packet(context: &Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
     let mut packet = DnsPacket::new();
     packet.header.id = request.header.id;
     packet.header.recursion_available = context.allow_recursive;
     packet.header.response = true;
+    packet
+}
 
+/// Validate the request and return appropriate error code if invalid
+fn validate_request(
+    context: &Arc<ServerContext>,
+    request: &DnsPacket,
+) -> Option<ResultCode> {
     if request.header.recursion_desired && !context.allow_recursive {
         log::info!("REFUSED");
-        packet.header.rescode = ResultCode::REFUSED;
+        Some(ResultCode::REFUSED)
     } else if request.questions.is_empty() {
-        packet.header.rescode = ResultCode::FORMERR;
         log::info!("FORMERR");
+        Some(ResultCode::FORMERR)
     } else {
-        let mut results = Vec::new();
+        None
+    }
+}
 
-        let question = &request.questions[0];
-        packet.questions.push(question.clone());
+/// Process a valid query and populate the response packet
+fn process_valid_query(
+    context: Arc<ServerContext>,
+    request: &DnsPacket,
+    packet: &mut DnsPacket,
+) {
+    let mut results = Vec::new();
+    let question = &request.questions[0];
+    packet.questions.push(question.clone());
 
-        log::info!("question.qtype: {:?}", question.qtype);
+    log::info!("question.qtype: {:?}", question.qtype);
 
+    let mut resolver = context.create_resolver(context.clone());
+    let rescode = resolve_question(
+        &mut resolver,
+        question,
+        request.header.recursion_desired,
+        &mut results,
+    );
 
-        let mut resolver = context.create_resolver(context.clone());
-        let rescode = match resolver.resolve(
-            &question.name,
-            question.qtype,
-            request.header.recursion_desired,
-        ) {
-            Ok(result) => {
-                let rescode = result.header.rescode;
+    packet.header.rescode = rescode;
+    populate_packet_from_results(packet, results);
+}
 
-                let unmatched = result.get_unresolved_cnames();
-                results.push(result);
-           
-                resolve_cnames(&unmatched, &mut results, &mut resolver, 0);
-                log::info!("resolve_cnames");
-                rescode
-            }
-            Err(err) => {
-                log::info!(
-                    "Failed to resolve {:?} {}: {:?}",
-                    question.qtype, question.name, err
-                );
-                ResultCode::SERVFAIL
-            }
-        };
-
-        packet.header.rescode = rescode;
-
-        for result in results {
-            for rec in result.answers {
-                packet.answers.push(rec);
-            }
-            for rec in result.authorities {
-                packet.authorities.push(rec);
-            }
-            for rec in result.resources {
-                packet.resources.push(rec);
-            }
+/// Resolve a DNS question and handle CNAME resolution
+fn resolve_question(
+    resolver: &mut Box<dyn DnsResolver>,
+    question: &DnsQuestion,
+    recursion_desired: bool,
+    results: &mut Vec<DnsPacket>,
+) -> ResultCode {
+    match resolver.resolve(&question.name, question.qtype, recursion_desired) {
+        Ok(result) => {
+            let rescode = result.header.rescode;
+            let unmatched = result.get_unresolved_cnames();
+            results.push(result);
+            
+            resolve_cnames(&unmatched, results, resolver, 0);
+            log::info!("resolve_cnames");
+            rescode
         }
+        Err(err) => {
+            log::info!(
+                "Failed to resolve {:?} {}: {:?}",
+                question.qtype, question.name, err
+            );
+            ResultCode::SERVFAIL
+        }
+    }
+}
+
+/// Populate the response packet with results from resolution
+fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>) {
+    for result in results {
+        packet.answers.extend(result.answers);
+        packet.authorities.extend(result.authorities);
+        packet.resources.extend(result.resources);
+    }
+}
+
+/// This function will always return a valid packet, even if the request could not
+/// be performed, since we still want to send something back to the client.
+pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
+    log::info!("execute_query");
+    let mut packet = build_response_packet(&context, request);
+
+    if let Some(error_code) = validate_request(&context, request) {
+        packet.header.rescode = error_code;
+    } else {
+        process_valid_query(context, request, &mut packet);
     }
 
     packet
@@ -187,85 +220,83 @@ impl DnsUdpServer {
     }
 }
 
-impl DnsServer for DnsUdpServer {
-    /// Launch the server
-    ///
-    /// This method takes ownership of the server, preventing the method from
-    /// being called multiple times.
-    fn run_server(self) -> Result<()> {
-        // Bind the socket
-        let socket = UdpSocket::bind(("0.0.0.0", self.context.dns_port))?;
+impl DnsUdpServer {
+    /// Process a single DNS request and send the response
+    fn process_request(
+        socket: &UdpSocket,
+        context: Arc<ServerContext>,
+        src: std::net::SocketAddr,
+        request: &DnsPacket,
+    ) {
+        let mut size_limit = 512;
 
-        // Spawn threads for handling requests
-        for thread_id in 0..self.thread_count {
-            let socket_clone = match socket.try_clone() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::info!("Failed to clone socket when starting UDP server: {:?}", e);
-                    continue;
-                }
-            };
-
-            let context = self.context.clone();
-            let request_cond = self.request_cond.clone();
-            let request_queue = self.request_queue.clone();
-
-            let name = "DnsUdpServer-request-".to_string() + &thread_id.to_string();
-            log::info!("DnsUdpServer-request");
-            let _ = Builder::new().name(name).spawn(move || {
-                loop {
-                    // Acquire lock, and wait on the condition until data is
-                    // available. Then proceed with popping an entry of the queue.
-                    let (src, request) = match request_queue
-                        .lock()
-                        .ok()
-                        .and_then(|x| request_cond.wait(x).ok())
-                        .and_then(|mut x| x.pop_front())
-                    {
-                        Some(x) => x,
-                        None => {
-                            log::info!("Not expected to happen!");
-                            continue;
-                        }
-                    };
-
-                    let mut size_limit = 512;
-
-                    // Check for EDNS
-                    if request.resources.len() == 1 {
-                        if let DnsRecord::Opt { packet_len, .. } = request.resources[0] {
-                            size_limit = packet_len as usize;
-                        }
-                    }
-
-                    // Create a response buffer, and ask the context for an appropriate
-                    // resolver
-                    let mut res_buffer = VectorPacketBuffer::new();
-
-                    log::info!("req: {:?}", request.clone());
-
-                    let mut packet = execute_query(context.clone(), &request);
-                    let _ = packet.write(&mut res_buffer, size_limit);
-
-                    
-
-                    // Fire off the response
-                    let len = res_buffer.pos();
-                    let data = return_or_report!(
-                        res_buffer.get_range(0, len),
-                        "Failed to get buffer data"
-                    );
-                    ignore_or_report!(
-                        socket_clone.send_to(data, src),
-                        "Failed to send response packet"
-                    );
-                }
-            })?;
+        // Check for EDNS
+        if request.resources.len() == 1 {
+            if let DnsRecord::Opt { packet_len, .. } = request.resources[0] {
+                size_limit = packet_len as usize;
+            }
         }
 
-        // Start servicing requests
+        // Create a response buffer, and ask the context for an appropriate resolver
+        let mut res_buffer = VectorPacketBuffer::new();
+
+        log::info!("req: {:?}", request.clone());
+
+        let mut packet = execute_query(context, &request);
+        let _ = packet.write(&mut res_buffer, size_limit);
+
+        // Fire off the response
+        let len = res_buffer.pos();
+        let data = return_or_report!(
+            res_buffer.get_range(0, len),
+            "Failed to get buffer data"
+        );
+        ignore_or_report!(
+            socket.send_to(data, src),
+            "Failed to send response packet"
+        );
+    }
+
+    /// Spawn a worker thread to handle DNS requests
+    fn spawn_request_handler(
+        &self,
+        thread_id: usize,
+        socket: UdpSocket,
+    ) -> std::io::Result<()> {
+        let context = self.context.clone();
+        let request_cond = self.request_cond.clone();
+        let request_queue = self.request_queue.clone();
+
+        let name = format!("DnsUdpServer-request-{}", thread_id);
+        log::info!("DnsUdpServer-request");
+        
+        Builder::new().name(name).spawn(move || {
+            loop {
+                // Acquire lock, and wait on the condition until data is available
+                let (src, request) = match request_queue
+                    .lock()
+                    .ok()
+                    .and_then(|x| request_cond.wait(x).ok())
+                    .and_then(|mut x| x.pop_front())
+                {
+                    Some(x) => x,
+                    None => {
+                        log::info!("Not expected to happen!");
+                        continue;
+                    }
+                };
+
+                Self::process_request(&socket, context.clone(), src, &request);
+            }
+        })?;
+        
+        Ok(())
+    }
+
+    /// Spawn the main incoming request handler thread
+    fn spawn_incoming_handler(self, socket: UdpSocket) -> std::io::Result<()> {
         log::info!("DnsUdpServer-incoming");
-        let _ = Builder::new()
+        Builder::new()
             .name("DnsUdpServer-incoming".into())
             .spawn(move || {
                 loop {
@@ -294,19 +325,52 @@ impl DnsServer for DnsUdpServer {
                         }
                     };
 
-                    // Acquire lock, add request to queue, and notify waiting threads
-                    // using the condition.
-                    match self.request_queue.lock() {
-                        Ok(mut queue) => {
-                            queue.push_back((src, request));
-                            self.request_cond.notify_one();
-                        }
-                        Err(e) => {
-                            log::info!("Failed to send UDP request for processing: {}", e);
-                        }
-                    }
+                    // Add request to queue and notify waiting threads
+                    self.enqueue_request(src, request);
                 }
             })?;
+        
+        Ok(())
+    }
+
+    /// Add a request to the queue and notify waiting threads
+    fn enqueue_request(&self, src: std::net::SocketAddr, request: DnsPacket) {
+        match self.request_queue.lock() {
+            Ok(mut queue) => {
+                queue.push_back((src, request));
+                self.request_cond.notify_one();
+            }
+            Err(e) => {
+                log::info!("Failed to send UDP request for processing: {}", e);
+            }
+        }
+    }
+}
+
+impl DnsServer for DnsUdpServer {
+    /// Launch the server
+    ///
+    /// This method takes ownership of the server, preventing the method from
+    /// being called multiple times.
+    fn run_server(self) -> Result<()> {
+        // Bind the socket
+        let socket = UdpSocket::bind(("0.0.0.0", self.context.dns_port))?;
+
+        // Spawn worker threads for handling requests
+        for thread_id in 0..self.thread_count {
+            let socket_clone = match socket.try_clone() {
+                Ok(x) => x,
+                Err(e) => {
+                    log::info!("Failed to clone socket when starting UDP server: {:?}", e);
+                    continue;
+                }
+            };
+
+            self.spawn_request_handler(thread_id, socket_clone)?;
+        }
+
+        // Start servicing incoming requests
+        self.spawn_incoming_handler(socket)?;
 
         Ok(())
     }
