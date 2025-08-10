@@ -56,3 +56,12 @@ pub mod record_parsers;
 
 /// Common error handling utilities
 pub mod error_utils;
+
+/// Enhanced error types for DNS operations
+pub mod errors;
+
+/// Rate limiting for DNS queries
+pub mod rate_limit;
+
+/// Health check and monitoring
+pub mod health;
