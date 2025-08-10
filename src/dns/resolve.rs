@@ -15,13 +15,30 @@ pub enum ResolveError {
     Cache(crate::dns::cache::CacheError),
     Io(std::io::Error),
     NoServerFound,
+    MaxIterationsExceeded,
 }
 
 type Result<T> = std::result::Result<T, ResolveError>;
 
+/// Trait for DNS resolution strategies
+/// 
+/// Implementors of this trait provide different strategies for resolving DNS queries,
+/// such as recursive resolution, forwarding to upstream servers, or authoritative responses.
 pub trait DnsResolver {
+    /// Get the server context for accessing cache, authority, and configuration
     fn get_context(&self) -> Arc<ServerContext>;
 
+    /// Resolve a DNS query
+    /// 
+    /// # Arguments
+    /// 
+    /// * `qname` - The domain name to resolve
+    /// * `qtype` - The type of DNS record to query (A, AAAA, MX, etc.)
+    /// * `recursive` - Whether to perform recursive resolution
+    /// 
+    /// # Returns
+    /// 
+    /// A DNS packet containing the response, or an error if resolution fails
     fn resolve(&mut self, qname: &str, qtype: QueryType, recursive: bool) -> Result<DnsPacket> {
 
 
@@ -112,6 +129,40 @@ impl RecursiveDnsResolver {
     pub fn new(context: Arc<ServerContext>) -> RecursiveDnsResolver {
         RecursiveDnsResolver { context }
     }
+    
+    /// Find the closest cached nameserver for a domain
+    fn find_closest_nameserver(&self, qname: &str) -> Option<String> {
+        let labels = qname.split('.').collect::<Vec<&str>>();
+        
+        for lbl_idx in 0..labels.len() + 1 {
+            let domain = labels[lbl_idx..].join(".");
+            
+            if let Some(addr) = self
+                .context
+                .cache
+                .lookup(&domain, QueryType::Ns)
+                .and_then(|qr| qr.get_unresolved_ns(&domain))
+                .and_then(|ns| self.context.cache.lookup(&ns, QueryType::A))
+                .and_then(|qr| qr.get_random_a())
+            {
+                return Some(addr);
+            }
+        }
+        
+        None
+    }
+    
+    /// Store response records in cache
+    fn cache_response(&self, response: &DnsPacket) {
+        let _ = self.context.cache.store(&response.answers);
+        let _ = self.context.cache.store(&response.authorities);
+        let _ = self.context.cache.store(&response.resources);
+    }
+    
+    /// Check if response contains a valid answer
+    fn is_valid_answer(&self, response: &DnsPacket) -> bool {
+        !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR
+    }
 }
 
 impl DnsResolver for RecursiveDnsResolver {
@@ -120,37 +171,24 @@ impl DnsResolver for RecursiveDnsResolver {
     }
 
     fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
-        // Find the closest name server by splitting the label and progessively
-        // moving towards the root servers. I.e. check "google.com", then "com",
-        // and finally "".
-        let mut tentative_ns = None;
-
-        let labels = qname.split('.').collect::<Vec<&str>>();
-        for lbl_idx in 0..labels.len() + 1 {
-            let domain = labels[lbl_idx..].join(".");
-
-            match self
-                .context
-                .cache
-                .lookup(&domain, QueryType::Ns)
-                .and_then(|qr| qr.get_unresolved_ns(&domain))
-                .and_then(|ns| self.context.cache.lookup(&ns, QueryType::A))
-                .and_then(|qr| qr.get_random_a())
-            {
-                Some(addr) => {
-                    tentative_ns = Some(addr);
-                    break;
-                }
-                None => continue,
-            }
-        }
-
+        // Find the closest cached nameserver
+        let tentative_ns = self.find_closest_nameserver(qname);
         log::info!("tentative_ns: {:?}", tentative_ns.clone());
-
+        
         let mut ns = tentative_ns.ok_or(ResolveError::NoServerFound)?;
+        
+        // Add maximum iteration limit to prevent infinite loops
+        const MAX_ITERATIONS: u32 = 30;
+        let mut iterations = 0;
 
         // Start querying name servers
         loop {
+            iterations += 1;
+            if iterations > MAX_ITERATIONS {
+                log::warn!("Maximum iteration limit reached while resolving {} {:?}", qname, qtype);
+                return Err(ResolveError::MaxIterationsExceeded);
+            }
+            
             log::info!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
 
             let ns_copy = ns.clone();
@@ -162,10 +200,8 @@ impl DnsResolver for RecursiveDnsResolver {
                 .send_query(qname, qtype, server, false)?;
 
             // If we've got an actual answer, we're done!
-            if !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR {
-                let _ = self.context.cache.store(&response.answers);
-                let _ = self.context.cache.store(&response.authorities);
-                let _ = self.context.cache.store(&response.resources);
+            if self.is_valid_answer(&response) {
+                self.cache_response(&response);
                 return Ok(response);
             }
 
@@ -181,10 +217,7 @@ impl DnsResolver for RecursiveDnsResolver {
             if let Some(new_ns) = response.get_resolved_ns(qname) {
                 // If there is such a record, we can retry the loop with that Ns
                 ns = new_ns.clone();
-                let _ = self.context.cache.store(&response.answers);
-                let _ = self.context.cache.store(&response.authorities);
-                let _ = self.context.cache.store(&response.resources);
-
+                self.cache_response(&response);
                 continue;
             }
 
@@ -238,7 +271,7 @@ mod tests {
         }));
 
         match Arc::get_mut(&mut context) {
-            Some(mut ctx) => {
+            Some(ctx) => {
                 ctx.resolve_strategy = ResolveStrategy::Forward {
                     host: "127.0.0.1".to_string(),
                     port: 53,

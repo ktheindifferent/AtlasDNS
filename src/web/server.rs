@@ -1,14 +1,11 @@
 use std::sync::Arc;
 
-use std::path::{Path};
 
-use std::thread;
 
 
 use handlebars::Handlebars;
 use tiny_http::{Method, Request, Response, ResponseBox, Server};
 
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use crate::dns::context::ServerContext;
 use crate::web::{
@@ -77,7 +74,7 @@ impl<'a> WebServer<'a> {
         server
     }
 
-    pub fn run_webserver(self, use_ssl: bool) {
+    pub fn run_webserver(self, _use_ssl: bool) {
 
         let webserver = match Server::http(("0.0.0.0", self.context.api_port)) {
             Ok(x) => x,
