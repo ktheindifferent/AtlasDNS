@@ -74,8 +74,64 @@ impl<'a> WebServer<'a> {
         server
     }
 
-    pub fn run_webserver(self, _use_ssl: bool) {
+    /// Route an HTTP request to the appropriate handler
+    fn route_request(
+        &self,
+        request: &mut tiny_http::Request,
+    ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
+        let url = request.url().to_string();
+        let method = request.method();
+        let url_parts: Vec<&str> = url.split("/").filter(|x| *x != "").collect();
 
+        match (method, url_parts.as_slice()) {
+            (Method::Post, ["authority", zone]) => self.record_create(request, zone),
+            (Method::Delete, ["authority", zone]) => self.record_delete(request, zone),
+            (Method::Post, ["authority", zone, "delete_record"]) => self.record_delete(request, zone),
+            (Method::Get, ["authority", zone]) => self.zone_view(request, zone),
+            (Method::Post, ["authority"]) => self.zone_create(request),
+            (Method::Get, ["authority"]) => self.zone_list(request),
+            (Method::Get, ["cache"]) => self.cacheinfo(request),
+            (Method::Get, []) => self.index(request),
+            (_, _) => self.not_found(request),
+        }
+    }
+
+    /// Handle a single HTTP request
+    fn handle_request(&self, mut request: tiny_http::Request) {
+        log::info!("HTTP {:?} {:?}", request.method(), request.url());
+
+        let response = self.route_request(&mut request);
+        let response_result = self.send_response(request, response);
+
+        if let Err(err) = response_result {
+            log::info!("Failed to write response to client: {:?}", err);
+        }
+    }
+
+    /// Send the response back to the client with proper error handling
+    fn send_response(
+        &self,
+        request: tiny_http::Request,
+        response: Result<Response<Box<dyn std::io::Read + Send + 'static>>>,
+    ) -> std::io::Result<()> {
+        match response {
+            Ok(response) => request.respond(response),
+            Err(err) if request.json_output() => {
+                log::info!("Request failed: {:?}", err);
+                let error_json = serde_json::json!({
+                    "message": err.to_string(),
+                });
+                let error_string = serde_json::to_string(&error_json).unwrap();
+                request.respond(Response::from_string(error_string))
+            }
+            Err(err) => {
+                log::info!("Request failed: {:?}", err);
+                request.respond(Response::from_string(err.to_string()))
+            }
+        }
+    }
+
+    pub fn run_webserver(self, _use_ssl: bool) {
         let webserver = match Server::http(("0.0.0.0", self.context.api_port)) {
             Ok(x) => x,
             Err(e) => {
@@ -89,46 +145,9 @@ impl<'a> WebServer<'a> {
             self.context.api_port
         );
 
-        for mut request in webserver.incoming_requests() {
-            log::info!("HTTP {:?} {:?}", request.method(), request.url());
-
-            let url = request.url().to_string();
-            let method = request.method();
-
-            let url_parts: Vec<&str> = url.split("/").filter(|x| *x != "").collect();
-            let response = match (method, url_parts.as_slice()) {
-                (Method::Post, ["authority", zone]) => self.record_create(&mut request, zone),
-                (Method::Delete, ["authority", zone]) => self.record_delete(&mut request, zone),
-                (Method::Post, ["authority", zone, "delete_record"]) => self.record_delete(&mut request, zone),
-                (Method::Get, ["authority", zone]) => self.zone_view(&request, zone),
-                (Method::Post, ["authority"]) => self.zone_create(&mut request),
-                (Method::Get, ["authority"]) => self.zone_list(&request),
-                (Method::Get, ["cache"]) => self.cacheinfo(&request),
-                (Method::Get, []) => self.index(&request),
-                (_, _) => self.not_found(&request),
-            };
-
-            let response_result = match response {
-                Ok(response) => request.respond(response),
-                Err(err) if request.json_output() => {
-                    log::info!("Request failed: {:?}", err);
-                    let error = serde_json::to_string(&serde_json::json!({
-                        "message": err.to_string(),
-                    }))
-                    .unwrap();
-                    request.respond(Response::from_string(error))
-                }
-                Err(err) => {
-                    log::info!("Request failed: {:?}", err);
-                    request.respond(Response::from_string(err.to_string()))
-                }
-            };
-
-            if let Err(err) = response_result {
-                log::info!("Failed to write response to client: {:?}", err);
-            }
+        for request in webserver.incoming_requests() {
+            self.handle_request(request);
         }
-
     }
 
 

@@ -45,6 +45,18 @@ pub mod server;
 /// Internal network utilities
 mod netutil;
 
+/// DNS query type definitions
+pub mod query_type;
+
+/// DNS result code definitions  
+pub mod result_code;
+
+/// DNS record parsing utilities
+pub mod record_parsers;
+
+/// Common error handling utilities
+pub mod error_utils;
+
 /// Enhanced error types for DNS operations
 pub mod errors;
 

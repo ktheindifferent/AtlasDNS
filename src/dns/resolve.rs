@@ -163,6 +163,43 @@ impl RecursiveDnsResolver {
     fn is_valid_answer(&self, response: &DnsPacket) -> bool {
         !response.answers.is_empty() && response.header.rescode == ResultCode::NOERROR
     }
+    /// Query a nameserver and process the response
+    fn query_nameserver(&mut self, qname: &str, qtype: QueryType, ns: &str) -> Result<DnsPacket> {
+        log::info!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
+        let server = (ns, 53);
+        Ok(self.context.client.send_query(qname, qtype, server, false)?)
+    }
+
+    /// Handle a successful answer response
+    fn handle_answer(&mut self, response: DnsPacket) -> Result<DnsPacket> {
+        self.cache_response(&response);
+        Ok(response)
+    }
+
+    /// Handle an NXDOMAIN response
+    fn handle_nxdomain(&mut self, qname: &str, qtype: QueryType, response: DnsPacket) -> Result<DnsPacket> {
+        if let Some(ttl) = response.get_ttl_from_soa() {
+            let _ = self.context.cache.store_nxdomain(qname, qtype, ttl);
+        }
+        Ok(response)
+    }
+
+    /// Try to find the next nameserver from the response
+    fn find_next_nameserver(&mut self, response: &DnsPacket, qname: &str) -> Result<Option<String>> {
+        // Check for resolved NS in additional section
+        if let Some(new_ns) = response.get_resolved_ns(qname) {
+            self.cache_response(response);
+            return Ok(Some(new_ns));
+        }
+
+        // Check for unresolved NS that needs recursive resolution
+        if let Some(new_ns_name) = response.get_unresolved_ns(qname) {
+            let recursive_response = self.resolve(&new_ns_name, QueryType::A, true)?;
+            return Ok(recursive_response.get_random_a());
+        }
+
+        Ok(None)
+    }
 }
 
 impl DnsResolver for RecursiveDnsResolver {
@@ -189,52 +226,22 @@ impl DnsResolver for RecursiveDnsResolver {
                 return Err(ResolveError::MaxIterationsExceeded);
             }
             
-            log::info!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
+            let response = self.query_nameserver(qname, qtype, &ns)?;
 
-            let ns_copy = ns.clone();
-
-            let server = (ns_copy.as_str(), 53);
-            let response = self
-                .context
-                .client
-                .send_query(qname, qtype, server, false)?;
-
-            // If we've got an actual answer, we're done!
+            // Check if we have a valid answer
             if self.is_valid_answer(&response) {
-                self.cache_response(&response);
-                return Ok(response);
+                return self.handle_answer(response);
             }
 
+            // Check for NXDOMAIN
             if response.header.rescode == ResultCode::NXDOMAIN {
-                if let Some(ttl) = response.get_ttl_from_soa() {
-                    let _ = self.context.cache.store_nxdomain(qname, qtype, ttl);
-                }
-                return Ok(response);
+                return self.handle_nxdomain(qname, qtype, response);
             }
 
-            // Otherwise, try to find a new nameserver based on Ns and a
-            // corresponding A record in the additional section
-            if let Some(new_ns) = response.get_resolved_ns(qname) {
-                // If there is such a record, we can retry the loop with that Ns
-                ns = new_ns.clone();
-                self.cache_response(&response);
-                continue;
-            }
-
-            // If not, we'll have to resolve the ip of a Ns record
-            let new_ns_name = match response.get_unresolved_ns(qname) {
-                Some(x) => x,
+            // Try to find the next nameserver
+            match self.find_next_nameserver(&response, qname)? {
+                Some(new_ns) => ns = new_ns,
                 None => return Ok(response),
-            };
-
-            // Recursively resolve the Ns
-            let recursive_response = self.resolve(&new_ns_name, QueryType::A, true)?;
-
-            // Pick a random IP and restart
-            if let Some(new_ns) = recursive_response.get_random_a() {
-                ns = new_ns.clone();
-            } else {
-                return Ok(response);
             }
         }
     }
