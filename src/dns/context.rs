@@ -10,6 +10,7 @@ use crate::dns::authority::Authority;
 use crate::dns::cache::SynchronizedCache;
 use crate::dns::client::{DnsClient, DnsNetworkClient};
 use crate::dns::resolve::{DnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
+use crate::dns::acme::SslConfig;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -61,7 +62,8 @@ pub struct ServerContext {
     pub enable_tcp: bool,
     pub enable_api: bool,
     pub statistics: ServerStatistics,
-    pub zones_dir: &'static str
+    pub zones_dir: &'static str,
+    pub ssl_config: SslConfig
 }
 
 impl Default for ServerContext {
@@ -89,6 +91,7 @@ impl ServerContext {
                 udp_query_count: AtomicUsize::new(0),
             },
             zones_dir: "/opt/atlas/zones",
+            ssl_config: SslConfig::default(),
         })
     }
 
@@ -146,6 +149,7 @@ pub mod tests {
                 udp_query_count: AtomicUsize::new(0),
             },
             zones_dir: "/opt/atlas/zones",
+            ssl_config: SslConfig::default(),
         })
     }
 }

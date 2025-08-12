@@ -19,3 +19,8 @@ serde_json = "1.0.57"
 tiny_http = { version = "0.11.0", features = ["ssl"] }
 log = "0.4.14"
 simple_logger = { git = "https://github.com/PixelCoda/rust-simple_logger.git", version = "1.13.6" }
+# acme2 = "0.5"  # Temporarily disabled - needs API adjustments
+openssl = "0.10"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+base64 = "0.13"
