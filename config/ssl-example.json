@@ -1,0 +1,16 @@
+{
+  "ssl_config": {
+    "enabled": true,
+    "port": 5343,
+    "acme": {
+      "provider": "letsencrypt",
+      "email": "admin@example.com",
+      "domains": ["example.com", "www.example.com"],
+      "cert_path": "/opt/atlas/certs/cert.pem",
+      "key_path": "/opt/atlas/certs/key.pem",
+      "account_key_path": "/opt/atlas/certs/account.pem",
+      "renew_days_before_expiry": 30,
+      "use_dns_challenge": true
+    }
+  }
+}
