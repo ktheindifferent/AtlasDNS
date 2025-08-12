@@ -1,13 +1,14 @@
 use std::sync::Arc;
-
+use std::fs;
 
 
 
 use handlebars::Handlebars;
-use tiny_http::{Method, Request, Response, ResponseBox, Server};
+use tiny_http::{Method, Request, Response, ResponseBox, Server, SslConfig as TinyHttpSslConfig};
 
 
 use crate::dns::context::ServerContext;
+use crate::dns::acme::AcmeCertificateManager;
 use crate::web::{
     authority, cache, index,
     util::{parse_formdata, FormDataDecodable},
@@ -131,19 +132,158 @@ impl<'a> WebServer<'a> {
         }
     }
 
-    pub fn run_webserver(self, _use_ssl: bool) {
+    pub fn run_webserver(self, use_ssl: bool) {
+        if use_ssl && self.context.ssl_config.enabled {
+            self.run_ssl_webserver();
+        } else {
+            self.run_http_webserver();
+        }
+    }
+    
+    fn run_http_webserver(&self) {
         let webserver = match Server::http(("0.0.0.0", self.context.api_port)) {
             Ok(x) => x,
             Err(e) => {
-                log::info!("Failed to start web server: {:?}", e);
+                log::info!("Failed to start HTTP web server: {:?}", e);
                 return;
             }
         };
 
         log::info!(
-            "Web server started and listening on {}",
+            "HTTP web server started and listening on port {}",
             self.context.api_port
         );
+
+        for request in webserver.incoming_requests() {
+            self.handle_request(request);
+        }
+    }
+    
+    fn run_ssl_webserver(&self) {
+        // Check if we need to obtain/renew certificates via ACME
+        if let Some(ref acme_config) = self.context.ssl_config.acme {
+            let mut cert_manager = match AcmeCertificateManager::new(
+                acme_config.clone(),
+                self.context.clone()
+            ) {
+                Ok(manager) => manager,
+                Err(e) => {
+                    log::error!("Failed to create ACME certificate manager: {:?}", e);
+                    log::info!("Falling back to HTTP server");
+                    self.run_http_webserver();
+                    return;
+                }
+            };
+            
+            if cert_manager.needs_renewal() {
+                log::info!("Obtaining/renewing SSL certificate via ACME...");
+                if let Err(e) = cert_manager.obtain_certificate() {
+                    log::error!("Failed to obtain certificate: {:?}", e);
+                    log::info!("Falling back to HTTP server");
+                    self.run_http_webserver();
+                    return;
+                }
+            }
+        }
+        
+        // Determine certificate and key paths
+        let (cert_path, key_path) = if let Some(ref acme_config) = self.context.ssl_config.acme {
+            (acme_config.cert_path.clone(), acme_config.key_path.clone())
+        } else if let (Some(cert), Some(key)) = (
+            self.context.ssl_config.cert_path.clone(),
+            self.context.ssl_config.key_path.clone()
+        ) {
+            (cert, key)
+        } else {
+            log::error!("SSL enabled but no certificate configuration provided");
+            log::info!("Falling back to HTTP server");
+            self.run_http_webserver();
+            return;
+        };
+        
+        // Verify certificate files exist
+        if !cert_path.exists() || !key_path.exists() {
+            log::error!("Certificate or key file not found");
+            log::info!("Falling back to HTTP server");
+            self.run_http_webserver();
+            return;
+        }
+        
+        // Create SSL configuration by reading the files
+        let cert_data = match fs::read(&cert_path) {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to read certificate file: {:?}", e);
+                log::info!("Falling back to HTTP server");
+                self.run_http_webserver();
+                return;
+            }
+        };
+        
+        let key_data = match fs::read(&key_path) {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to read key file: {:?}", e);
+                log::info!("Falling back to HTTP server");
+                self.run_http_webserver();
+                return;
+            }
+        };
+        
+        let ssl_config = TinyHttpSslConfig {
+            certificate: cert_data,
+            private_key: key_data,
+        };
+        
+        // Start HTTPS server
+        let webserver = match Server::https(
+            ("0.0.0.0", self.context.ssl_config.port),
+            ssl_config
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                log::error!("Failed to start HTTPS web server: {:?}", e);
+                log::info!("Falling back to HTTP server");
+                self.run_http_webserver();
+                return;
+            }
+        };
+
+        log::info!(
+            "HTTPS web server started and listening on port {}",
+            self.context.ssl_config.port
+        );
+
+        // Also start HTTP server for redirect if configured
+        if self.context.api_port != self.context.ssl_config.port {
+            std::thread::spawn({
+                let context = self.context.clone();
+                move || {
+                    if let Ok(http_server) = Server::http(("0.0.0.0", context.api_port)) {
+                        log::info!("HTTP redirect server started on port {}", context.api_port);
+                        for request in http_server.incoming_requests() {
+                            let url = request.url();
+                            let host = request.headers()
+                                .iter()
+                                .find(|h| h.field.as_str() == "Host")
+                                .map(|h| h.value.as_str())
+                                .unwrap_or("localhost");
+                            
+                            let redirect_url = format!("https://{}:{}{}", 
+                                host.split(':').next().unwrap_or(host),
+                                context.ssl_config.port,
+                                url
+                            );
+                            
+                            let response = Response::empty(301)
+                                .with_header(tiny_http::Header::from_bytes(&b"Location"[..], redirect_url.as_bytes()).unwrap());
+                            
+                            let _ = request.respond(response);
+                        }
+                    }
+                }
+            });
+        }
 
         for request in webserver.incoming_requests() {
             self.handle_request(request);

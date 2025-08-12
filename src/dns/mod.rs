@@ -65,3 +65,6 @@ pub mod rate_limit;
 
 /// Health check and monitoring
 pub mod health;
+
+/// ACME certificate management for SSL/TLS
+pub mod acme;

@@ -7,6 +7,7 @@ use getopts::Options;
 use atlas::dns::protocol::{DnsRecord, TransientTtl};
 use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
+use atlas::dns::acme::{AcmeConfig, AcmeProvider};
 use atlas::web::server::WebServer;
 
 fn print_usage(program: &str, opts: Options) {
@@ -38,6 +39,41 @@ fn main() {
         "j",
         "zones-dir",
         "The directory for the zone files",
+    );
+    opts.optflag(
+        "s",
+        "ssl",
+        "Enable SSL/TLS for the web server",
+    );
+    opts.optopt(
+        "",
+        "acme-provider",
+        "ACME provider (letsencrypt, letsencrypt-staging, zerossl)",
+        "PROVIDER",
+    );
+    opts.optopt(
+        "",
+        "acme-email",
+        "Email address for ACME registration",
+        "EMAIL",
+    );
+    opts.optopt(
+        "",
+        "acme-domains",
+        "Comma-separated list of domains for ACME certificate",
+        "DOMAINS",
+    );
+    opts.optopt(
+        "",
+        "ssl-cert",
+        "Path to SSL certificate file (if not using ACME)",
+        "PATH",
+    );
+    opts.optopt(
+        "",
+        "ssl-key",
+        "Path to SSL private key file (if not using ACME)",
+        "PATH",
     );
 
     let opt_matches = match opts.parse(&args[1..]) {
@@ -82,6 +118,47 @@ fn main() {
             }
             None => {
                 log::info!("Zones dir not specified, using default: {}", ctx.zones_dir);
+            }
+        }
+        
+        // Configure SSL if enabled
+        if opt_matches.opt_present("s") {
+            ctx.ssl_config.enabled = true;
+            
+            // Check for ACME configuration
+            if let (Some(email), Some(domains)) = (
+                opt_matches.opt_str("acme-email"),
+                opt_matches.opt_str("acme-domains")
+            ) {
+                let provider = match opt_matches.opt_str("acme-provider").as_deref() {
+                    Some("letsencrypt") => AcmeProvider::LetsEncrypt,
+                    Some("letsencrypt-staging") => AcmeProvider::LetsEncryptStaging,
+                    Some("zerossl") => AcmeProvider::ZeroSSL,
+                    _ => AcmeProvider::LetsEncrypt, // Default to Let's Encrypt
+                };
+                
+                let domain_list: Vec<String> = domains.split(',').map(|s| s.trim().to_string()).collect();
+                
+                ctx.ssl_config.acme = Some(AcmeConfig {
+                    provider: provider.clone(),
+                    email,
+                    domains: domain_list,
+                    ..Default::default()
+                });
+                
+                log::info!("ACME configured with provider: {:?}", provider);
+            } 
+            // Check for manual certificate configuration
+            else if let (Some(cert), Some(key)) = (
+                opt_matches.opt_str("ssl-cert"),
+                opt_matches.opt_str("ssl-key")
+            ) {
+                ctx.ssl_config.cert_path = Some(cert.into());
+                ctx.ssl_config.key_path = Some(key.into());
+                log::info!("SSL configured with manual certificate");
+            } else {
+                log::warn!("SSL enabled but no certificate configuration provided");
+                ctx.ssl_config.enabled = false;
             }
         }
 

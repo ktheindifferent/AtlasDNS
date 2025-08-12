@@ -230,3 +230,15 @@ impl RecordParser {
         })
     }
 }
+
+// Tests for record parsers
+// TODO: Implement comprehensive tests with actual BytePacketBuffer
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_placeholder() {
+        // Placeholder test to ensure module compiles
+        // TODO: Add proper tests with BytePacketBuffer
+        assert!(true);
+    }
+}

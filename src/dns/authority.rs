@@ -268,4 +268,48 @@ impl Authority {
     pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, Zones>> {
         self.zones.write()
     }
+    
+    pub fn upsert(&self, zone_name: &str, record: DnsRecord) -> Result<()> {
+        let mut zones = self
+            .zones
+            .write()
+            .map_err(|_| AuthorityError::PoisonedLock)?;
+        
+        // Find or create zone
+        let zone = zones.zones.entry(zone_name.to_string())
+            .or_insert_with(|| Zone {
+                domain: zone_name.to_string(),
+                m_name: format!("ns1.{}", zone_name),
+                r_name: format!("admin.{}", zone_name),
+                serial: 1,
+                refresh: 3600,
+                retry: 600,
+                expire: 86400,
+                minimum: 3600,
+                records: BTreeSet::new(),
+            });
+        
+        // Remove existing records with same domain
+        if let Some(domain) = record.get_domain() {
+            zone.records.retain(|r| r.get_domain() != Some(domain.clone()));
+        }
+        
+        // Add new record
+        zone.records.insert(record);
+        
+        Ok(())
+    }
+    
+    pub fn delete_records(&self, zone_name: &str, domain: &str) -> Result<()> {
+        let mut zones = self
+            .zones
+            .write()
+            .map_err(|_| AuthorityError::PoisonedLock)?;
+        
+        if let Some(zone) = zones.zones.get_mut(zone_name) {
+            zone.records.retain(|r| r.get_domain() != Some(domain.to_string()));
+        }
+        
+        Ok(())
+    }
 }
