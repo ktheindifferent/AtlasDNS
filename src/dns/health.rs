@@ -62,6 +62,12 @@ pub struct HealthMonitor {
     checks: Arc<parking_lot::Mutex<Vec<HealthCheck>>>,
 }
 
+impl Default for HealthMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HealthMonitor {
     pub fn new() -> Self {
         HealthMonitor {
@@ -170,9 +176,7 @@ impl HealthMonitor {
         let checks = self.checks.lock().clone();
         
         // Determine overall health state
-        let status = if !self.is_healthy.load(Ordering::Acquire) {
-            HealthState::Unhealthy
-        } else if checks.iter().any(|c| c.status == CheckStatus::Fail) {
+        let status = if !self.is_healthy.load(Ordering::Acquire) || checks.iter().any(|c| c.status == CheckStatus::Fail) {
             HealthState::Unhealthy
         } else if checks.iter().any(|c| c.status == CheckStatus::Warn) {
             HealthState::Degraded

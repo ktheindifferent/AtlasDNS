@@ -82,8 +82,8 @@ impl PartialEq<TransientTtl> for TransientTtl {
 }
 
 impl PartialOrd<TransientTtl> for TransientTtl {
-    fn partial_cmp(&self, _: &TransientTtl) -> Option<Ordering> {
-        Some(Ordering::Equal)
+    fn partial_cmp(&self, other: &TransientTtl) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -190,7 +190,7 @@ impl DnsRecord {
                     ((raw_addr >> 24) & 0xFF) as u8,
                     ((raw_addr >> 16) & 0xFF) as u8,
                     ((raw_addr >> 8) & 0xFF) as u8,
-                    ((raw_addr >> 0) & 0xFF) as u8,
+                    (raw_addr & 0xFF) as u8,
                 );
 
                 Ok(DnsRecord::A {
@@ -206,13 +206,13 @@ impl DnsRecord {
                 let raw_addr4 = buffer.read_u32()?;
                 let addr = Ipv6Addr::new(
                     ((raw_addr1 >> 16) & 0xFFFF) as u16,
-                    ((raw_addr1 >> 0) & 0xFFFF) as u16,
+                    (raw_addr1 & 0xFFFF) as u16,
                     ((raw_addr2 >> 16) & 0xFFFF) as u16,
-                    ((raw_addr2 >> 0) & 0xFFFF) as u16,
+                    (raw_addr2 & 0xFFFF) as u16,
                     ((raw_addr3 >> 16) & 0xFFFF) as u16,
-                    ((raw_addr3 >> 0) & 0xFFFF) as u16,
+                    (raw_addr3 & 0xFFFF) as u16,
                     ((raw_addr4 >> 16) & 0xFFFF) as u16,
-                    ((raw_addr4 >> 0) & 0xFFFF) as u16,
+                    (raw_addr4 & 0xFFFF) as u16,
                 );
 
                 Ok(DnsRecord::Aaaa {
@@ -583,20 +583,15 @@ impl DnsRecord {
 }
 
 /// The result code for a DNS query, as described in the specification
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum ResultCode {
+    #[default]
     NOERROR = 0,
     FORMERR = 1,
     SERVFAIL = 2,
     NXDOMAIN = 3,
     NOTIMP = 4,
     REFUSED = 5,
-}
-
-impl Default for ResultCode {
-    fn default() -> Self {
-        ResultCode::NOERROR
-    }
 }
 
 impl ResultCode {
@@ -607,7 +602,7 @@ impl ResultCode {
             3 => ResultCode::NXDOMAIN,
             4 => ResultCode::NOTIMP,
             5 => ResultCode::REFUSED,
-            0 | _ => ResultCode::NOERROR,
+            _ => ResultCode::NOERROR,
         }
     }
 }
@@ -667,7 +662,7 @@ impl DnsHeader {
                 | ((self.truncated_message as u8) << 1)
                 | ((self.authoritative_answer as u8) << 2)
                 | (self.opcode << 3)
-                | ((self.response as u8) << 7) as u8,
+                | ((self.response as u8) << 7),
         )?;
 
         buffer.write_u8(
@@ -999,7 +994,7 @@ impl DnsPacket {
         let mut test_buffer = VectorPacketBuffer::new();
 
         let mut size = self.header.binary_len();
-        for ref question in &self.questions {
+        for question in &self.questions {
             size += question.binary_len();
             question.write(&mut test_buffer)?;
         }

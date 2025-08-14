@@ -26,10 +26,7 @@ pub struct CacheResponse {
 }
 
 pub fn cacheinfo(context: &ServerContext) -> Result<CacheResponse> {
-    let cached_records = match context.cache.list() {
-        Ok(x) => x,
-        Err(_) => Vec::new(),
-    };
+    let cached_records = context.cache.list().unwrap_or_default();
 
     let mut cache_response = CacheResponse {
         ok: true,
