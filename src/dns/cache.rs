@@ -122,7 +122,7 @@ impl DomainEntry {
 
     pub fn get_cache_state(&self, qtype: QueryType) -> CacheState {
         match self.record_types.get(&qtype) {
-            Some(&RecordSet::Records { ref records, .. }) => {
+            Some(RecordSet::Records { records, .. }) => {
                 let now = Local::now();
 
                 let mut valid_count = 0;

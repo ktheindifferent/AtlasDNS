@@ -71,8 +71,8 @@ fn resolve_cnames(
         return;
     }
 
-    for ref rec in lookup_list {
-        match **rec {
+    for rec in lookup_list {
+        match *rec {
             DnsRecord::Cname { ref host, .. } | DnsRecord::Srv { ref host, .. } => {
                 if let Ok(result2) = resolver.resolve(host, QueryType::A, true) {
                     let new_unmatched = result2.get_unresolved_cnames();
@@ -242,7 +242,7 @@ impl DnsUdpServer {
 
         log::info!("req: {:?}", request.clone());
 
-        let mut packet = execute_query(context, &request);
+        let mut packet = execute_query(context, request);
         let _ = packet.write(&mut res_buffer, size_limit);
 
         // Fire off the response

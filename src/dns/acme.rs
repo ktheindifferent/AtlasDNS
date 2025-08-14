@@ -57,6 +57,7 @@ impl Default for AcmeConfig {
 
 pub struct AcmeCertificateManager {
     config: AcmeConfig,
+    #[allow(dead_code)]
     context: Arc<ServerContext>,
 }
 
@@ -175,6 +176,7 @@ impl AcmeCertificateManager {
         Ok(())
     }
     
+    #[allow(dead_code)]
     fn add_dns_record(&mut self, name: &str, value: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Extract zone from record name
         let parts: Vec<&str> = name.split('.').collect();
@@ -198,6 +200,7 @@ impl AcmeCertificateManager {
         Ok(())
     }
     
+    #[allow(dead_code)]
     fn remove_dns_record(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         // Extract zone from record name
         let parts: Vec<&str> = name.split('.').collect();

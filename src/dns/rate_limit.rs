@@ -217,7 +217,7 @@ impl RateLimiter {
                     clients_map.retain(|_, entry| {
                         // Keep entries that have recent queries or are still blocked
                         !entry.queries.is_empty() || 
-                        entry.blocked_until.map_or(false, |until| until > now)
+                        entry.blocked_until.is_some_and(|until| until > now)
                     });
                     
                     // Clean old queries from remaining entries

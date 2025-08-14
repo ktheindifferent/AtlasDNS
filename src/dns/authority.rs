@@ -184,10 +184,7 @@ impl Authority {
     }
 
     pub fn query(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
-        let zones = match self.zones.read().ok() {
-            Some(x) => x,
-            None => return None,
-        };
+        let zones = self.zones.read().ok()?;
 
         let mut best_match = None;
         for zone in zones.zones() {

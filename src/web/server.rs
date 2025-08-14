@@ -60,7 +60,7 @@ impl<'a> WebServer<'a> {
         let mut register_template = |name, data: &str| {
             if server
                 .handlebars
-                .register_template_string(name, data.to_string()).is_err()
+                .register_template_string(name, data).is_err()
             {
                 log::info!("Failed to register template {}", name);
             }
@@ -82,7 +82,7 @@ impl<'a> WebServer<'a> {
     ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
         let url = request.url().to_string();
         let method = request.method();
-        let url_parts: Vec<&str> = url.split("/").filter(|x| *x != "").collect();
+        let url_parts: Vec<&str> = url.split("/").filter(|x| !x.is_empty()).collect();
 
         match (method, url_parts.as_slice()) {
             (Method::Post, ["authority", zone]) => self.record_create(request, zone),
