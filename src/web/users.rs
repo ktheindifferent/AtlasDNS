@@ -27,6 +27,16 @@ pub enum UserRole {
     ReadOnly,
 }
 
+impl UserRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UserRole::Admin => "Admin",
+            UserRole::User => "User", 
+            UserRole::ReadOnly => "ReadOnly",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,

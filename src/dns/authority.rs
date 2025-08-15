@@ -309,4 +309,11 @@ impl Authority {
         
         Ok(())
     }
+
+    pub fn get_zone_records(&self, zone_name: &str) -> Option<Vec<DnsRecord>> {
+        let zones = self.zones.read().ok()?;
+        zones.zones.get(zone_name).map(|zone| {
+            zone.records.iter().cloned().collect()
+        })
+    }
 }

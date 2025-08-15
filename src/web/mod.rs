@@ -8,6 +8,7 @@ pub mod sessions;
 pub mod users;
 pub mod util;
 pub mod system_info;
+pub mod graphql;
 
 #[derive(Debug, Display)]
 pub enum WebError {
@@ -23,6 +24,7 @@ pub enum WebError {
     AuthorizationError(String),
     SessionExpired,
     UserNotFound,
+    InternalError(String),
 }
 
 impl From<crate::dns::authority::AuthorityError> for WebError {

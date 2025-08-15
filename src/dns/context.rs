@@ -11,6 +11,9 @@ use crate::dns::cache::SynchronizedCache;
 use crate::dns::client::{DnsClient, DnsNetworkClient};
 use crate::dns::resolve::{DnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
 use crate::dns::acme::SslConfig;
+use crate::dns::metrics::MetricsCollector;
+use crate::dns::logging::{StructuredLogger, LoggerConfig};
+use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -63,7 +66,10 @@ pub struct ServerContext {
     pub enable_api: bool,
     pub statistics: ServerStatistics,
     pub zones_dir: &'static str,
-    pub ssl_config: SslConfig
+    pub ssl_config: SslConfig,
+    pub metrics: Arc<MetricsCollector>,
+    pub logger: Arc<StructuredLogger>,
+    pub connection_pool: Option<Arc<ConnectionPoolManager>>,
 }
 
 impl Default for ServerContext {
@@ -74,6 +80,16 @@ impl Default for ServerContext {
 
 impl ServerContext {
     pub fn new() -> Result<ServerContext> {
+        let metrics = Arc::new(MetricsCollector::new());
+        
+        // Initialize structured logger
+        let logger_config = LoggerConfig::default();
+        let logger = Arc::new(StructuredLogger::init(logger_config)
+            .map_err(|e| ContextError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other, 
+                format!("Failed to initialize logger: {}", e)
+            )))?);
+        
         Ok(ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
@@ -92,12 +108,30 @@ impl ServerContext {
             },
             zones_dir: "/opt/atlas/zones",
             ssl_config: SslConfig::default(),
+            metrics: metrics.clone(),
+            logger,
+            connection_pool: None,
         })
     }
 
     pub fn initialize(&mut self) -> Result<()> {
         // Create zones directory if it doesn't exist
         fs::create_dir_all(self.zones_dir)?;
+
+        // Initialize Prometheus metrics
+        crate::dns::metrics::initialize_metrics();
+        log::info!("Prometheus metrics initialized");
+
+        // Initialize connection pool if using forwarding strategy
+        if let ResolveStrategy::Forward { ref host, port } = self.resolve_strategy {
+            let pool_config = PoolConfig::default();
+            let pool_manager = Arc::new(ConnectionPoolManager::new(
+                pool_config,
+                self.metrics.clone(),
+            ));
+            self.connection_pool = Some(pool_manager);
+            log::info!("Connection pool initialized for forwarding to {}:{}", host, port);
+        }
 
         // Start UDP client thread
         self.client.run()?;
@@ -132,6 +166,13 @@ pub mod tests {
     use super::*;
 
     pub fn create_test_context(callback: Box<StubCallback>) -> Arc<ServerContext> {
+        let logger_config = LoggerConfig {
+            console_output: false, // Disable console output in tests
+            file_output: None,     // No file output in tests
+            ..LoggerConfig::default()
+        };
+        let logger = Arc::new(StructuredLogger::init(logger_config).unwrap());
+        
         Arc::new(ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
@@ -150,6 +191,9 @@ pub mod tests {
             },
             zones_dir: "/opt/atlas/zones",
             ssl_config: SslConfig::default(),
+            metrics: Arc::new(MetricsCollector::new()),
+            logger,
+            connection_pool: None,
         })
     }
 }

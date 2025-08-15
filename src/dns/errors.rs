@@ -25,6 +25,12 @@ pub enum DnsError {
     RateLimited(RateLimitError),
     /// Generic operational error
     Operation(OperationError),
+    /// Packet size exceeded limits
+    PacketTooLarge,
+    /// Buffer exhausted
+    BufferExhausted,
+    /// Direct IO error wrapper
+    Io(io::Error),
 }
 
 #[derive(Debug)]
@@ -147,6 +153,9 @@ impl fmt::Display for DnsError {
                        e.client, e.limit, e.window)
             }
             DnsError::Operation(e) => write!(f, "Operation failed: {} - {}", e.context, e.details),
+            DnsError::PacketTooLarge => write!(f, "DNS packet size exceeded maximum allowed"),
+            DnsError::BufferExhausted => write!(f, "Buffer pool exhausted"),
+            DnsError::Io(e) => write!(f, "I/O error: {}", e),
         }
     }
 }
@@ -177,6 +186,23 @@ impl<T> From<PoisonError<T>> for DnsError {
             details: "A lock was poisoned by a panicked thread".to_string(),
             recovery_hint: Some("Consider restarting the affected component".to_string()),
         })
+    }
+}
+
+// Import protocol error type
+use crate::dns::protocol::ProtocolError as DnsProtocolError;
+
+impl From<DnsProtocolError> for DnsError {
+    fn from(err: DnsProtocolError) -> Self {
+        match err {
+            DnsProtocolError::Buffer(_) => DnsError::Protocol(ProtocolError {
+                kind: ProtocolErrorKind::MalformedPacket,
+                packet_id: None,
+                query_name: None,
+                recoverable: false,
+            }),
+            DnsProtocolError::Io(io_err) => DnsError::Io(io_err),
+        }
     }
 }
 

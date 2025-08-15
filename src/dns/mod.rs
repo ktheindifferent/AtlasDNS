@@ -69,5 +69,41 @@ pub mod health;
 /// ACME certificate management for SSL/TLS
 pub mod acme;
 
+/// Prometheus metrics collection and export
+pub mod metrics;
+
+/// Structured JSON logging with correlation IDs
+pub mod logging;
+
+/// DNS-over-HTTPS (DoH) implementation - RFC 8484
+pub mod doh;
+
+/// DNS-over-TLS (DoT) implementation - RFC 7858
+pub mod dot;
+
+/// DNS Firewall for threat protection and content filtering
+pub mod firewall;
+
+/// Connection pooling for outbound DNS queries
+pub mod connection_pool;
+
+/// Adaptive caching with ML-driven TTL optimization
+pub mod adaptive_cache;
+
+/// DNSSEC automation with ECDSA P-256 support
+pub mod dnssec;
+
+/// Zero-copy networking for high-performance packet processing
+pub mod zerocopy;
+
+/// EDNS0 Extensions - RFC 6891 with client subnet support
+pub mod edns0;
+
+/// Query Name Minimization - RFC 7816 for privacy
+pub mod qname_minimization;
+
+/// Geographic Load Balancing for global traffic distribution
+pub mod geo_loadbalancing;
+
 #[cfg(test)]
 mod cache_test;

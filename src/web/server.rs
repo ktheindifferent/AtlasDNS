@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::fs;
+use std::io::Read;
 
 
 
@@ -9,6 +10,10 @@ use tiny_http::{Method, Request, Response, ResponseBox, Server, SslConfig as Tin
 
 use crate::dns::context::ServerContext;
 use crate::dns::acme::AcmeCertificateManager;
+use crate::dns::metrics::MetricsCollector;
+use crate::dns::logging::{CorrelationContext, HttpRequestLog};
+use crate::dns::doh::{DohServer, DohConfig};
+use crate::web::graphql::{create_schema, graphql_playground};
 use crate::web::{
     authority, cache, index,
     users::{UserManager, LoginRequest, CreateUserRequest, UpdateUserRequest, UserRole},
@@ -52,12 +57,16 @@ pub struct WebServer<'a> {
     pub handlebars: Handlebars<'a>,
     pub user_manager: Arc<UserManager>,
     pub session_middleware: Arc<SessionMiddleware>,
+    pub metrics_collector: Arc<MetricsCollector>,
+    pub graphql_schema: async_graphql::Schema<crate::web::graphql::QueryRoot, crate::web::graphql::MutationRoot, crate::web::graphql::SubscriptionRoot>,
+    pub doh_server: Arc<DohServer>,
 }
 
 impl<'a> WebServer<'a> {
     pub fn new(context: Arc<ServerContext>) -> WebServer<'a> {
         let user_manager = Arc::new(UserManager::new());
         let session_middleware = Arc::new(SessionMiddleware::new(user_manager.clone()));
+        let metrics_collector = Arc::new(MetricsCollector::new());
         
         let mut handlebars = Handlebars::new();
         
@@ -121,11 +130,28 @@ impl<'a> WebServer<'a> {
             })
         );
         
+        let graphql_schema = create_schema(context.clone());
+        
+        // Create DoH server with default config
+        let doh_config = DohConfig {
+            enabled: true,
+            port: 443,
+            path: "/dns-query".to_string(),
+            max_message_size: 4096,
+            http2: true,
+            cors: true,
+            cache_max_age: 300,
+        };
+        let doh_server = Arc::new(DohServer::new(context.clone(), doh_config));
+        
         let mut server = WebServer {
             context,
             handlebars,
             user_manager,
             session_middleware,
+            metrics_collector,
+            graphql_schema,
+            doh_server,
         };
 
         let mut register_template = |name, data: &str| {
@@ -163,7 +189,9 @@ impl<'a> WebServer<'a> {
         let is_public_route = matches!(
             (method, url_parts.as_slice()),
             (Method::Get, ["auth", "login"]) |
-            (Method::Post, ["auth", "login"])
+            (Method::Post, ["auth", "login"]) |
+            (Method::Get, ["dns-query"]) |
+            (Method::Post, ["dns-query"])
         );
 
         // Check authentication for protected routes
@@ -208,6 +236,11 @@ impl<'a> WebServer<'a> {
             (Method::Post, ["authority"]) => self.zone_create(request),
             (Method::Get, ["authority"]) => self.zone_list(request),
             (Method::Get, ["cache"]) => self.cacheinfo(request),
+            (Method::Get, ["metrics"]) => self.metrics(request),
+            (Method::Get, ["graphql"]) => self.graphql_playground(request),
+            (Method::Post, ["graphql"]) => self.graphql_handler(request),
+            (Method::Get, ["dns-query"]) => self.doh_handler(request),
+            (Method::Post, ["dns-query"]) => self.doh_handler(request),
             (Method::Get, []) => self.index(request),
             (_, _) => self.not_found(request),
         }
@@ -215,13 +248,54 @@ impl<'a> WebServer<'a> {
 
     /// Handle a single HTTP request
     fn handle_request(&self, mut request: tiny_http::Request) {
-        log::info!("HTTP {:?} {:?}", request.method(), request.url());
+        // Create correlation context for this HTTP request
+        let mut ctx = CorrelationContext::new("web_server", "handle_request");
+        
+        let method = format!("{:?}", request.method());
+        let path = request.url().to_string();
+        let user_agent = request.headers()
+            .iter()
+            .find(|h| h.field.as_str() == "User-Agent")
+            .map(|h| h.value.as_str())
+            .unwrap_or("Unknown")
+            .to_string(); // Convert to owned string
+        
+        ctx = ctx.with_metadata("method", &method)
+               .with_metadata("path", &path)
+               .with_metadata("user_agent", &user_agent);
 
         let response = self.route_request(&mut request);
+        
+        // Extract status code from response
+        let status_code = match &response {
+            Ok(_) => 200, // Default success
+            Err(WebError::AuthenticationError(_)) => 401,
+            Err(WebError::AuthorizationError(_)) => 403,
+            Err(WebError::UserNotFound) | Err(WebError::ZoneNotFound) => 404,
+            Err(_) => 500,
+        };
+        
+        // Log the HTTP request
+        let request_log = HttpRequestLog {
+            method: method.clone(),
+            path: path.clone(),
+            status_code,
+            request_size: None, // TODO: Calculate request size
+            response_size: None, // TODO: Calculate response size
+            user_agent: Some(user_agent.clone()),
+            referer: None, // TODO: Extract referer header
+        };
+        self.context.logger.log_http_request(&ctx, request_log);
+        
+        // Record metrics
+        self.context.metrics.record_web_request(&method, &path, &status_code.to_string());
+        self.context.metrics.record_web_duration(&method, &path, ctx.elapsed());
+
         let response_result = self.send_response(request, response);
 
         if let Err(err) = response_result {
-            log::info!("Failed to write response to client: {:?}", err);
+            log::error!("Failed to write response to client: {:?}", err);
+            self.context.metrics.record_error("web_server", "response_write_failed");
         }
     }
 
@@ -520,6 +594,57 @@ impl<'a> WebServer<'a> {
         self.response_from_media_type(request, "cache", data)
     }
 
+    fn metrics(&self, _request: &Request) -> Result<ResponseBox> {
+        // Update metrics before exporting
+        self.update_current_metrics();
+        
+        let metrics_output = self.metrics_collector.export_metrics()
+            .map_err(|e| WebError::InternalError(format!("Failed to export metrics: {}", e)))?;
+        
+        Ok(Response::from_string(metrics_output)
+            .with_header::<tiny_http::Header>("Content-Type: text/plain; version=0.0.4; charset=utf-8".parse().unwrap())
+            .boxed())
+    }
+
+    fn update_current_metrics(&self) {
+        // Update zone statistics
+        if let Ok(zones) = self.context.authority.read() {
+            let total_zones = zones.zones().len() as i64;
+            let total_records: i64 = zones.zones().iter()
+                .map(|zone| zone.records.len() as i64)
+                .sum();
+            
+            self.metrics_collector.update_zone_stats("total_zones", total_zones);
+            self.metrics_collector.update_zone_stats("total_records", total_records);
+        }
+
+        // Update cache statistics
+        if let Ok(cache_list) = self.context.cache.list() {
+            self.metrics_collector.update_cache_size("response", cache_list.len() as i64);
+        }
+
+        // Update user session statistics
+        let sessions = self.user_manager.list_sessions(None).unwrap_or_default();
+        let mut admin_sessions = 0i64;
+        let mut user_sessions = 0i64;
+        let mut readonly_sessions = 0i64;
+
+        for session in sessions {
+            if let Ok(user) = self.user_manager.get_user(&session.user_id) {
+                match user.role.as_str() {
+                    "Admin" => admin_sessions += 1,
+                    "User" => user_sessions += 1,
+                    "ReadOnly" => readonly_sessions += 1,
+                    _ => {}
+                }
+            }
+        }
+
+        self.metrics_collector.update_user_sessions("admin", admin_sessions);
+        self.metrics_collector.update_user_sessions("user", user_sessions);
+        self.metrics_collector.update_user_sessions("readonly", readonly_sessions);
+    }
+
     fn not_found(&self, _request: &Request) -> Result<ResponseBox> {
         Ok(Response::from_string("Not found")
             .with_status_code(404)
@@ -758,5 +883,51 @@ impl<'a> WebServer<'a> {
         Ok(Response::from_string(serde_json::to_string(&updated_user)?)
             .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
             .boxed())
+    }
+    
+    fn graphql_playground(&self, _request: &Request) -> Result<ResponseBox> {
+        Ok(Response::from_string(graphql_playground())
+            .with_header::<tiny_http::Header>("Content-Type: text/html; charset=utf-8".parse().unwrap())
+            .boxed())
+    }
+    
+    fn graphql_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Read the GraphQL request body
+        let mut body = String::new();
+        request.as_reader().read_to_string(&mut body)?;
+        
+        // Parse the GraphQL request
+        let graphql_request: async_graphql::Request = serde_json::from_str(&body)
+            .map_err(|e| WebError::InvalidRequest)?;
+        
+        // Execute the GraphQL query synchronously using blocking
+        // Since we're in a sync context, we need to use a runtime to execute async code
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| WebError::InternalError(format!("Failed to create runtime: {}", e)))?;
+        
+        let response = rt.block_on(async {
+            self.graphql_schema.execute(graphql_request).await
+        });
+        
+        // Serialize the response
+        let response_body = serde_json::to_string(&response)
+            .map_err(|e| WebError::InternalError(format!("Failed to serialize response: {}", e)))?;
+        
+        Ok(Response::from_string(response_body)
+            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .boxed())
+    }
+    
+    fn doh_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Create a runtime for async execution
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| WebError::InternalError(format!("Failed to create runtime: {}", e)))?;
+        
+        // Execute the DoH handler asynchronously
+        let response = rt.block_on(async {
+            self.doh_server.handle_doh_request(request).await
+        })?;
+        
+        Ok(response)
     }
 }

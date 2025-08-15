@@ -17,6 +17,7 @@ use crate::dns::context::ServerContext;
 use crate::dns::netutil::{read_packet_length, write_packet_length};
 use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode};
 use crate::dns::resolve::DnsResolver;
+use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {
@@ -185,14 +186,92 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 /// This function will always return a valid packet, even if the request could not
 /// be performed, since we still want to send something back to the client.
 pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
-    log::info!("execute_query");
+    // Create correlation context for this DNS query
+    let mut ctx = CorrelationContext::new("dns_server", "execute_query");
+    
+    // Extract query information for logging
+    let (domain, query_type, protocol) = if let Some(question) = request.questions.first() {
+        (
+            question.name.clone(),
+            format!("{:?}", question.qtype),
+            "UDP".to_string(), // Default to UDP, caller can specify
+        )
+    } else {
+        ("unknown".to_string(), "UNKNOWN".to_string(), "UDP".to_string())
+    };
+    
+    ctx = ctx.with_metadata("domain", &domain)
+           .with_metadata("query_type", &query_type)
+           .with_metadata("query_id", &request.header.id.to_string());
+    
     let mut packet = build_response_packet(&context, request);
+    let mut cache_hit = false;
 
     if let Some(error_code) = validate_request(&context, request) {
         packet.header.rescode = error_code;
+        
+        // Log error response
+        let query_log = DnsQueryLog {
+            domain: domain.clone(),
+            query_type: query_type.clone(),
+            protocol: protocol.clone(),
+            response_code: format!("{:?}", error_code),
+            answer_count: 0,
+            cache_hit: false,
+            upstream_server: None,
+            dnssec_status: None,
+        };
+        context.logger.log_dns_query(&ctx, query_log);
     } else {
-        process_valid_query(context, request, &mut packet);
+        // Check cache first
+        if let Some(question) = request.questions.first() {
+            if let Some(cached_packet) = context.cache.lookup(&question.name, question.qtype) {
+                if !cached_packet.answers.is_empty() {
+                    cache_hit = true;
+                    packet.answers.extend(cached_packet.answers);
+                    packet.header.rescode = ResultCode::NOERROR;
+                    
+                    // Update metrics
+                    context.metrics.record_cache_operation("hit", &query_type);
+                } else {
+                    context.metrics.record_cache_operation("miss", &query_type);
+                }
+            } else {
+                context.metrics.record_cache_operation("miss", &query_type);
+            }
+        }
+        
+        if !cache_hit {
+            process_valid_query(context.clone(), request, &mut packet);
+        }
+        
+        // Log successful response
+        let query_log = DnsQueryLog {
+            domain: domain.clone(),
+            query_type: query_type.clone(),
+            protocol: protocol.clone(),
+            response_code: format!("{:?}", packet.header.rescode),
+            answer_count: packet.answers.len() as u16,
+            cache_hit,
+            upstream_server: None, // TODO: Track upstream server
+            dnssec_status: None,   // TODO: Add DNSSEC validation status
+        };
+        context.logger.log_dns_query(&ctx, query_log);
     }
+    
+    // Record metrics
+    context.metrics.record_dns_query(&protocol, &query_type, &domain);
+    context.metrics.record_dns_response(
+        &format!("{:?}", packet.header.rescode),
+        &protocol,
+        &query_type
+    );
+    context.metrics.record_query_duration(
+        ctx.elapsed(),
+        &protocol,
+        &query_type,
+        cache_hit
+    );
 
     packet
 }
