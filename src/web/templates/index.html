@@ -1,12 +1,277 @@
 
-
-{{#*inline "title"}}DNS :){{/inline}}
-{{#*inline "header"}}
-
-{{/inline}}
+{{#*inline "title"}}Dashboard{{/inline}}
+{{#*inline "current_page"}}dashboard{{/inline}}
 
 {{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">Dashboard</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+        </ol>
+    </nav>
+</div>
 
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value">{{#if total_zones}}{{total_zones}}{{else}}0{{/if}}</div>
+                    <div class="stat-label">DNS Zones</div>
+                </div>
+                <i class="bi bi-diagram-3 fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #00d084, #00a068);">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value">{{#if total_records}}{{total_records}}{{else}}0{{/if}}</div>
+                    <div class="stat-label">DNS Records</div>
+                </div>
+                <i class="bi bi-list-ul fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #00a8e8, #0086b8);">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value">{{#if cache_entries}}{{cache_entries}}{{else}}0{{/if}}</div>
+                    <div class="stat-label">Cache Entries</div>
+                </div>
+                <i class="bi bi-archive fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #ffc107, #ff9800);">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value">{{#if active_users}}{{active_users}}{{else}}0{{/if}}</div>
+                    <div class="stat-label">Active Users</div>
+                </div>
+                <i class="bi bi-people fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+</div>
 
+<div class="row g-3">
+    <!-- Recent DNS Zones -->
+    <div class="col-12 col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-diagram-3 me-2"></i>
+                    Recent DNS Zones
+                </h5>
+                <a href="/authority" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-circle me-1"></i>
+                    Add Zone
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Records</th>
+                                <th>Status</th>
+                                <th>Last Modified</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#if zones}}
+                                {{#each zones}}
+                                <tr>
+                                    <td>
+                                        <a href="/authority/{{domain}}" class="text-decoration-none fw-semibold">
+                                            {{domain}}
+                                        </a>
+                                    </td>
+                                    <td>{{record_count}}</td>
+                                    <td>
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle me-1"></i>
+                                            Active
+                                        </span>
+                                    </td>
+                                    <td>{{last_modified}}</td>
+                                    <td>
+                                        <a href="/authority/{{domain}}" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                        No DNS zones configured yet
+                                    </td>
+                                </tr>
+                            {{/if}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Status -->
+    <div class="col-12 col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-activity me-2"></i>
+                    System Status
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>DNS Server</span>
+                        <span class="badge bg-success">Online</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-success" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Cache Hit Rate</span>
+                        <span class="text-muted">{{#if cache_hit_rate}}{{cache_hit_rate}}%{{else}}0%{{/if}}</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-info" style="width: {{#if cache_hit_rate}}{{cache_hit_rate}}%{{else}}0%{{/if}}"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Memory Usage</span>
+                        <span class="text-muted">{{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-warning" style="width: {{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}"></div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="small text-muted">
+                    <div class="mb-2">
+                        <i class="bi bi-clock me-1"></i>
+                        Uptime: {{#if uptime}}{{uptime}}{{else}}0 days{{/if}}
+                    </div>
+                    <div class="mb-2">
+                        <i class="bi bi-hdd me-1"></i>
+                        Version: {{#if version}}{{version}}{{else}}1.0.0{{/if}}
+                    </div>
+                    <div>
+                        <i class="bi bi-server me-1"></i>
+                        Server: {{#if server_name}}{{server_name}}{{else}}Atlas DNS{{/if}}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-lightning me-2"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/authority" class="btn btn-outline-primary text-start">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Create DNS Zone
+                    </a>
+                    <a href="/users" class="btn btn-outline-primary text-start">
+                        <i class="bi bi-person-plus me-2"></i>
+                        Add User
+                    </a>
+                    <a href="/cache" class="btn btn-outline-primary text-start">
+                        <i class="bi bi-arrow-clockwise me-2"></i>
+                        Clear Cache
+                    </a>
+                    <a href="/sessions" class="btn btn-outline-primary text-start">
+                        <i class="bi bi-shield-check me-2"></i>
+                        View Sessions
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row g-3 mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history me-2"></i>
+                    Recent Activity
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Resource</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#if activities}}
+                                {{#each activities}}
+                                <tr>
+                                    <td>{{timestamp}}</td>
+                                    <td>{{user}}</td>
+                                    <td>{{action}}</td>
+                                    <td>{{resource}}</td>
+                                    <td>
+                                        {{#if success}}
+                                            <span class="badge bg-success">Success</span>
+                                        {{else}}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">
+                                        No recent activity
+                                    </td>
+                                </tr>
+                            {{/if}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {{/inline}}
-{{~> layout~}}
+
+{{> layout}}
