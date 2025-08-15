@@ -1,24 +1,32 @@
-{{> layout}}
+{{#*inline "title"}}Sessions{{/inline}}
+{{#*inline "current_page"}}sessions{{/inline}}
 
 {{#*inline "content"}}
-<div class="container-fluid">
-    <h1 class="mt-4">Active Sessions</h1>
-    <ol class="breadcrumb mb-4">
-        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
-        <li class="breadcrumb-item active">Sessions</li>
-    </ol>
-    
-    <div class="card mb-4">
-        <div class="card-header">
-            <i class="fas fa-key me-1"></i>
+<div class="page-header">
+    <h1 class="page-title">Active Sessions</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Sessions</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-shield-check me-2"></i>
             Active Sessions
-        </div>
-        <div class="card-body">
-            <table class="table table-bordered">
+        </h5>
+        <span class="badge bg-primary">{{#if session_count}}{{session_count}}{{else}}0{{/if}} active</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
                 <thead>
                     <tr>
-                        <th>Session ID</th>
-                        <th>User ID</th>
+                        <th>Session</th>
+                        <th>User</th>
                         <th>IP Address</th>
                         <th>User Agent</th>
                         <th>Created</th>
@@ -27,52 +35,144 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {{#each sessions}}
-                    <tr>
-                        <td><code>{{id}}</code></td>
-                        <td>{{user_id}}</td>
-                        <td>{{#if ip_address}}{{ip_address}}{{else}}-{{/if}}</td>
-                        <td>
-                            {{#if user_agent}}
-                                <span title="{{user_agent}}">{{truncate user_agent 30}}</span>
-                            {{else}}
-                                -
-                            {{/if}}
-                        </td>
-                        <td>{{created_at}}</td>
-                        <td>{{expires_at}}</td>
-                        <td>
-                            <button class="btn btn-sm btn-danger" onclick="revokeSession('{{token}}')">
-                                <i class="fas fa-times"></i> Revoke
-                            </button>
-                        </td>
-                    </tr>
-                    {{/each}}
+                    {{#if sessions}}
+                        {{#each sessions}}
+                        <tr>
+                            <td>
+                                <code class="small">{{id}}</code>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">{{user_id}}</div>
+                            </td>
+                            <td>
+                                {{#if ip_address}}
+                                    <span class="badge bg-light text-dark">{{ip_address}}</span>
+                                {{else}}
+                                    <span class="text-muted">-</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if user_agent}}
+                                    <span class="small" title="{{user_agent}}">
+                                        {{#if (contains user_agent "Chrome")}}
+                                            <i class="bi bi-browser-chrome text-warning"></i>
+                                        {{else if (contains user_agent "Firefox")}}
+                                            <i class="bi bi-browser-firefox text-danger"></i>
+                                        {{else if (contains user_agent "Safari")}}
+                                            <i class="bi bi-browser-safari text-primary"></i>
+                                        {{else}}
+                                            <i class="bi bi-browser-edge text-info"></i>
+                                        {{/if}}
+                                        Browser
+                                    </span>
+                                {{else}}
+                                    <span class="text-muted">-</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                <small class="text-muted">{{created_at}}</small>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{expires_at}}</small>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-danger" onclick="revokeSession('{{token}}')" title="Revoke Session">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    {{else}}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-shield-x fs-1 d-block mb-2"></i>
+                                No active sessions found
+                            </td>
+                        </tr>
+                    {{/if}}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
+<div class="card mt-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-info-circle me-2"></i>
+            Session Information
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Security</h6>
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-check-circle text-success me-2"></i>Sessions expire after 24 hours</li>
+                    <li><i class="bi bi-check-circle text-success me-2"></i>HttpOnly cookies prevent XSS</li>
+                    <li><i class="bi bi-check-circle text-success me-2"></i>SameSite protection enabled</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6>Actions</h6>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-warning" onclick="revokeAllOtherSessions()">
+                        <i class="bi bi-shield-x me-2"></i>
+                        Revoke All Other Sessions
+                    </button>
+                    <button class="btn btn-outline-info" onclick="window.location.reload()">
+                        <i class="bi bi-arrow-clockwise me-2"></i>
+                        Refresh List
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-function revokeSession(sessionToken) {
-    if (confirm('Are you sure you want to revoke this session?')) {
-        fetch(`/sessions/${sessionToken}`, {
-            method: 'DELETE',
-            headers: {
-                'Accept': 'application/json',
-            }
-        })
-        .then(response => {
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                alert('Failed to revoke session');
-            }
-        });
+function revokeSession(token) {
+    if (!confirm('Are you sure you want to revoke this session?')) {
+        return;
     }
+    
+    fetch(`/sessions/${token}`, {
+        method: 'DELETE',
+        headers: {
+            'Accept': 'application/json',
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '9999';
+            alert.innerHTML = `
+                <i class="bi bi-check-circle me-2"></i>
+                Session revoked successfully
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            alert('Failed to revoke session. Please try again.');
+        }
+    })
+    .catch(error => {
+        alert('An error occurred. Please try again.');
+        console.error('Error:', error);
+    });
+}
+
+function revokeAllOtherSessions() {
+    if (!confirm('Are you sure you want to revoke all other sessions? This will log out all other devices.')) {
+        return;
+    }
+    
+    // Implementation would depend on backend support
+    alert('This feature is not yet implemented');
 }
 </script>
 {{/inline}}
 
-{{> (lookup . "parent") }}
+{{> layout}}

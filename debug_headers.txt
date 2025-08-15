@@ -1,0 +1,29 @@
+Note: Unnecessary use of -X or --request, POST is already inferred.
+* Host localhost:5380 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:5380...
+* connect to ::1 port 5380 from ::1 port 54900 failed: Connection refused
+*   Trying 127.0.0.1:5380...
+* Connected to localhost (127.0.0.1) port 5380
+> POST /auth/login HTTP/1.1
+> Host: localhost:5380
+> User-Agent: curl/8.7.1
+> Accept: */*
+> Content-Type: application/x-www-form-urlencoded
+> Content-Length: 32
+> 
+} [32 bytes data]
+* upload completely sent off: 32 bytes
+< HTTP/1.1 302 Found
+< Server: tiny-http (Rust)
+< Date: Fri, 15 Aug 2025 03:17:10 GMT
+* Added cookie session_token="2cfd1ec8-cd6e-42f0-bf66-2ef666182010" for domain localhost, path /, expire 1755314230
+< Set-Cookie: session_token=2cfd1ec8-cd6e-42f0-bf66-2ef666182010; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict
+< Location: /
+< Content-Length: 0
+< 
+100    32    0     0  100    32      0  13141 --:--:-- --:--:-- --:--:-- 16000
+* Connection #0 to host localhost left intact

@@ -82,6 +82,15 @@ impl DnsNetworkClient {
                 ClientError::Io(std::io::Error::new(std::io::ErrorKind::AddrInUse, 
                     format!("Cannot bind to port {}", port)))
             })?;
+        
+        // Log the actual bound port (useful when port 0 is used)
+        if let Ok(local_addr) = socket.local_addr() {
+            if port == 0 {
+                log::info!("DNS client bound to dynamically assigned port {}", local_addr.port());
+            } else {
+                log::debug!("DNS client bound to port {}", local_addr.port());
+            }
+        }
             
         Ok(DnsNetworkClient {
             total_sent: AtomicUsize::new(0),

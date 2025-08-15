@@ -59,9 +59,56 @@ impl<'a> WebServer<'a> {
         let user_manager = Arc::new(UserManager::new());
         let session_middleware = Arc::new(SessionMiddleware::new(user_manager.clone()));
         
+        let mut handlebars = Handlebars::new();
+        
+        // Register the 'eq' helper for comparing values in templates
+        handlebars.register_helper(
+            "eq",
+            Box::new(|h: &handlebars::Helper, _: &Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+                let param1 = h.param(0).and_then(|v| v.value().as_str());
+                let param2 = h.param(1).and_then(|v| v.value().as_str());
+                
+                if param1 == param2 {
+                    out.write("true")?;
+                }
+                Ok(())
+            })
+        );
+        
+        // Register the 'substring' helper for string manipulation
+        handlebars.register_helper(
+            "substring",
+            Box::new(|h: &handlebars::Helper, _: &Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+                if let Some(text) = h.param(0).and_then(|v| v.value().as_str()) {
+                    let start = h.param(1).and_then(|v| v.value().as_u64()).unwrap_or(0) as usize;
+                    let end = h.param(2).and_then(|v| v.value().as_u64()).unwrap_or(text.len() as u64) as usize;
+                    
+                    if start < text.len() {
+                        let end = end.min(text.len());
+                        out.write(&text[start..end])?;
+                    }
+                }
+                Ok(())
+            })
+        );
+        
+        // Register the 'contains' helper for string containment checks
+        handlebars.register_helper(
+            "contains",
+            Box::new(|h: &handlebars::Helper, _: &Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+                let haystack = h.param(0).and_then(|v| v.value().as_str()).unwrap_or("");
+                let needle = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
+                
+                if haystack.contains(needle) {
+                    out.write("true")?;
+                }
+                Ok(())
+            })
+        );
+        
         let mut server = WebServer {
             context,
-            handlebars: Handlebars::new(),
+            handlebars,
             user_manager,
             session_middleware,
         };
@@ -519,9 +566,11 @@ impl<'a> WebServer<'a> {
             .list_users()
             .map_err(|_e| WebError::InvalidRequest)?;
         
+        let user_count = users.len();
         let data = serde_json::json!({
             "title": "Users",
             "users": users,
+            "user_count": user_count,
         });
         
         self.response_from_media_type(request, "users", data)
@@ -596,9 +645,11 @@ impl<'a> WebServer<'a> {
             .list_sessions(user_id)
             .map_err(|_e| WebError::InvalidRequest)?;
         
+        let session_count = sessions.len();
         let data = serde_json::json!({
             "title": "Sessions",
             "sessions": sessions,
+            "session_count": session_count,
         });
         
         self.response_from_media_type(request, "sessions", data)

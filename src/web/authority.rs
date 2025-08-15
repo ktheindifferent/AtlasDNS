@@ -131,9 +131,11 @@ pub fn zone_list(context: &ServerContext) -> Result<serde_json::Value> {
         }));
     }
 
+    let zone_count = zones_json.len();
     Ok(json!({
         "ok": true,
         "zones": zones_json,
+        "zone_count": zone_count,
     }))
 }
 

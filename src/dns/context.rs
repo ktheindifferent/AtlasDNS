@@ -77,7 +77,7 @@ impl ServerContext {
         Ok(ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
-            client: Box::new(DnsNetworkClient::new(34255)?),
+            client: Box::new(DnsNetworkClient::new(0)?), // Use port 0 to let OS choose available port
             dns_port: 53,
             api_port: 5380,
             ssl_api_port: 5343,

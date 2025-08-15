@@ -1,0 +1,7 @@
+HTTP/1.1 302 Found
+Server: tiny-http (Rust)
+Date: Fri, 15 Aug 2025 02:16:35 GMT
+Set-Cookie: session_token=2d9d9253-dd29-4f07-881b-238449a8868b; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict
+Location: /
+Content-Length: 0
+

@@ -12,7 +12,8 @@ impl SessionMiddleware {
     }
     
     pub fn extract_token(&self, request: &Request) -> Option<String> {
-        request
+        // First try Authorization header
+        let auth_result = request
             .headers()
             .iter()
             .find(|h| h.field.as_str() == "Authorization")
@@ -23,27 +24,47 @@ impl SessionMiddleware {
                 } else {
                     None
                 }
-            })
-            .or_else(|| {
-                request
-                    .headers()
-                    .iter()
-                    .find(|h| h.field.as_str() == "Cookie")
-                    .and_then(|h| {
-                        let value: String = h.value.clone().into();
-                        value
-                            .split(';')
-                            .find(|c| c.trim().starts_with("session_token="))
-                            .map(|c| c.trim()[14..].to_string())
-                    })
+            });
+        
+        if auth_result.is_some() {
+            return auth_result;
+        }
+        
+        // Then try Cookie header
+        request
+            .headers()
+            .iter()
+            .find(|h| h.field.as_str() == "Cookie")
+            .and_then(|h| {
+                let value: String = h.value.clone().into();
+                log::debug!("Cookie header value: '{}'", value);
+                
+                let token = value
+                    .split(';')
+                    .find(|c| c.trim().starts_with("session_token="))
+                    .map(|c| {
+                        let trimmed = c.trim();
+                        log::debug!("Found session_token cookie part: '{}'", trimmed);
+                        // Extract the value after "session_token="
+                        trimmed.strip_prefix("session_token=").unwrap_or("").to_string()
+                    });
+                
+                log::debug!("Extracted token: {:?}", token);
+                token
             })
     }
     
     pub fn validate_request(&self, request: &Request) -> Result<(Session, User), String> {
         let token = self.extract_token(request)
-            .ok_or_else(|| "No session token provided".to_string())?;
+            .ok_or_else(|| {
+                log::debug!("No session token found in request");
+                "No session token provided".to_string()
+            })?;
         
-        self.user_manager.validate_session(&token)
+        log::debug!("Validating session token: '{}'", token);
+        let result = self.user_manager.validate_session(&token);
+        log::debug!("Session validation result: {:?}", result.is_ok());
+        result
     }
     
     pub fn require_auth(&self, request: &Request) -> Result<(Session, User), String> {
