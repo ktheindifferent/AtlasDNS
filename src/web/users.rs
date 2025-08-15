@@ -1,0 +1,283 @@
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use chrono::{DateTime, Utc, Duration};
+use sha2::{Sha256, Digest};
+use crate::web::util::FormDataDecodable;
+use crate::web::WebError;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub role: UserRole,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum UserRole {
+    Admin,
+    User,
+    ReadOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub id: String,
+    pub user_id: String,
+    pub token: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUserRequest {
+    pub username: String,
+    pub email: String,
+    pub password: String,
+    pub role: UserRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateUserRequest {
+    pub email: Option<String>,
+    pub password: Option<String>,
+    pub role: Option<UserRole>,
+    pub is_active: Option<bool>,
+}
+
+impl FormDataDecodable<LoginRequest> for LoginRequest {
+    fn from_formdata(fields: Vec<(String, String)>) -> crate::web::Result<LoginRequest> {
+        let data: HashMap<_, _> = fields.into_iter().collect();
+        Ok(LoginRequest {
+            username: data.get("username")
+                .ok_or(WebError::MissingField("username"))?
+                .clone(),
+            password: data.get("password")
+                .ok_or(WebError::MissingField("password"))?
+                .clone(),
+        })
+    }
+}
+
+impl FormDataDecodable<CreateUserRequest> for CreateUserRequest {
+    fn from_formdata(fields: Vec<(String, String)>) -> crate::web::Result<CreateUserRequest> {
+        let data: HashMap<_, _> = fields.into_iter().collect();
+        Ok(CreateUserRequest {
+            username: data.get("username")
+                .ok_or(WebError::MissingField("username"))?
+                .clone(),
+            email: data.get("email")
+                .ok_or(WebError::MissingField("email"))?
+                .clone(),
+            password: data.get("password")
+                .ok_or(WebError::MissingField("password"))?
+                .clone(),
+            role: match data.get("role").map(|s| s.as_str()) {
+                Some("Admin") => UserRole::Admin,
+                Some("ReadOnly") => UserRole::ReadOnly,
+                _ => UserRole::User,
+            },
+        })
+    }
+}
+
+pub struct UserManager {
+    users: Arc<RwLock<HashMap<String, User>>>,
+    sessions: Arc<RwLock<HashMap<String, Session>>>,
+}
+
+impl UserManager {
+    pub fn new() -> Self {
+        let mut manager = UserManager {
+            users: Arc::new(RwLock::new(HashMap::new())),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+        };
+        
+        manager.create_default_admin();
+        manager
+    }
+    
+    fn create_default_admin(&mut self) {
+        let admin_user = User {
+            id: Uuid::new_v4().to_string(),
+            username: "admin".to_string(),
+            email: "admin@localhost".to_string(),
+            password_hash: Self::hash_password("admin123"),
+            role: UserRole::Admin,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            is_active: true,
+        };
+        
+        if let Ok(mut users) = self.users.write() {
+            users.insert(admin_user.id.clone(), admin_user);
+        }
+    }
+    
+    pub fn hash_password(password: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(password.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+    
+    pub fn verify_password(password: &str, hash: &str) -> bool {
+        Self::hash_password(password) == hash
+    }
+    
+    pub fn create_user(&self, request: CreateUserRequest) -> Result<User, String> {
+        let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
+        
+        if users.values().any(|u| u.username == request.username) {
+            return Err("Username already exists".to_string());
+        }
+        
+        let user = User {
+            id: Uuid::new_v4().to_string(),
+            username: request.username,
+            email: request.email,
+            password_hash: Self::hash_password(&request.password),
+            role: request.role,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            is_active: true,
+        };
+        
+        let user_clone = user.clone();
+        users.insert(user.id.clone(), user);
+        Ok(user_clone)
+    }
+    
+    pub fn authenticate(&self, username: &str, password: &str) -> Result<User, String> {
+        let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
+        
+        users
+            .values()
+            .find(|u| u.username == username && u.is_active)
+            .filter(|u| Self::verify_password(password, &u.password_hash))
+            .cloned()
+            .ok_or_else(|| "Invalid credentials".to_string())
+    }
+    
+    pub fn create_session(&self, user_id: String, ip_address: Option<String>, user_agent: Option<String>) -> Result<Session, String> {
+        let session = Session {
+            id: Uuid::new_v4().to_string(),
+            user_id,
+            token: Uuid::new_v4().to_string(),
+            created_at: Utc::now(),
+            expires_at: Utc::now() + Duration::hours(24),
+            ip_address,
+            user_agent,
+        };
+        
+        let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
+        let session_clone = session.clone();
+        sessions.insert(session.token.clone(), session);
+        Ok(session_clone)
+    }
+    
+    pub fn validate_session(&self, token: &str) -> Result<(Session, User), String> {
+        let sessions = self.sessions.read().map_err(|_| "Failed to acquire lock")?;
+        
+        let session = sessions
+            .get(token)
+            .filter(|s| s.expires_at > Utc::now())
+            .ok_or_else(|| "Invalid or expired session".to_string())?
+            .clone();
+        
+        drop(sessions);
+        
+        let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
+        let user = users
+            .get(&session.user_id)
+            .filter(|u| u.is_active)
+            .ok_or_else(|| "User not found or inactive".to_string())?
+            .clone();
+        
+        Ok((session, user))
+    }
+    
+    pub fn invalidate_session(&self, token: &str) -> Result<(), String> {
+        let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
+        sessions.remove(token);
+        Ok(())
+    }
+    
+    pub fn get_user(&self, user_id: &str) -> Result<User, String> {
+        let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
+        users.get(user_id).cloned().ok_or_else(|| "User not found".to_string())
+    }
+    
+    pub fn update_user(&self, user_id: &str, request: UpdateUserRequest) -> Result<User, String> {
+        let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
+        
+        let user = users.get_mut(user_id).ok_or_else(|| "User not found".to_string())?;
+        
+        if let Some(email) = request.email {
+            user.email = email;
+        }
+        if let Some(password) = request.password {
+            user.password_hash = Self::hash_password(&password);
+        }
+        if let Some(role) = request.role {
+            user.role = role;
+        }
+        if let Some(is_active) = request.is_active {
+            user.is_active = is_active;
+        }
+        
+        user.updated_at = Utc::now();
+        Ok(user.clone())
+    }
+    
+    pub fn delete_user(&self, user_id: &str) -> Result<(), String> {
+        let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
+        users.remove(user_id).ok_or_else(|| "User not found".to_string())?;
+        
+        let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
+        sessions.retain(|_, s| s.user_id != user_id);
+        
+        Ok(())
+    }
+    
+    pub fn list_users(&self) -> Result<Vec<User>, String> {
+        let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
+        Ok(users.values().cloned().collect())
+    }
+    
+    pub fn list_sessions(&self, user_id: Option<&str>) -> Result<Vec<Session>, String> {
+        let sessions = self.sessions.read().map_err(|_| "Failed to acquire lock")?;
+        
+        let result: Vec<Session> = if let Some(uid) = user_id {
+            sessions.values().filter(|s| s.user_id == uid).cloned().collect()
+        } else {
+            sessions.values().cloned().collect()
+        };
+        
+        Ok(result)
+    }
+    
+    pub fn cleanup_expired_sessions(&self) -> Result<usize, String> {
+        let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
+        let now = Utc::now();
+        let initial_count = sessions.len();
+        
+        sessions.retain(|_, s| s.expires_at > now);
+        
+        Ok(initial_count - sessions.len())
+    }
+}

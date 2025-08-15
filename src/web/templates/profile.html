@@ -1,0 +1,139 @@
+{{> layout}}
+
+{{#*inline "content"}}
+<div class="container-fluid">
+    <h1 class="mt-4">User Profile</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Profile</li>
+    </ol>
+    
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-user me-1"></i>
+                    Profile Information
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="small mb-1">User ID</label>
+                        <div class="form-control-plaintext"><code>{{user.id}}</code></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Username</label>
+                        <div class="form-control-plaintext">{{user.username}}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Email</label>
+                        <div class="form-control-plaintext">{{user.email}}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Role</label>
+                        <div class="form-control-plaintext">
+                            <span class="badge bg-{{#if (eq user.role "Admin")}}danger{{else if (eq user.role "ReadOnly")}}secondary{{else}}primary{{/if}}">
+                                {{user.role}}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Status</label>
+                        <div class="form-control-plaintext">
+                            {{#if user.is_active}}
+                                <span class="badge bg-success">Active</span>
+                            {{else}}
+                                <span class="badge bg-danger">Inactive</span>
+                            {{/if}}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Member Since</label>
+                        <div class="form-control-plaintext">{{user.created_at}}</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small mb-1">Last Updated</label>
+                        <div class="form-control-plaintext">{{user.updated_at}}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-edit me-1"></i>
+                    Update Profile
+                </div>
+                <div class="card-body">
+                    <form id="updateProfileForm">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" value="{{user.email}}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">New Password (leave blank to keep current)</label>
+                            <input type="password" class="form-control" id="password" name="password">
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Update Profile</button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <i class="fas fa-sign-out-alt me-1"></i>
+                    Account Actions
+                </div>
+                <div class="card-body">
+                    <a href="/sessions" class="btn btn-info mb-2">View Active Sessions</a>
+                    <form method="POST" action="/auth/logout" class="d-inline">
+                        <button type="submit" class="btn btn-danger mb-2">Logout</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('updateProfileForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (password && password !== confirmPassword) {
+        alert('Passwords do not match');
+        return;
+    }
+    
+    const data = {};
+    const email = document.getElementById('email').value;
+    if (email) data.email = email;
+    if (password) data.password = password;
+    
+    fetch('/profile', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => {
+        if (response.ok) {
+            alert('Profile updated successfully');
+            window.location.reload();
+        } else {
+            alert('Failed to update profile');
+        }
+    });
+});
+</script>
+{{/inline}}
+
+{{> (lookup . "parent") }}
