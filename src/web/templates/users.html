@@ -1,61 +1,160 @@
-{{> layout}}
+{{#*inline "title"}}Users{{/inline}}
+{{#*inline "current_page"}}users{{/inline}}
 
 {{#*inline "content"}}
-<div class="container-fluid">
-    <h1 class="mt-4">User Management</h1>
-    <ol class="breadcrumb mb-4">
-        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
-        <li class="breadcrumb-item active">Users</li>
-    </ol>
+<div class="page-header">
+    <h1 class="page-title">User Management</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Users</li>
+        </ol>
+    </nav>
+</div>
     
-    <div class="card mb-4">
-        <div class="card-header">
-            <i class="fas fa-users me-1"></i>
-            Users
-            <button class="btn btn-sm btn-primary float-end" data-bs-toggle="modal" data-bs-target="#addUserModal">
-                <i class="fas fa-plus"></i> Add User
-            </button>
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Users</h6>
+                        <h3 class="mb-0">{{#if total_users}}{{total_users}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-people fs-1"></i>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <table class="table table-bordered">
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Users</h6>
+                        <h3 class="mb-0">{{#if active_users}}{{active_users}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-person-check fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Admins</h6>
+                        <h3 class="mb-0">{{#if admin_users}}{{admin_users}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-danger">
+                        <i class="bi bi-shield-lock fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">New This Month</h6>
+                        <h3 class="mb-0">{{#if new_users}}{{new_users}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-person-plus fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-people me-2"></i>
+            Users
+        </h5>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="bi bi-plus-circle me-1"></i>
+            Add User
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
                 <thead>
                     <tr>
-                        <th>Username</th>
+                        <th>
+                            <input type="checkbox" class="form-check-input" id="selectAll">
+                        </th>
+                        <th>User</th>
                         <th>Email</th>
                         <th>Role</th>
                         <th>Status</th>
-                        <th>Created</th>
+                        <th>Last Active</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {{#each users}}
                     <tr>
-                        <td>{{username}}</td>
+                        <td>
+                            <input type="checkbox" class="form-check-input user-select" data-user-id="{{id}}">
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="avatar-sm bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 36px; height: 36px;">
+                                    <span class="fw-bold">{{substring username 0 1}}</span>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold">{{username}}</div>
+                                    <small class="text-muted">ID: {{id}}</small>
+                                </div>
+                            </div>
+                        </td>
                         <td>{{email}}</td>
                         <td>
-                            <span class="badge bg-{{#if (eq role "Admin")}}danger{{else if (eq role "ReadOnly")}}secondary{{else}}primary{{/if}}">
+                            <span class="badge rounded-pill bg-{{#if (eq role "Admin")}}danger{{else if (eq role "ReadOnly")}}secondary{{else}}primary{{/if}}">
+                                <i class="bi bi-{{#if (eq role "Admin")}}shield-lock{{else if (eq role "ReadOnly")}}eye{{else}}person{{/if}} me-1"></i>
                                 {{role}}
                             </span>
                         </td>
                         <td>
                             {{#if is_active}}
-                                <span class="badge bg-success">Active</span>
+                                <span class="badge bg-success-subtle text-success">
+                                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>
+                                    Active
+                                </span>
                             {{else}}
-                                <span class="badge bg-danger">Inactive</span>
+                                <span class="badge bg-danger-subtle text-danger">
+                                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>
+                                    Inactive
+                                </span>
                             {{/if}}
                         </td>
-                        <td>{{created_at}}</td>
                         <td>
-                            <a href="/users/{{id}}" class="btn btn-sm btn-info">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                            <button class="btn btn-sm btn-warning" onclick="editUser('{{id}}')">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteUser('{{id}}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                            <small class="text-muted">{{last_active}}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="/users/{{id}}" class="btn btn-sm btn-outline-primary" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-warning" onclick="editUser('{{id}}')" title="Edit User">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('{{id}}')" title="Delete User">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {{/each}}
@@ -63,42 +162,104 @@
             </table>
         </div>
     </div>
+    <div class="card-footer d-flex justify-content-between align-items-center">
+        <div class="text-muted">
+            Showing {{#if users}}{{users.length}}{{else}}0{{/if}} users
+        </div>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item disabled">
+                    <a class="page-link" href="#">Previous</a>
+                </li>
+                <li class="page-item active">
+                    <a class="page-link" href="#">1</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="#">2</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="#">3</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="#">Next</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
 </div>
 
 <!-- Add User Modal -->
 <div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addUserModalLabel">Add New User</h5>
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="addUserModalLabel">
+                    <i class="bi bi-person-plus me-2"></i>
+                    Add New User
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="POST" action="/users">
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="role" class="form-label">Role</label>
-                        <select class="form-control" id="role" name="role">
-                            <option value="User">User</option>
-                            <option value="ReadOnly">Read Only</option>
-                            <option value="Admin">Admin</option>
-                        </select>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-person"></i>
+                                </span>
+                                <input type="text" class="form-control" id="username" name="username" placeholder="Enter username" required>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label for="email" class="form-label">Email Address <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-envelope"></i>
+                                </span>
+                                <input type="email" class="form-control" id="email" name="email" placeholder="user@example.com" required>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-lock"></i>
+                                </span>
+                                <input type="password" class="form-control" id="password" name="password" placeholder="Enter password" required>
+                                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('password')">
+                                    <i class="bi bi-eye" id="passwordToggle"></i>
+                                </button>
+                            </div>
+                            <small class="text-muted">Minimum 8 characters with at least one uppercase, lowercase, and number</small>
+                        </div>
+                        <div class="col-12">
+                            <label for="role" class="form-label">Role <span class="text-danger">*</span></label>
+                            <select class="form-select" id="role" name="role">
+                                <option value="User" selected>User - Standard access</option>
+                                <option value="ReadOnly">Read Only - View only access</option>
+                                <option value="Admin">Admin - Full system access</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="sendWelcomeEmail" checked>
+                                <label class="form-check-label" for="sendWelcomeEmail">
+                                    Send welcome email with login instructions
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create User</button>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Create User
+                    </button>
                 </div>
             </form>
         </div>
@@ -106,13 +267,32 @@
 </div>
 
 <script>
+// Select all checkbox
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.user-select');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+});
+
+// Toggle password visibility
+function togglePassword(fieldId) {
+    const field = document.getElementById(fieldId);
+    const toggle = document.getElementById(fieldId + 'Toggle');
+    if (field.type === 'password') {
+        field.type = 'text';
+        toggle.className = 'bi bi-eye-slash';
+    } else {
+        field.type = 'password';
+        toggle.className = 'bi bi-eye';
+    }
+}
+
 function editUser(userId) {
-    // Implementation for editing user
     window.location.href = `/users/${userId}`;
 }
 
 function deleteUser(userId) {
-    if (confirm('Are you sure you want to delete this user?')) {
+    // Use Bootstrap modal for confirmation
+    if (confirm('Are you sure you want to delete this user?\n\nThis action cannot be undone.')) {
         fetch(`/users/${userId}`, {
             method: 'DELETE',
             headers: {
@@ -121,14 +301,28 @@ function deleteUser(userId) {
         })
         .then(response => {
             if (response.ok) {
-                window.location.reload();
+                // Show success message before reload
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alert.style.zIndex = '9999';
+                alert.innerHTML = `
+                    <i class="bi bi-check-circle me-2"></i>
+                    User deleted successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(alert);
+                setTimeout(() => window.location.reload(), 1500);
             } else {
-                alert('Failed to delete user');
+                alert('Failed to delete user. Please try again.');
             }
+        })
+        .catch(error => {
+            alert('An error occurred. Please try again.');
+            console.error('Error:', error);
         });
     }
 }
 </script>
 {{/inline}}
 
-{{> (lookup . "parent") }}
+{{> layout}}

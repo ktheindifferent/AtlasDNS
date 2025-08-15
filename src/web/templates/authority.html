@@ -1,156 +1,316 @@
-{{#*inline "title"}}Authority{{/inline}}
-{{#*inline "header"}}
-<style type="text/css">
-table.zone_table {
-    width: 100%;
-    border-spacing: 0;
-}
-table.zone_table th {
-    text-align: left;
-}
-table.zone_table th,
-table.zone_table td {
-    padding: 10px;
-}
-fieldset {
-    margin-bottom: 20px;
-}
-</style>
-{{/inline}}
+{{#*inline "title"}}DNS Zones{{/inline}}
+{{#*inline "current_page"}}authority{{/inline}}
+
 {{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">DNS Zone Management</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">DNS Zones</li>
+        </ol>
+    </nav>
+</div>
 
 
-<!-- Project Card Example -->
-<div class="card shadow mb-4">
-    <div class="card-header py-3">
-        <h6 class="m-0 font-weight-bold text-primary">Zones
-
-            <button type="button" class="float-right btn btn-sm btn-primary" data-toggle="modal" data-target="#newZone">
-                New Zone <i class="fa fa-plus"></i>
-            </button>
-              
-        </h6>
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Zones</h6>
+                        <h3 class="mb-0">{{#if zones}}{{zones.length}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-diagram-3 fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div id="zones" class="card-body" style="height:100%;">
-
-        <fieldset>
-            <table class="zone_table table table-striped table-bordered">
-                <tr>
-                    <th>Domain</th>
-                    <th>Primary Name Server</th>
-                    <th>Admin Email</th>
-                    <th>Serial</th>
-                    <th>Refresh (seconds)</th>
-                    <th>Retry (seconds)</th>
-                    <th>Expire (seconds)</th>
-                    <th>Minimum TTL (seconds)</th>
-                </tr>
-                {{#each zones}}
-                <tr>
-                    <td><a href="/authority/{{domain}}">{{domain}}</a></td>
-                    <td>{{m_name}}</td>
-                    <td>{{r_name}}</td>
-                    <td>{{serial}}</td>
-                    <td>{{refresh}}</td>
-                    <td>{{retry}}</td>
-                    <td>{{expire}}</td>
-                    <td>{{minimum}}</td>
-                </tr>
-                {{/each}}
-            </table>
-        </fieldset>
-        
-
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Records</h6>
+                        <h3 class="mb-0">{{#if total_records}}{{total_records}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-list-ul fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Zones</h6>
+                        <h3 class="mb-0">{{#if active_zones}}{{active_zones}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-check-circle fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Last Update</h6>
+                        <h6 class="mb-0">{{#if last_update}}{{last_update}}{{else}}Never{{/if}}</h6>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-clock-history fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- Modal -->
-<div class="modal fade" id="newZone" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="exampleModalLabel">New Zone</h5>
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-          </button>
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-diagram-3 me-2"></i>
+            DNS Zones
+        </h5>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newZone">
+            <i class="bi bi-plus-circle me-1"></i>
+            New Zone
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Name Server</th>
+                        <th>Records</th>
+                        <th>Status</th>
+                        <th>Serial</th>
+                        <th>TTL</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#if zones}}
+                        {{#each zones}}
+                        <tr>
+                            <td>
+                                <a href="/authority/{{domain}}" class="text-decoration-none fw-semibold">
+                                    <i class="bi bi-globe2 me-1"></i>
+                                    {{domain}}
+                                </a>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{m_name}}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{#if record_count}}{{record_count}}{{else}}0{{/if}}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-success-subtle text-success">
+                                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>
+                                    Active
+                                </span>
+                            </td>
+                            <td>
+                                <code>{{serial}}</code>
+                            </td>
+                            <td>
+                                <small>{{minimum}}s</small>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <a href="/authority/{{domain}}" class="btn btn-sm btn-outline-primary" title="Manage Records">
+                                        <i class="bi bi-list-ul"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="editZone('{{domain}}')" title="Edit Zone">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteZone('{{domain}}')" title="Delete Zone">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    {{else}}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No DNS zones configured yet
+                            </td>
+                        </tr>
+                    {{/if}}
+                </tbody>
+            </table>
         </div>
-        <fieldset>
+    </div>
+</div>
+
+<!-- New Zone Modal -->
+<div class="modal fade" id="newZone" tabindex="-1" aria-labelledby="newZoneLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="newZoneLabel">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create New DNS Zone
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
             <form method="POST" action="/authority">
-            
                 <div class="modal-body">
+                    <div class="row g-3">
                     
 
-                    <div class="form-group">
-                        <label for="domain">Domain Name</label>
-                        <small class="form-text text-muted">The domain name for this DNS zone (e.g., example.com)</small>
-                      
-                            <input class="form-control" type="text" name="domain" id="domain" placeholder="example.com" />
-                      
-                    </div>
+                        <div class="col-12">
+                            <label for="domain" class="form-label">Domain Name <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-globe2"></i>
+                                </span>
+                                <input class="form-control" type="text" name="domain" id="domain" placeholder="example.com" required />
+                            </div>
+                            <small class="text-muted">The domain name for this DNS zone (e.g., example.com)</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="m_name">Primary Name Server</label>
-                        <small class="form-text text-muted">The primary DNS server for this zone (e.g., ns1.example.com)</small>
-                       
-                            <input class="form-control" type="text" name="m_name" id="m_name" placeholder="ns1.example.com" />
-                   
-                    </div>
+                        <div class="col-md-6">
+                            <label for="m_name" class="form-label">Primary Name Server <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-server"></i>
+                                </span>
+                                <input class="form-control" type="text" name="m_name" id="m_name" placeholder="ns1.example.com" required />
+                            </div>
+                            <small class="text-muted">Primary DNS server</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="r_name">Administrator Email</label>
-                        <small class="form-text text-muted">Email address of the zone administrator (use dots instead of @, e.g., admin.example.com)</small>
-                        
-                            <input class="form-control" type="text" name="r_name" id="r_name" placeholder="admin.example.com" />
-                       
-                    </div>
+                        <div class="col-md-6">
+                            <label for="r_name" class="form-label">Administrator Email <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-envelope"></i>
+                                </span>
+                                <input class="form-control" type="text" name="r_name" id="r_name" placeholder="admin.example.com" required />
+                            </div>
+                            <small class="text-muted">Use dots instead of @</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="refresh">Refresh Interval</label>
-                        <small class="form-text text-muted">How often secondary DNS servers check for updates (in seconds, default: 3600 = 1 hour)</small>
-                        
-                            <input class="form-control" type="number" name="refresh" id="refresh" value="3600" />
-                       
-                    </div>
+                        <div class="col-md-6">
+                            <label for="refresh" class="form-label">Refresh Interval</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </span>
+                                <input class="form-control" type="number" name="refresh" id="refresh" value="3600" />
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <small class="text-muted">How often to check for updates (default: 1 hour)</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="retry">Retry Interval</label>
-                        <small class="form-text text-muted">How long to wait before retrying failed zone transfers (in seconds, default: 1800 = 30 minutes)</small>
-                      
-                            <input class="form-control" type="number" name="retry" id="retry" value="1800" />
-                      
-                    </div>
+                        <div class="col-md-6">
+                            <label for="retry" class="form-label">Retry Interval</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </span>
+                                <input class="form-control" type="number" name="retry" id="retry" value="1800" />
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <small class="text-muted">Retry failed transfers (default: 30 minutes)</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="expire">Expire Time</label>
-                        <small class="form-text text-muted">When to stop answering queries for this zone if primary is unreachable (in seconds, default: 604800 = 1 week)</small>
-                        
-                            <input class="form-control" type="number" name="expire" id="expire" value="604800" />
-                        
-                    </div>
+                        <div class="col-md-6">
+                            <label for="expire" class="form-label">Expire Time</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-hourglass-split"></i>
+                                </span>
+                                <input class="form-control" type="number" name="expire" id="expire" value="604800" />
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <small class="text-muted">Zone expiry time (default: 1 week)</small>
+                        </div>
             
-                    <div class="form-group">
-                        <label for="minimum">Minimum TTL</label>
-                        <small class="form-text text-muted">Default time-to-live for negative responses (in seconds, default: 86400 = 1 day)</small>
-                        
-                            <input class="form-control" type="number" name="minimum" id="minimum" value="86400" />
-                      
-                    </div>
+                        <div class="col-md-6">
+                            <label for="minimum" class="form-label">Minimum TTL</label>
+                            <div class="input-group">
+                                <span class="input-group-text">
+                                    <i class="bi bi-clock"></i>
+                                </span>
+                                <input class="form-control" type="number" name="minimum" id="minimum" value="86400" />
+                                <span class="input-group-text">seconds</span>
+                            </div>
+                            <small class="text-muted">Default TTL (default: 1 day)</small>
+                        </div>
             
-                    
-                    
-                
+                    </div>
                 </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel <i class="fa fa-times"></i></button>
-                <button type="submit" class="btn btn-primary">Create Zone <i class="fa fa-check"></i></button>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Create Zone
+                    </button>
                 </div>
             </form>
-        </fieldset>
-      </div>
+        </div>
     </div>
-  </div>
+</div>
 
+<script>
+function editZone(domain) {
+    window.location.href = `/authority/${domain}`;
+}
 
+function deleteZone(domain) {
+    if (confirm(`Are you sure you want to delete the DNS zone '${domain}'?\n\nThis will remove all DNS records for this zone.`)) {
+        fetch(`/authority/${domain}`, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                // Show success message
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alert.style.zIndex = '9999';
+                alert.innerHTML = `
+                    <i class="bi bi-check-circle me-2"></i>
+                    DNS zone deleted successfully
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(alert);
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                alert('Failed to delete zone. Please try again.');
+            }
+        })
+        .catch(error => {
+            alert('An error occurred. Please try again.');
+            console.error('Error:', error);
+        });
+    }
+}
+</script>
 
 {{/inline}}
-{{~> layout~}}
+
+{{> layout}}

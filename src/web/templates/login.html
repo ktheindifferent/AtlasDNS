@@ -1,35 +1,331 @@
-{{> layout}}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Atlas DNS Management System - Login">
+    <meta name="author" content="Atlas DNS">
 
-{{#*inline "content"}}
-<div class="container-fluid">
-    <div class="row justify-content-center">
-        <div class="col-lg-5">
-            <div class="card shadow-lg border-0 rounded-lg mt-5">
-                <div class="card-header">
-                    <h3 class="text-center font-weight-light my-4">Login</h3>
+    <title>Login - Atlas DNS</title>
+
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --atlas-primary: #0066ff;
+            --atlas-primary-dark: #0052cc;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .login-container {
+            max-width: 420px;
+            width: 100%;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .login-header {
+            background: linear-gradient(135deg, var(--atlas-primary), var(--atlas-primary-dark));
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .login-logo {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .login-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .login-subtitle {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 0.5rem;
+        }
+
+        .login-body {
+            padding: 2rem;
+        }
+
+        .form-control {
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            border: 1px solid #e0e0e0;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--atlas-primary);
+            box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+        }
+
+        .input-group-text {
+            background-color: transparent;
+            border-radius: 0.5rem 0 0 0.5rem;
+            border-right: none;
+            color: #6c757d;
+        }
+
+        .input-group .form-control {
+            border-left: none;
+            border-radius: 0 0.5rem 0.5rem 0;
+        }
+
+        .input-group:focus-within .input-group-text {
+            border-color: var(--atlas-primary);
+            color: var(--atlas-primary);
+        }
+
+        .btn-login {
+            background: linear-gradient(135deg, var(--atlas-primary), var(--atlas-primary-dark));
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.3);
+        }
+
+        .form-check-input:checked {
+            background-color: var(--atlas-primary);
+            border-color: var(--atlas-primary);
+        }
+
+        .login-footer {
+            background-color: #f8f9fa;
+            padding: 1.5rem 2rem;
+            text-align: center;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .login-footer a {
+            color: var(--atlas-primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .alert {
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: #6c757d;
+            font-size: 1.25rem;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            color: var(--atlas-primary);
+        }
+
+        [data-bs-theme="dark"] body {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        }
+
+        [data-bs-theme="dark"] .login-card {
+            background: #2a2a2a;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        [data-bs-theme="dark"] .login-footer {
+            background-color: #1a1a1a;
+            border-top-color: #3a3a3a;
+        }
+
+        [data-bs-theme="dark"] .form-control {
+            background-color: #3a3a3a;
+            border-color: #4a4a4a;
+            color: #e0e0e0;
+        }
+
+        [data-bs-theme="dark"] .input-group-text {
+            background-color: transparent;
+            color: #a0a0a0;
+        }
+
+        [data-bs-theme="dark"] .theme-toggle {
+            background: #2a2a2a;
+            color: #a0a0a0;
+        }
+    </style>
+</head>
+
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle Dark Mode">
+        <i class="bi bi-moon-fill" id="themeIcon"></i>
+    </button>
+
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-logo">
+                    <i class="bi bi-globe2"></i>
                 </div>
-                <div class="card-body">
-                    <form method="POST" action="/auth/login">
-                        <div class="form-floating mb-3">
-                            <input class="form-control" id="inputUsername" name="username" type="text" placeholder="Username" required />
-                            <label for="inputUsername">Username</label>
-                        </div>
-                        <div class="form-floating mb-3">
-                            <input class="form-control" id="inputPassword" name="password" type="password" placeholder="Password" required />
-                            <label for="inputPassword">Password</label>
-                        </div>
-                        <div class="d-flex align-items-center justify-content-between mt-4 mb-0">
-                            <button class="btn btn-primary" type="submit">Login</button>
-                        </div>
-                    </form>
+                <h1 class="login-title">Atlas DNS</h1>
+                <p class="login-subtitle">DNS Management System</p>
+            </div>
+            
+            <div class="login-body">
+                <h2 class="h5 mb-4 text-center">Welcome Back</h2>
+                
+                {{#if error}}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    {{error}}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-                <div class="card-footer text-center py-3">
-                    <div class="small">Default login: admin / admin123</div>
+                {{/if}}
+                
+                <form method="POST" action="/auth/login">
+                    <div class="mb-3">
+                        <label for="username" class="form-label small text-muted">Username</label>
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="bi bi-person"></i>
+                            </span>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="Enter your username" required autofocus>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label small text-muted">Password</label>
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="bi bi-lock"></i>
+                            </span>
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="Enter your password" required>
+                            <button class="btn btn-outline-secondary" type="button" onclick="togglePassword()">
+                                <i class="bi bi-eye" id="passwordToggle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="remember" name="remember">
+                            <label class="form-check-label" for="remember">
+                                Remember me
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-login w-100">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>
+                        Sign In
+                    </button>
+                </form>
+            </div>
+            
+            <div class="login-footer">
+                <div class="small text-muted mb-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Default credentials: <strong>admin / admin123</strong>
+                </div>
+                <div class="small">
+                    <a href="#">Forgot Password?</a>
+                    <span class="mx-2">•</span>
+                    <a href="#">Contact Support</a>
                 </div>
             </div>
         </div>
     </div>
-</div>
-{{/inline}}
 
-{{> (lookup . "parent") }}
+    <!-- Bootstrap 5.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Toggle password visibility
+        function togglePassword() {
+            const passwordField = document.getElementById('password');
+            const toggle = document.getElementById('passwordToggle');
+            
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggle.className = 'bi bi-eye-slash';
+            } else {
+                passwordField.type = 'password';
+                toggle.className = 'bi bi-eye';
+            }
+        }
+
+        // Theme Toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            // Update icon
+            const icon = document.getElementById('themeIcon');
+            icon.className = newTheme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+        }
+
+        // Load saved theme
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+            const icon = document.getElementById('themeIcon');
+            icon.className = savedTheme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+        });
+
+        // Auto-focus username field
+        document.getElementById('username').focus();
+    </script>
+</body>
+</html>
