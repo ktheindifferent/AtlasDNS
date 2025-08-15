@@ -37,13 +37,13 @@ fieldset {
             <table class="zone_table table table-striped table-bordered">
                 <tr>
                     <th>Domain</th>
-                    <th>Mname</th>
-                    <th>Rname</th>
+                    <th>Primary Name Server</th>
+                    <th>Admin Email</th>
                     <th>Serial</th>
-                    <th>Refresh</th>
-                    <th>Retry</th>
-                    <th>Expire</th>
-                    <th>Minimum</th>
+                    <th>Refresh (seconds)</th>
+                    <th>Retry (seconds)</th>
+                    <th>Expire (seconds)</th>
+                    <th>Minimum TTL (seconds)</th>
                 </tr>
                 {{#each zones}}
                 <tr>
@@ -81,51 +81,58 @@ fieldset {
                     
 
                     <div class="form-group">
-                        <label for="domain">Domain</label>
+                        <label for="domain">Domain Name</label>
+                        <small class="form-text text-muted">The domain name for this DNS zone (e.g., example.com)</small>
                       
-                            <input class="form-control" type="text" name="domain" id="domain" />
+                            <input class="form-control" type="text" name="domain" id="domain" placeholder="example.com" />
                       
                     </div>
             
                     <div class="form-group">
-                        <label for="m_name">Mname</label>
+                        <label for="m_name">Primary Name Server</label>
+                        <small class="form-text text-muted">The primary DNS server for this zone (e.g., ns1.example.com)</small>
                        
-                            <input class="form-control" type="text" name="m_name" id="m_name" />
+                            <input class="form-control" type="text" name="m_name" id="m_name" placeholder="ns1.example.com" />
                    
                     </div>
             
                     <div class="form-group">
-                        <label for="r_name">Rname</label>
+                        <label for="r_name">Administrator Email</label>
+                        <small class="form-text text-muted">Email address of the zone administrator (use dots instead of @, e.g., admin.example.com)</small>
                         
-                            <input class="form-control" type="text" name="r_name" id="r_name" />
+                            <input class="form-control" type="text" name="r_name" id="r_name" placeholder="admin.example.com" />
                        
                     </div>
             
                     <div class="form-group">
-                        <label for="refresh">Refresh</label>
+                        <label for="refresh">Refresh Interval</label>
+                        <small class="form-text text-muted">How often secondary DNS servers check for updates (in seconds, default: 3600 = 1 hour)</small>
                         
-                            <input class="form-control" type="number" name="refresh" id="refresh" value="300" />
+                            <input class="form-control" type="number" name="refresh" id="refresh" value="3600" />
                        
                     </div>
             
                     <div class="form-group">
-                        <label for="retry">Retry</label>
+                        <label for="retry">Retry Interval</label>
+                        <small class="form-text text-muted">How long to wait before retrying failed zone transfers (in seconds, default: 1800 = 30 minutes)</small>
                       
-                            <input class="form-control" type="number" name="retry" id="retry" value="300" />
+                            <input class="form-control" type="number" name="retry" id="retry" value="1800" />
                       
                     </div>
             
                     <div class="form-group">
-                        <label for="expire">Expire</label>
+                        <label for="expire">Expire Time</label>
+                        <small class="form-text text-muted">When to stop answering queries for this zone if primary is unreachable (in seconds, default: 604800 = 1 week)</small>
                         
-                            <input class="form-control" type="number" name="expire" id="expire" value="300" />
+                            <input class="form-control" type="number" name="expire" id="expire" value="604800" />
                         
                     </div>
             
                     <div class="form-group">
-                        <label for="minimum">Minimum</label>
+                        <label for="minimum">Minimum TTL</label>
+                        <small class="form-text text-muted">Default time-to-live for negative responses (in seconds, default: 86400 = 1 day)</small>
                         
-                            <input class="form-control" type="number" name="minimum" id="minimum" value="300" />
+                            <input class="form-control" type="number" name="minimum" id="minimum" value="86400" />
                       
                     </div>
             
