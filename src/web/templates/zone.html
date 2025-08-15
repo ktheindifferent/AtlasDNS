@@ -35,9 +35,11 @@ fieldset {
             <table class="record_table table table-striped table-bordered">
                 <tr>
                     <th>#</th>
-                    <th>Domain</th>
-                    <th>Type</th>
-                    <th>TTL</th>
+                    <th>Hostname</th>
+                    <th>Record Type</th>
+                    <th>TTL (seconds)</th>
+                    <th>Target/Value</th>
+                    <th>Actions</th>
                 </tr>
                 {{#each records}}
                 <tr>
@@ -63,7 +65,7 @@ fieldset {
                             <input type="hidden" name="host" value="{{record.addr}}" />
                             {{/if}}
 
-                            <button type="submit">Delete</button>
+                            <button type="submit" class="btn btn-sm btn-danger">Delete <i class="fa fa-trash"></i></button>
                         </form>
                     </td>
                 </tr>
@@ -73,49 +75,76 @@ fieldset {
     </div>
 </div>
 
-<fieldset>
-    <legend>New Record</legend>
+<!-- Modal -->
+<div class="modal fade" id="newZone" tabindex="-1" role="dialog" aria-labelledby="newRecordLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="newRecordLabel">New DNS Record</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <form method="POST" action="/authority/{{zone}}">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="recordtype">Record Type</label>
+                    <small class="form-text text-muted">Select the type of DNS record to create</small>
+                    <select class="form-control" name="recordtype" id="recordtype">
+                        <option value="A">A - IPv4 Address</option>
+                        <option value="AAAA">AAAA - IPv6 Address</option>
+                        <option value="CNAME">CNAME - Alias/Canonical Name</option>
+                    </select>
+                </div>
 
-    <form method="POST" action="/authority/{{zone}}">
+                <div class="form-group">
+                    <label for="domain">Hostname/Subdomain</label>
+                    <small class="form-text text-muted">The hostname or subdomain for this record (e.g., www, mail, or @ for root)</small>
+                    <input class="form-control" type="text" name="domain" id="domain" placeholder="www.{{zone}} or @" />
+                </div>
 
-        <div>
-            <label for="recordtype">Record Type</label>
-            <div>
-                <select name="recordtype" id="recordtype">
-                    <option value="A">A</option>
-                    <option value="AAAA">AAAA</option>
-                    <option value="CNAME">CNAME</option>
-                </select>
+                <div class="form-group">
+                    <label for="host">Target/Value</label>
+                    <small class="form-text text-muted" id="host-help">For A records: IPv4 address (e.g., 192.168.1.1)<br>For AAAA: IPv6 address<br>For CNAME: Target domain (e.g., example.com)</small>
+                    <input class="form-control" type="text" name="host" id="host" placeholder="Enter IP address or domain" />
+                </div>
+
+                <div class="form-group">
+                    <label for="ttl">TTL (Time To Live)</label>
+                    <small class="form-text text-muted">How long DNS resolvers should cache this record (in seconds, default: 3600 = 1 hour)</small>
+                    <input class="form-control" type="number" name="ttl" id="ttl" value="3600" />
+                </div>
             </div>
-        </div>
-
-        <div>
-            <label for="domain">Domain</label>
-            <div>
-                <input type="text" name="domain" id="domain" />
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel <i class="fa fa-times"></i></button>
+                <button type="submit" class="btn btn-primary">Create Record <i class="fa fa-check"></i></button>
             </div>
-        </div>
+        </form>
+      </div>
+    </div>
+</div>
 
-        <div>
-            <label for="host">Host</label>
-            <div>
-                <input type="text" name="host" id="host" />
-            </div>
-        </div>
-
-        <div>
-            <label for="ttl">TTL</label>
-            <div>
-                <input type="number" name="ttl" id="ttl" value="300" />
-            </div>
-        </div>
-
-        <div>
-            <button type="submit">Create Record</button>
-        </div>
-
-    </form>
-
-</fieldset>
+<script>
+// Update help text based on record type selection
+document.getElementById('recordtype').addEventListener('change', function() {
+    const helpText = document.getElementById('host-help');
+    const hostInput = document.getElementById('host');
+    
+    switch(this.value) {
+        case 'A':
+            helpText.innerHTML = 'Enter an IPv4 address (e.g., 192.168.1.1 or 10.0.0.1)';
+            hostInput.placeholder = '192.168.1.1';
+            break;
+        case 'AAAA':
+            helpText.innerHTML = 'Enter an IPv6 address (e.g., 2001:db8::1)';
+            hostInput.placeholder = '2001:db8::1';
+            break;
+        case 'CNAME':
+            helpText.innerHTML = 'Enter the target domain name (e.g., example.com or cdn.example.com)';
+            hostInput.placeholder = 'target.example.com';
+            break;
+    }
+});
+</script>
 {{/inline}}
 {{~> layout~}}

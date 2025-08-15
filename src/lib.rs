@@ -22,3 +22,6 @@ pub mod dns;
 
 /// Web server and HTTP API for DNS management
 pub mod web;
+
+/// Privilege escalation utilities for binding to privileged ports
+pub mod privilege_escalation;

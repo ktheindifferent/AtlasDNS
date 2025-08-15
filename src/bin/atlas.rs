@@ -9,6 +9,7 @@ use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::dns::acme::{AcmeConfig, AcmeProvider};
 use atlas::web::server::WebServer;
+use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -75,6 +76,11 @@ fn main() {
         "Path to SSL private key file (if not using ACME)",
         "PATH",
     );
+    opts.optflag(
+        "",
+        "skip-privilege-check",
+        "Skip privilege escalation check (for development)",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -84,6 +90,39 @@ fn main() {
     if opt_matches.opt_present("h") {
         print_usage(&program, opts);
         return;
+    }
+
+    // Check if we need elevated privileges for DNS port (53)
+    let dns_port = 53u16; // Default DNS port
+    let skip_privilege_check = opt_matches.opt_present("skip-privilege-check");
+    
+    if !skip_privilege_check && port_requires_privileges(dns_port) && !has_admin_privileges() {
+        log::info!("DNS server requires elevated privileges to bind to port {}.", dns_port);
+        log::info!("Attempting automatic privilege escalation...");
+        
+        match escalate_privileges() {
+            Ok(_) => {
+                // This should not be reached as escalate_privileges exits the process
+                log::info!("Privilege escalation successful");
+            }
+            Err(e) => {
+                log::warn!("Automatic privilege escalation failed: {}", e);
+                log::info!("\n=== Administrator Privileges Required ===");
+                log::info!("The DNS server needs to bind to port 53, which requires elevated privileges.");
+                log::info!("\nPlease run the application with administrator/root privileges:");
+                #[cfg(unix)]
+                log::info!("  sudo {}", args.join(" "));
+                #[cfg(windows)]
+                log::info!("  Run as Administrator: {}", args.join(" "));
+                log::info!("\nAlternatively, for development, you can skip this check with:");
+                log::info!("  {} --skip-privilege-check", args[0]);
+                log::info!("  (Note: The server may fail to bind to port 53 without privileges)");
+                log::info!("========================================\n");
+                std::process::exit(1);
+            }
+        }
+    } else if skip_privilege_check && !has_admin_privileges() {
+        log::warn!("Skipping privilege check - server may fail to bind to privileged ports");
     }
 
     let mut context = Arc::new(ServerContext::new().expect("Failed to initialize DNS server context"));
