@@ -11,8 +11,10 @@ use crate::dns::context::ServerContext;
 use crate::dns::acme::AcmeCertificateManager;
 use crate::web::{
     authority, cache, index,
+    users::{UserManager, LoginRequest, CreateUserRequest, UpdateUserRequest, UserRole},
+    sessions::{SessionMiddleware, create_session_cookie, clear_session_cookie},
     util::{parse_formdata, FormDataDecodable},
-    Result,
+    Result, WebError,
 };
 
 trait MediaType {
@@ -48,13 +50,20 @@ impl MediaType for Request {
 pub struct WebServer<'a> {
     pub context: Arc<ServerContext>,
     pub handlebars: Handlebars<'a>,
+    pub user_manager: Arc<UserManager>,
+    pub session_middleware: Arc<SessionMiddleware>,
 }
 
 impl<'a> WebServer<'a> {
     pub fn new(context: Arc<ServerContext>) -> WebServer<'a> {
+        let user_manager = Arc::new(UserManager::new());
+        let session_middleware = Arc::new(SessionMiddleware::new(user_manager.clone()));
+        
         let mut server = WebServer {
             context,
             handlebars: Handlebars::new(),
+            user_manager,
+            session_middleware,
         };
 
         let mut register_template = |name, data: &str| {
@@ -71,6 +80,10 @@ impl<'a> WebServer<'a> {
         register_template("cache", include_str!("templates/cache.html"));
         register_template("zone", include_str!("templates/zone.html"));
         register_template("index", include_str!("templates/index.html"));
+        register_template("login", include_str!("templates/login.html"));
+        register_template("users", include_str!("templates/users.html"));
+        register_template("sessions", include_str!("templates/sessions.html"));
+        register_template("profile", include_str!("templates/profile.html"));
 
         server
     }
@@ -85,6 +98,22 @@ impl<'a> WebServer<'a> {
         let url_parts: Vec<&str> = url.split("/").filter(|x| !x.is_empty()).collect();
 
         match (method, url_parts.as_slice()) {
+            (Method::Post, ["auth", "login"]) => self.login(request),
+            (Method::Post, ["auth", "logout"]) => self.logout(request),
+            (Method::Get, ["auth", "login"]) => self.login_page(request),
+            
+            (Method::Post, ["users"]) => self.create_user(request),
+            (Method::Get, ["users"]) => self.list_users(request),
+            (Method::Get, ["users", user_id]) => self.get_user_details(request, user_id),
+            (Method::Put, ["users", user_id]) => self.update_user(request, user_id),
+            (Method::Delete, ["users", user_id]) => self.delete_user(request, user_id),
+            
+            (Method::Get, ["sessions"]) => self.list_sessions(request),
+            (Method::Delete, ["sessions", session_id]) => self.revoke_session(request, session_id),
+            
+            (Method::Get, ["profile"]) => self.user_profile(request),
+            (Method::Put, ["profile"]) => self.update_profile(request),
+            
             (Method::Post, ["authority", zone]) => self.record_create(request, zone),
             (Method::Delete, ["authority", zone]) => self.record_delete(request, zone),
             (Method::Post, ["authority", zone, "delete_record"]) => self.record_delete(request, zone),
@@ -390,6 +419,236 @@ impl<'a> WebServer<'a> {
     fn not_found(&self, _request: &Request) -> Result<ResponseBox> {
         Ok(Response::from_string("Not found")
             .with_status_code(404)
+            .boxed())
+    }
+    
+    fn login_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Login",
+        });
+        self.response_from_media_type(request, "login", data)
+    }
+    
+    fn login(&self, request: &mut Request) -> Result<ResponseBox> {
+        let login_request: LoginRequest = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?
+        } else {
+            parse_formdata(&mut request.as_reader())
+                .and_then(LoginRequest::from_formdata)?
+        };
+        
+        let user = self.user_manager
+            .authenticate(&login_request.username, &login_request.password)
+            .map_err(|e| WebError::AuthenticationError(e))?;
+        
+        let ip_address = self.session_middleware.get_ip_address(request);
+        let user_agent = self.session_middleware.get_user_agent(request);
+        
+        let session = self.user_manager
+            .create_session(user.id.clone(), ip_address, user_agent)
+            .map_err(|e| WebError::AuthenticationError(e))?;
+        
+        if request.json_output() {
+            let response_data = serde_json::json!({
+                "token": session.token,
+                "user": user,
+                "expires_at": session.expires_at,
+            });
+            Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            Ok(Response::empty(302)
+                .with_header(create_session_cookie(&session.token))
+                .with_header::<tiny_http::Header>("Location: /".parse().unwrap())
+                .boxed())
+        }
+    }
+    
+    fn logout(&self, request: &mut Request) -> Result<ResponseBox> {
+        if let Some(token) = self.session_middleware.extract_token(request) {
+            let _ = self.user_manager.invalidate_session(&token);
+        }
+        
+        if request.json_output() {
+            Ok(Response::from_string("{\"success\":true}")
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            Ok(Response::empty(302)
+                .with_header(clear_session_cookie())
+                .with_header::<tiny_http::Header>("Location: /auth/login".parse().unwrap())
+                .boxed())
+        }
+    }
+    
+    fn create_user(&self, request: &mut Request) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_role(request, vec![UserRole::Admin])
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let create_request: CreateUserRequest = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?
+        } else {
+            parse_formdata(&mut request.as_reader())
+                .and_then(CreateUserRequest::from_formdata)?
+        };
+        
+        let user = self.user_manager
+            .create_user(create_request)
+            .map_err(|e| WebError::InvalidRequest)?;
+        
+        if request.json_output() {
+            Ok(Response::from_string(serde_json::to_string(&user)?)
+                .with_status_code(201)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            Ok(Response::empty(302)
+                .with_header::<tiny_http::Header>("Location: /users".parse().unwrap())
+                .boxed())
+        }
+    }
+    
+    fn list_users(&self, request: &Request) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let users = self.user_manager
+            .list_users()
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        let data = serde_json::json!({
+            "title": "Users",
+            "users": users,
+        });
+        
+        self.response_from_media_type(request, "users", data)
+    }
+    
+    fn get_user_details(&self, request: &Request, user_id: &str) -> Result<ResponseBox> {
+        let (_, current_user) = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        if current_user.id != user_id && current_user.role != UserRole::Admin {
+            return Err(WebError::AuthorizationError("Insufficient permissions".to_string()));
+        }
+        
+        let user = self.user_manager
+            .get_user(user_id)
+            .map_err(|_| WebError::UserNotFound)?;
+        
+        if request.json_output() {
+            Ok(Response::from_string(serde_json::to_string(&user)?)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            let data = serde_json::json!({
+                "title": "User Details",
+                "user": user,
+            });
+            self.response_from_media_type(request, "profile", data)
+        }
+    }
+    
+    fn update_user(&self, request: &mut Request, user_id: &str) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_role(request, vec![UserRole::Admin])
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let update_request: UpdateUserRequest = serde_json::from_reader(request.as_reader())?;
+        
+        let user = self.user_manager
+            .update_user(user_id, update_request)
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        Ok(Response::from_string(serde_json::to_string(&user)?)
+            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .boxed())
+    }
+    
+    fn delete_user(&self, request: &Request, user_id: &str) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_role(request, vec![UserRole::Admin])
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        self.user_manager
+            .delete_user(user_id)
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        Ok(Response::empty(204).boxed())
+    }
+    
+    fn list_sessions(&self, request: &Request) -> Result<ResponseBox> {
+        let (_, user) = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let user_id = if user.role == UserRole::Admin {
+            None
+        } else {
+            Some(user.id.as_str())
+        };
+        
+        let sessions = self.user_manager
+            .list_sessions(user_id)
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        let data = serde_json::json!({
+            "title": "Sessions",
+            "sessions": sessions,
+        });
+        
+        self.response_from_media_type(request, "sessions", data)
+    }
+    
+    fn revoke_session(&self, request: &Request, session_token: &str) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        self.user_manager
+            .invalidate_session(session_token)
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        Ok(Response::empty(204).boxed())
+    }
+    
+    fn user_profile(&self, request: &Request) -> Result<ResponseBox> {
+        let (_, user) = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let data = serde_json::json!({
+            "title": "Profile",
+            "user": user,
+        });
+        
+        self.response_from_media_type(request, "profile", data)
+    }
+    
+    fn update_profile(&self, request: &mut Request) -> Result<ResponseBox> {
+        let (_, user) = self.session_middleware
+            .require_auth(request)
+            .map_err(|e| WebError::AuthorizationError(e))?;
+        
+        let update_request: UpdateUserRequest = serde_json::from_reader(request.as_reader())?;
+        
+        let limited_request = UpdateUserRequest {
+            email: update_request.email,
+            password: update_request.password,
+            role: None,
+            is_active: None,
+        };
+        
+        let updated_user = self.user_manager
+            .update_user(&user.id, limited_request)
+            .map_err(|_e| WebError::InvalidRequest)?;
+        
+        Ok(Response::from_string(serde_json::to_string(&updated_user)?)
+            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
             .boxed())
     }
 }

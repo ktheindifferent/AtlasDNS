@@ -1,0 +1,78 @@
+{{> layout}}
+
+{{#*inline "content"}}
+<div class="container-fluid">
+    <h1 class="mt-4">Active Sessions</h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item active">Sessions</li>
+    </ol>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-key me-1"></i>
+            Active Sessions
+        </div>
+        <div class="card-body">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Session ID</th>
+                        <th>User ID</th>
+                        <th>IP Address</th>
+                        <th>User Agent</th>
+                        <th>Created</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each sessions}}
+                    <tr>
+                        <td><code>{{id}}</code></td>
+                        <td>{{user_id}}</td>
+                        <td>{{#if ip_address}}{{ip_address}}{{else}}-{{/if}}</td>
+                        <td>
+                            {{#if user_agent}}
+                                <span title="{{user_agent}}">{{truncate user_agent 30}}</span>
+                            {{else}}
+                                -
+                            {{/if}}
+                        </td>
+                        <td>{{created_at}}</td>
+                        <td>{{expires_at}}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger" onclick="revokeSession('{{token}}')">
+                                <i class="fas fa-times"></i> Revoke
+                            </button>
+                        </td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function revokeSession(sessionToken) {
+    if (confirm('Are you sure you want to revoke this session?')) {
+        fetch(`/sessions/${sessionToken}`, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Failed to revoke session');
+            }
+        });
+    }
+}
+</script>
+{{/inline}}
+
+{{> (lookup . "parent") }}
