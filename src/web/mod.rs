@@ -1,4 +1,4 @@
-use derive_more::{Display, From};
+use derive_more::Display;
 
 pub mod authority;
 pub mod cache;
@@ -7,6 +7,7 @@ pub mod server;
 pub mod sessions;
 pub mod users;
 pub mod util;
+pub mod system_info;
 
 #[derive(Debug, Display)]
 pub enum WebError {
@@ -51,3 +52,6 @@ impl From<handlebars::RenderError> for WebError {
 impl std::error::Error for WebError {}
 
 pub type Result<T> = std::result::Result<T, WebError>;
+
+#[cfg(test)]
+mod users_test;

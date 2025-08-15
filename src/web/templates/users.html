@@ -122,8 +122,8 @@
                         </td>
                         <td>{{email}}</td>
                         <td>
-                            <span class="badge rounded-pill bg-{{#if (eq role "Admin")}}danger{{else if (eq role "ReadOnly")}}secondary{{else}}primary{{/if}}">
-                                <i class="bi bi-{{#if (eq role "Admin")}}shield-lock{{else if (eq role "ReadOnly")}}eye{{else}}person{{/if}} me-1"></i>
+                            <span class="badge rounded-pill bg-primary" data-role="{{role}}">
+                                <i class="bi bi-person me-1" data-role-icon="{{role}}"></i>
                                 {{role}}
                             </span>
                         </td>
@@ -322,6 +322,38 @@ function deleteUser(userId) {
         });
     }
 }
+</script>
+{{/inline}}
+
+{{#*inline "header"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Apply role-based styling to all role badges
+    document.querySelectorAll('[data-role]').forEach(badge => {
+        const role = badge.dataset.role;
+        badge.classList.remove('bg-primary');
+        if (role === 'Admin') {
+            badge.classList.add('bg-danger');
+        } else if (role === 'ReadOnly') {
+            badge.classList.add('bg-secondary');
+        } else {
+            badge.classList.add('bg-primary');
+        }
+    });
+    
+    // Update role icons
+    document.querySelectorAll('[data-role-icon]').forEach(icon => {
+        const role = icon.dataset.roleIcon;
+        icon.classList.remove('bi-person');
+        if (role === 'Admin') {
+            icon.classList.add('bi-shield-lock');
+        } else if (role === 'ReadOnly') {
+            icon.classList.add('bi-eye');
+        } else {
+            icon.classList.add('bi-person');
+        }
+    });
+});
 </script>
 {{/inline}}
 

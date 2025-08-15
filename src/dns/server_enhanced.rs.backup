@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
-use crate::dns::errors::{DnsError, DnsResult, ErrorContext, NetworkErrorKind};
+use crate::dns::errors::{DnsError, DnsResult};
 use crate::dns::rate_limit::{RateLimiter, RateLimitConfig};
 use crate::dns::health::HealthMonitor;
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, QueryType};
+use crate::dns::protocol::DnsPacket;
 use crate::dns::server::{execute_query, DnsServer};
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, VectorPacketBuffer};
 
@@ -368,7 +368,6 @@ use tokio;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
 
     #[test]
     fn test_domain_validation() {

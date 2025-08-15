@@ -37,7 +37,7 @@ impl ServerStatistics {
 }
 
 /// DNS resolution strategy configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ResolveStrategy {
     /// Perform recursive resolution starting from root servers
     Recursive,

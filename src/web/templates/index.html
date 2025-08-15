@@ -3,22 +3,30 @@
 {{#*inline "current_page"}}dashboard{{/inline}}
 
 {{#*inline "content"}}
-<div class="page-header">
-    <h1 class="page-title">Dashboard</h1>
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
-        </ol>
-    </nav>
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <h1 class="page-title">Dashboard</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <small class="text-muted" id="lastRefresh">Last updated: just now</small>
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshDashboardData()" data-bs-toggle="tooltip" title="Refresh Dashboard (R)">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </div>
 </div>
 
 <!-- Stats Cards -->
 <div class="row g-3 mb-4">
     <div class="col-12 col-sm-6 col-lg-3">
-        <div class="stat-card">
+        <div class="stat-card" data-bs-toggle="tooltip" title="Total configured DNS zones">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="stat-value">{{#if total_zones}}{{total_zones}}{{else}}0{{/if}}</div>
+                    <div class="stat-value" data-counter="zones">{{#if total_zones}}{{total_zones}}{{else}}0{{/if}}</div>
                     <div class="stat-label">DNS Zones</div>
                 </div>
                 <i class="bi bi-diagram-3 fs-2 opacity-50"></i>
@@ -27,10 +35,10 @@
     </div>
     
     <div class="col-12 col-sm-6 col-lg-3">
-        <div class="stat-card" style="background: linear-gradient(135deg, #00d084, #00a068);">
+        <div class="stat-card" style="background: linear-gradient(135deg, #00d084, #00a068);" data-bs-toggle="tooltip" title="Total DNS records across all zones">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="stat-value">{{#if total_records}}{{total_records}}{{else}}0{{/if}}</div>
+                    <div class="stat-value" data-counter="records">{{#if total_records}}{{total_records}}{{else}}0{{/if}}</div>
                     <div class="stat-label">DNS Records</div>
                 </div>
                 <i class="bi bi-list-ul fs-2 opacity-50"></i>
@@ -39,10 +47,10 @@
     </div>
     
     <div class="col-12 col-sm-6 col-lg-3">
-        <div class="stat-card" style="background: linear-gradient(135deg, #00a8e8, #0086b8);">
+        <div class="stat-card" style="background: linear-gradient(135deg, #00a8e8, #0086b8);" data-bs-toggle="tooltip" title="Cached DNS responses">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="stat-value">{{#if cache_entries}}{{cache_entries}}{{else}}0{{/if}}</div>
+                    <div class="stat-value" data-counter="cache">{{#if cache_entries}}{{cache_entries}}{{else}}0{{/if}}</div>
                     <div class="stat-label">Cache Entries</div>
                 </div>
                 <i class="bi bi-archive fs-2 opacity-50"></i>
@@ -51,13 +59,64 @@
     </div>
     
     <div class="col-12 col-sm-6 col-lg-3">
-        <div class="stat-card" style="background: linear-gradient(135deg, #ffc107, #ff9800);">
+        <div class="stat-card" style="background: linear-gradient(135deg, #ffc107, #ff9800);" data-bs-toggle="tooltip" title="Currently active user sessions">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="stat-value">{{#if active_users}}{{active_users}}{{else}}0{{/if}}</div>
+                    <div class="stat-value" data-counter="users">{{#if active_users}}{{active_users}}{{else}}0{{/if}}</div>
                     <div class="stat-label">Active Users</div>
                 </div>
                 <i class="bi bi-people fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hardware Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #6f42c1, #5a32a3);" data-bs-toggle="tooltip" title="Current CPU usage percentage">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value" data-counter="cpu">{{#if cpu_usage}}{{cpu_usage}}%{{else}}0%{{/if}}</div>
+                    <div class="stat-label">CPU Usage</div>
+                </div>
+                <i class="bi bi-cpu fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #e83e8c, #c73384);" data-bs-toggle="tooltip" title="Current memory usage percentage">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value" data-counter="memory">{{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}</div>
+                    <div class="stat-label">Memory Usage</div>
+                </div>
+                <i class="bi bi-memory fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #fd7e14, #e8620b);" data-bs-toggle="tooltip" title="Current disk space usage">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value" data-counter="disk">{{#if disk_usage}}{{disk_usage}}%{{else}}0%{{/if}}</div>
+                    <div class="stat-label">Disk Usage</div>
+                </div>
+                <i class="bi bi-hdd fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="stat-card" style="background: linear-gradient(135deg, #198754, #146c43);" data-bs-toggle="tooltip" title="System uptime">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stat-value" data-counter="uptime" style="font-size: 1.2rem;">{{#if uptime}}{{uptime}}{{else}}Unknown{{/if}}</div>
+                    <div class="stat-label">System Uptime</div>
+                </div>
+                <i class="bi bi-clock fs-2 opacity-50"></i>
             </div>
         </div>
     </div>
@@ -164,16 +223,61 @@
                         <span class="text-muted">{{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}</span>
                     </div>
                     <div class="progress" style="height: 6px;">
-                        <div class="progress-bar bg-warning" style="width: {{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}"></div>
+                        <div class="progress-bar {{#if memory_usage}}{{#if (gt memory_usage 80)}}bg-danger{{else}}{{#if (gt memory_usage 60)}}bg-warning{{else}}bg-success{{/if}}{{/if}}{{else}}bg-secondary{{/if}}" 
+                             style="width: {{#if memory_usage}}{{memory_usage}}%{{else}}0%{{/if}}"></div>
+                    </div>
+                    <small class="text-muted">{{memory_used}} / {{memory_total}}</small>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>CPU Usage</span>
+                        <span class="text-muted">{{#if cpu_usage}}{{cpu_usage}}%{{else}}0%{{/if}}</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar {{#if cpu_usage}}{{#if (gt cpu_usage 80)}}bg-danger{{else}}{{#if (gt cpu_usage 60)}}bg-warning{{else}}bg-info{{/if}}{{/if}}{{else}}bg-secondary{{/if}}" 
+                             style="width: {{#if cpu_usage}}{{cpu_usage}}%{{else}}0%{{/if}}"></div>
+                    </div>
+                    <small class="text-muted">{{cpu_cores}} cores • {{cpu_brand}}</small>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Disk Usage</span>
+                        <span class="text-muted">{{#if disk_usage}}{{disk_usage}}%{{else}}0%{{/if}}</span>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar {{#if disk_usage}}{{#if (gt disk_usage 90)}}bg-danger{{else}}{{#if (gt disk_usage 75)}}bg-warning{{else}}bg-primary{{/if}}{{/if}}{{else}}bg-secondary{{/if}}" 
+                             style="width: {{#if disk_usage}}{{disk_usage}}%{{else}}0%{{/if}}"></div>
+                    </div>
+                    <small class="text-muted">{{disk_used}} / {{disk_total}}</small>
+                </div>
+
+                {{#if cpu_temperature}}
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>CPU Temperature</span>
+                        <span class="{{#if (gt cpu_temperature 75)}}text-danger{{else}}{{#if (gt cpu_temperature 60)}}text-warning{{else}}text-success{{/if}}{{/if}}">
+                            {{cpu_temperature}}°C
+                        </span>
                     </div>
                 </div>
+                {{/if}}
                 
                 <hr>
                 
                 <div class="small text-muted">
                     <div class="mb-2">
                         <i class="bi bi-clock me-1"></i>
-                        Uptime: {{#if uptime}}{{uptime}}{{else}}0 days{{/if}}
+                        Uptime: {{#if uptime}}{{uptime}}{{else}}Unknown{{/if}}
+                    </div>
+                    <div class="mb-2">
+                        <i class="bi bi-cpu me-1"></i>
+                        OS: {{#if os_name}}{{os_name}} {{os_version}}{{else}}Unknown{{/if}}
+                    </div>
+                    <div class="mb-2">
+                        <i class="bi bi-pc-display me-1"></i>
+                        Host: {{#if hostname}}{{hostname}}{{else}}Unknown{{/if}}
                     </div>
                     <div class="mb-2">
                         <i class="bi bi-hdd me-1"></i>
@@ -272,6 +376,95 @@
         </div>
     </div>
 </div>
+{{/inline}}
+
+{{#*inline "header"}}
+<script>
+    // Real-time dashboard updates
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize dashboard with loading states
+        initializeDashboard();
+        
+        // Refresh dashboard data every 30 seconds
+        setInterval(refreshDashboardData, 30000);
+        
+        // Add quick action keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                refreshDashboardData();
+                showToast('Refreshing dashboard...', 'info', 2000);
+            }
+        });
+    });
+    
+    function initializeDashboard() {
+        // Add loading animations to stat cards
+        document.querySelectorAll('.stat-card').forEach(card => {
+            card.style.animation = 'fadeIn 0.5s ease';
+        });
+        
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Add hover effects to zone rows
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('mouseenter', function() {
+                this.style.transform = 'translateX(2px)';
+                this.style.transition = 'transform 0.2s ease';
+            });
+            row.addEventListener('mouseleave', function() {
+                this.style.transform = 'translateX(0)';
+            });
+        });
+    }
+    
+    function refreshDashboardData() {
+        // Simulate fetching new data
+        const statValues = document.querySelectorAll('.stat-value');
+        statValues.forEach(stat => {
+            stat.style.opacity = '0.5';
+            setTimeout(() => {
+                stat.style.opacity = '1';
+                // Add a subtle pulse animation
+                stat.style.animation = 'pulse 0.5s ease';
+            }, 500);
+        });
+        
+        // Update last refresh time
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        updateLastRefreshTime(timeString);
+    }
+    
+    function updateLastRefreshTime(time) {
+        const refreshIndicator = document.getElementById('lastRefresh');
+        if (refreshIndicator) {
+            refreshIndicator.textContent = `Last updated: ${time}`;
+        }
+    }
+    
+    // Add pulse animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    `;
+    document.head.appendChild(style);
+</script>
 {{/inline}}
 
 {{> layout}}

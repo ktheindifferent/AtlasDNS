@@ -1,4 +1,40 @@
-//! a threadsafe cache for DNS information
+//! DNS Response Cache
+//!
+//! This module provides a thread-safe, TTL-aware cache for DNS responses.
+//! The cache helps improve performance by storing previously resolved DNS queries
+//! and serves them directly without needing to perform expensive lookups.
+//!
+//! # Features
+//!
+//! * Thread-safe operations using RwLock
+//! * TTL-based automatic expiration
+//! * Support for both positive and negative caching
+//! * Memory-efficient storage with deduplication
+//! * Query type-specific cache organization
+//!
+//! # Cache Structure
+//!
+//! The cache is organized by:
+//! 1. Domain name (case-insensitive)
+//! 2. Query type (A, AAAA, NS, etc.)
+//! 3. Record entries with timestamps
+//!
+//! # Usage
+//!
+//! ```rust,no_run
+//! # use atlas::dns::cache::SynchronizedCache;
+//! # use atlas::dns::protocol::{DnsRecord, QueryType};
+//! let cache = SynchronizedCache::new();
+//! 
+//! // Store a record
+//! let records = vec![/* DNS records */];
+//! cache.store(&records);
+//! 
+//! // Lookup records
+//! if let Some(result) = cache.lookup("example.com", QueryType::A) {
+//!     // Use cached result
+//! }
+//! ```
 
 use std::clone::Clone;
 use std::collections::{BTreeMap, HashMap, HashSet};

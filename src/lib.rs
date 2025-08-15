@@ -1,6 +1,8 @@
 //! Atlas DNS Server
 //! 
 //! A high-performance, authoritative DNS server implementation in Rust with web management interface.
+
+#![recursion_limit = "512"]
 //! 
 //! # Features
 //! 

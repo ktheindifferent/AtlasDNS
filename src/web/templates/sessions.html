@@ -54,15 +54,7 @@
                             <td>
                                 {{#if user_agent}}
                                     <span class="small" title="{{user_agent}}">
-                                        {{#if (contains user_agent "Chrome")}}
-                                            <i class="bi bi-browser-chrome text-warning"></i>
-                                        {{else if (contains user_agent "Firefox")}}
-                                            <i class="bi bi-browser-firefox text-danger"></i>
-                                        {{else if (contains user_agent "Safari")}}
-                                            <i class="bi bi-browser-safari text-primary"></i>
-                                        {{else}}
-                                            <i class="bi bi-browser-edge text-info"></i>
-                                        {{/if}}
+                                        <i class="bi bi-globe text-muted" data-browser="{{user_agent}}"></i>
                                         Browser
                                     </span>
                                 {{else}}
@@ -172,6 +164,30 @@ function revokeAllOtherSessions() {
     // Implementation would depend on backend support
     alert('This feature is not yet implemented');
 }
+</script>
+{{/inline}}
+
+{{#*inline "header"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Update browser icons based on user agent
+    document.querySelectorAll('[data-browser]').forEach(icon => {
+        const userAgent = icon.dataset.browser;
+        icon.classList.remove('bi-globe', 'text-muted');
+        
+        if (userAgent.includes('Chrome')) {
+            icon.classList.add('bi-browser-chrome', 'text-warning');
+        } else if (userAgent.includes('Firefox')) {
+            icon.classList.add('bi-browser-firefox', 'text-danger');
+        } else if (userAgent.includes('Safari')) {
+            icon.classList.add('bi-browser-safari', 'text-primary');
+        } else if (userAgent.includes('Edge')) {
+            icon.classList.add('bi-browser-edge', 'text-info');
+        } else {
+            icon.classList.add('bi-globe', 'text-muted');
+        }
+    });
+});
 </script>
 {{/inline}}
 

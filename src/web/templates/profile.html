@@ -37,7 +37,7 @@
                 <div class="mb-3">
                     <label class="form-label small text-muted">Role</label>
                     <div>
-                        <span class="badge bg-{{#if (eq user.role "Admin")}}danger{{else if (eq user.role "ReadOnly")}}secondary{{else}}primary{{/if}}">
+                        <span class="badge bg-primary" data-role="{{user.role}}">
                             {{user.role}}
                         </span>
                     </div>
@@ -210,6 +210,26 @@ document.getElementById('updateProfileForm').addEventListener('submit', function
         `;
         this.appendChild(alert);
     });
+});
+</script>
+{{/inline}}
+
+{{#*inline "header"}}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Apply role-based styling
+    const roleBadge = document.querySelector('[data-role]');
+    if (roleBadge) {
+        const role = roleBadge.dataset.role;
+        roleBadge.classList.remove('bg-primary');
+        if (role === 'Admin') {
+            roleBadge.classList.add('bg-danger');
+        } else if (role === 'ReadOnly') {
+            roleBadge.classList.add('bg-secondary');
+        } else {
+            roleBadge.classList.add('bg-primary');
+        }
+    }
 });
 </script>
 {{/inline}}

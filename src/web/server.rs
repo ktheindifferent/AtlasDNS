@@ -64,10 +64,11 @@ impl<'a> WebServer<'a> {
         // Register the 'eq' helper for comparing values in templates
         handlebars.register_helper(
             "eq",
-            Box::new(|h: &handlebars::Helper, _: &Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+            Box::new(|h: &handlebars::Helper, _r: &Handlebars, _ctx: &handlebars::Context, _rc: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
                 let param1 = h.param(0).and_then(|v| v.value().as_str());
                 let param2 = h.param(1).and_then(|v| v.value().as_str());
                 
+                // Simple inline helper - just output true/false for use in {{#if}}
                 if param1 == param2 {
                     out.write("true")?;
                 }
@@ -100,6 +101,20 @@ impl<'a> WebServer<'a> {
                 let needle = h.param(1).and_then(|v| v.value().as_str()).unwrap_or("");
                 
                 if haystack.contains(needle) {
+                    out.write("true")?;
+                }
+                Ok(())
+            })
+        );
+        
+        // Register the 'gt' helper for greater than comparisons
+        handlebars.register_helper(
+            "gt",
+            Box::new(|h: &handlebars::Helper, _: &Handlebars, _: &handlebars::Context, _: &mut handlebars::RenderContext, out: &mut dyn handlebars::Output| -> handlebars::HelperResult {
+                let param1 = h.param(0).and_then(|v| v.value().as_f64()).unwrap_or(0.0);
+                let param2 = h.param(1).and_then(|v| v.value().as_f64()).unwrap_or(0.0);
+                
+                if param1 > param2 {
                     out.write("true")?;
                 }
                 Ok(())
@@ -143,6 +158,31 @@ impl<'a> WebServer<'a> {
         let url = request.url().to_string();
         let method = request.method();
         let url_parts: Vec<&str> = url.split("/").filter(|x| !x.is_empty()).collect();
+
+        // Public routes that don't require authentication
+        let is_public_route = matches!(
+            (method, url_parts.as_slice()),
+            (Method::Get, ["auth", "login"]) |
+            (Method::Post, ["auth", "login"])
+        );
+
+        // Check authentication for protected routes
+        if !is_public_route {
+            // Check if user has a valid session
+            if let Err(_) = self.session_middleware.validate_request(request) {
+                // For API requests, return 401
+                if request.json_output() {
+                    return Ok(Response::from_string("{\"error\": \"Unauthorized\"}")
+                        .with_status_code(401)
+                        .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                        .boxed());
+                }
+                // For web requests, redirect to login
+                return Ok(Response::empty(302)
+                    .with_header::<tiny_http::Header>("Location: /auth/login".parse().unwrap())
+                    .boxed());
+            }
+        }
 
         match (method, url_parts.as_slice()) {
             (Method::Post, ["auth", "login"]) => self.login(request),
@@ -388,18 +428,33 @@ impl<'a> WebServer<'a> {
         })
     }
 
+    fn add_user_context(&self, request: &Request, data: &mut serde_json::Value) -> Result<()> {
+        // Try to get user session data
+        if let Ok((_, user)) = self.session_middleware.validate_request(request) {
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("username".to_string(), serde_json::json!(user.username));
+                obj.insert("role".to_string(), serde_json::json!(user.role));
+                obj.insert("user_id".to_string(), serde_json::json!(user.id));
+            }
+        }
+        Ok(())
+    }
+
     fn index(&self, request: &Request) -> Result<ResponseBox> {
-        let index_result = index::index(&self.context)?;
+        let mut index_result = index::index(&self.context)?;
+        self.add_user_context(request, &mut index_result)?;
         self.response_from_media_type(request, "index", index_result)
     }
 
     fn zone_list(&self, request: &Request) -> Result<ResponseBox> {
-        let zone_list_result = authority::zone_list(&self.context)?;
+        let mut zone_list_result = authority::zone_list(&self.context)?;
+        self.add_user_context(request, &mut zone_list_result)?;
         self.response_from_media_type(request, "authority", zone_list_result)
     }
 
     fn zone_view(&self, request: &Request, zone: &str) -> Result<ResponseBox> {
-        let zone_view_result = authority::zone_view(&self.context, zone)?;
+        let mut zone_view_result = authority::zone_view(&self.context, zone)?;
+        self.add_user_context(request, &mut zone_view_result)?;
         self.response_from_media_type(request, "zone", zone_view_result)
     }
 
@@ -460,7 +515,9 @@ impl<'a> WebServer<'a> {
 
     fn cacheinfo(&self, request: &Request) -> Result<ResponseBox> {
         let cacheinfo_result = cache::cacheinfo(&self.context)?;
-        self.response_from_media_type(request, "cache", cacheinfo_result)
+        let mut data = serde_json::to_value(cacheinfo_result)?;
+        self.add_user_context(request, &mut data)?;
+        self.response_from_media_type(request, "cache", data)
     }
 
     fn not_found(&self, _request: &Request) -> Result<ResponseBox> {
@@ -543,7 +600,7 @@ impl<'a> WebServer<'a> {
         
         let user = self.user_manager
             .create_user(create_request)
-            .map_err(|e| WebError::InvalidRequest)?;
+            .map_err(|_| WebError::InvalidRequest)?;
         
         if request.json_output() {
             Ok(Response::from_string(serde_json::to_string(&user)?)

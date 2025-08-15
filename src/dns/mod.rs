@@ -68,3 +68,6 @@ pub mod health;
 
 /// ACME certificate management for SSL/TLS
 pub mod acme;
+
+#[cfg(test)]
+mod cache_test;

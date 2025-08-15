@@ -279,7 +279,52 @@ function editZone(domain) {
 }
 
 function deleteZone(domain) {
-    if (confirm(`Are you sure you want to delete the DNS zone '${domain}'?\n\nThis will remove all DNS records for this zone.`)) {
+    // Create custom confirmation modal instead of browser confirm
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-exclamation-triangle text-warning me-2"></i>
+                        Confirm Deletion
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete the DNS zone <strong>${domain}</strong>?</p>
+                    <div class="alert alert-warning d-flex align-items-center">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <div>
+                            This action will permanently remove all DNS records associated with this zone and cannot be undone.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-danger" id="confirmDelete">
+                        <i class="bi bi-trash me-1"></i>
+                        Delete Zone
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    // Handle deletion
+    document.getElementById('confirmDelete').addEventListener('click', function() {
+        // Show loading state
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+        this.disabled = true;
+        
         fetch(`/authority/${domain}`, {
             method: 'DELETE',
             headers: {
@@ -288,27 +333,135 @@ function deleteZone(domain) {
         })
         .then(response => {
             if (response.ok) {
-                // Show success message
-                const alert = document.createElement('div');
-                alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                alert.style.zIndex = '9999';
-                alert.innerHTML = `
-                    <i class="bi bi-check-circle me-2"></i>
-                    DNS zone deleted successfully
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                `;
-                document.body.appendChild(alert);
-                setTimeout(() => window.location.reload(), 1500);
+                bsModal.hide();
+                showToast(`DNS zone "${domain}" deleted successfully`, 'success');
+                
+                // Remove the row from the table with animation
+                const rows = document.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    if (row.textContent.includes(domain)) {
+                        row.style.transition = 'opacity 0.3s, transform 0.3s';
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateX(-20px)';
+                        setTimeout(() => {
+                            row.remove();
+                            checkEmptyTable();
+                        }, 300);
+                    }
+                });
+                
+                // Update zone count
+                updateZoneCount(-1);
             } else {
-                alert('Failed to delete zone. Please try again.');
+                throw new Error('Failed to delete zone');
             }
         })
         .catch(error => {
-            alert('An error occurred. Please try again.');
+            showToast('Failed to delete zone. Please try again.', 'error');
             console.error('Error:', error);
+            
+            // Reset button
+            document.getElementById('confirmDelete').innerHTML = '<i class="bi bi-trash me-1"></i>Delete Zone';
+            document.getElementById('confirmDelete').disabled = false;
         });
+    });
+    
+    // Clean up modal after hidden
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+function checkEmptyTable() {
+    const tbody = document.querySelector('tbody');
+    if (tbody && tbody.children.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                    No DNS zones configured yet
+                </td>
+            </tr>
+        `;
     }
 }
+
+function updateZoneCount(delta) {
+    const zoneCountElement = document.querySelector('[data-zone-count]');
+    if (zoneCountElement) {
+        const currentCount = parseInt(zoneCountElement.textContent) || 0;
+        const newCount = Math.max(0, currentCount + delta);
+        zoneCountElement.textContent = newCount;
+        
+        // Animate the count change
+        zoneCountElement.style.animation = 'pulse 0.5s ease';
+        setTimeout(() => {
+            zoneCountElement.style.animation = '';
+        }, 500);
+    }
+}
+
+// Enhanced form validation for new zone modal
+document.addEventListener('DOMContentLoaded', function() {
+    const newZoneForm = document.querySelector('#newZone form');
+    if (newZoneForm) {
+        // Add real-time validation
+        const domainInput = document.getElementById('domain');
+        const mNameInput = document.getElementById('m_name');
+        const rNameInput = document.getElementById('r_name');
+        
+        // Domain validation
+        domainInput?.addEventListener('input', function() {
+            const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?)*$/;
+            if (domainRegex.test(this.value)) {
+                this.classList.remove('is-invalid');
+                this.classList.add('is-valid');
+            } else if (this.value) {
+                this.classList.add('is-invalid');
+                this.classList.remove('is-valid');
+            } else {
+                this.classList.remove('is-invalid', 'is-valid');
+            }
+        });
+        
+        // Email validation for r_name
+        rNameInput?.addEventListener('input', function() {
+            // Convert @ to . for DNS format
+            if (this.value.includes('@')) {
+                this.value = this.value.replace('@', '.');
+                showToast('Email converted to DNS format (@ replaced with .)', 'info', 2000);
+            }
+        });
+        
+        // Form submission
+        newZoneForm.addEventListener('submit', function(e) {
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating Zone...';
+            submitBtn.disabled = true;
+        });
+    }
+});
+
+// Add animation styles
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+    
+    tbody tr {
+        transition: all 0.2s ease;
+    }
+    
+    tbody tr:hover {
+        background-color: rgba(0, 102, 255, 0.05);
+    }
+    
+    [data-bs-theme="dark"] tbody tr:hover {
+        background-color: rgba(77, 148, 255, 0.1);
+    }
+`;
+document.head.appendChild(style);
 </script>
 
 {{/inline}}
