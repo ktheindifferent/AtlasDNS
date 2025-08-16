@@ -1,0 +1,514 @@
+# Atlas DNS Configuration as Code
+# This is the main configuration file for Atlas DNS server
+# All settings can be managed through this YAML file
+
+# Server configuration
+server:
+  # DNS server settings
+  dns:
+    enabled: true
+    port: 53
+    protocol: both  # udp, tcp, or both
+    threads: 4
+    
+    # Bind addresses
+    listen:
+      - 0.0.0.0
+      - "::"
+    
+    # Forwarding configuration
+    forwarding:
+      enabled: false
+      servers:
+        - 8.8.8.8
+        - 8.8.4.4
+        - 1.1.1.1
+        - 1.0.0.1
+      
+    # Recursive resolution
+    recursive:
+      enabled: true
+      max_depth: 10
+      timeout: 5s
+    
+    # EDNS configuration
+    edns:
+      enabled: true
+      buffer_size: 4096
+      client_subnet: true
+      
+  # Web interface
+  web:
+    enabled: true
+    port: 5380
+    host: 0.0.0.0
+    
+    # Authentication
+    auth:
+      enabled: true
+      session_timeout: 3600
+      max_sessions: 1000
+      
+      # Users (passwords should be hashed in production)
+      users:
+        - username: admin
+          password: "$2b$12$..." # bcrypt hash
+          role: admin
+        - username: operator
+          password: "$2b$12$..."
+          role: operator
+        - username: viewer
+          password: "$2b$12$..."
+          role: readonly
+    
+    # TLS configuration
+    tls:
+      enabled: false
+      cert_file: /etc/atlas-dns/certs/cert.pem
+      key_file: /etc/atlas-dns/certs/key.pem
+      
+      # ACME (Let's Encrypt)
+      acme:
+        enabled: false
+        email: admin@example.com
+        domains:
+          - dns.example.com
+        provider: letsencrypt # letsencrypt or zerossl
+        
+  # API configuration
+  api:
+    enabled: true
+    version: v2
+    rate_limit: 1000
+    cors:
+      enabled: true
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+      headers:
+        - Content-Type
+        - Authorization
+
+# DNS features configuration
+features:
+  # Cache configuration
+  cache:
+    enabled: true
+    size: 10000
+    ttl: 3600
+    negative_ttl: 300
+    
+    # Adaptive caching
+    adaptive:
+      enabled: true
+      min_ttl: 60
+      max_ttl: 86400
+      
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_second: 1000
+    burst: 2000
+    
+    # Per-client limits
+    per_client:
+      enabled: true
+      requests_per_second: 100
+      burst: 200
+      
+  # DNSSEC
+  dnssec:
+    enabled: false
+    algorithm: ECDSAP256SHA256
+    auto_sign: true
+    key_rotation: 90d
+    
+  # DNS-over-HTTPS (DoH)
+  doh:
+    enabled: true
+    port: 443
+    path: /dns-query
+    
+    # HTTP/2 settings
+    http2:
+      enabled: true
+      max_concurrent_streams: 100
+      
+  # DNS-over-TLS (DoT)
+  dot:
+    enabled: true
+    port: 853
+    
+    # TLS settings
+    tls:
+      min_version: "1.2"
+      ciphers:
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        
+  # DNS-over-QUIC (DoQ)
+  doq:
+    enabled: false
+    port: 853
+    
+  # GeoDNS
+  geodns:
+    enabled: true
+    database: /usr/share/GeoIP/GeoLite2-City.mmdb
+    
+    # Default location for unknown IPs
+    default_location:
+      continent: NA
+      country: US
+      
+    # Location-based routing rules
+    rules:
+      - name: north-america
+        countries: [US, CA, MX]
+        target: na.example.com
+      - name: europe
+        countries: [GB, FR, DE, IT, ES]
+        target: eu.example.com
+      - name: asia-pacific
+        countries: [JP, CN, AU, IN, SG]
+        target: ap.example.com
+        
+  # Traffic steering
+  traffic_steering:
+    enabled: true
+    mode: weighted # weighted, round-robin, random
+    
+    # Traffic pools
+    pools:
+      - name: production
+        weight: 90
+        endpoints:
+          - 192.168.1.10
+          - 192.168.1.11
+      - name: canary
+        weight: 10
+        endpoints:
+          - 192.168.1.100
+          
+  # Health checks
+  health_checks:
+    enabled: true
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    
+    # Check definitions
+    checks:
+      - name: web-health
+        type: http
+        target: https://www.example.com/health
+        expected_status: 200
+      - name: api-health
+        type: tcp
+        target: api.example.com:443
+        
+  # Firewall
+  firewall:
+    enabled: true
+    
+    # Block lists
+    blocklists:
+      - name: malware
+        url: https://threatfeeds.example.com/malware.txt
+        refresh: 1h
+      - name: phishing
+        url: https://threatfeeds.example.com/phishing.txt
+        refresh: 1h
+        
+    # Custom rules
+    rules:
+      - name: block-suspicious
+        domains:
+          - "*.suspicious.com"
+          - "malicious.net"
+        action: nxdomain
+        
+  # DDoS protection
+  ddos_protection:
+    enabled: true
+    
+    # Detection thresholds
+    thresholds:
+      query_rate: 100000
+      packet_rate: 1000000
+      bandwidth_mbps: 1000
+      
+    # Mitigation strategies
+    mitigation:
+      - type: rate_limit
+        trigger: 0.8
+        duration: 300s
+      - type: blackhole
+        trigger: 0.95
+        duration: 600s
+
+# Zone configuration
+zones:
+  # Zone storage
+  storage:
+    type: file # file, postgres, redis
+    path: /var/lib/atlas-dns/zones
+    
+    # Database settings (if type is postgres)
+    database:
+      host: localhost
+      port: 5432
+      name: atlas_dns
+      user: atlas
+      password: "${DB_PASSWORD}"
+      
+  # Zone defaults
+  defaults:
+    ttl: 3600
+    refresh: 3600
+    retry: 600
+    expire: 604800
+    minimum: 86400
+    
+  # Automatic zone management
+  auto:
+    # Service discovery
+    service_discovery:
+      enabled: true
+      namespace: default
+      domain_suffix: cluster.local
+      
+    # Ingress integration
+    ingress:
+      enabled: true
+      class: nginx
+      
+  # Zone templates
+  templates:
+    enabled: true
+    directory: /etc/atlas-dns/templates
+    
+    # Built-in templates
+    builtin:
+      - basic-web
+      - ecommerce
+      - email-service
+      - cdn
+      - api-service
+
+# Monitoring configuration
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: /metrics
+    
+    # Custom metrics
+    custom_metrics:
+      - name: dns_queries_total
+        type: counter
+        labels: [zone, type, result]
+      - name: dns_response_time
+        type: histogram
+        buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]
+        
+  # Grafana dashboards
+  grafana:
+    enabled: true
+    auto_provision: true
+    dashboards:
+      - dns-overview
+      - dns-performance
+      - dns-security
+      - dns-geographic
+      
+  # Distributed tracing
+  tracing:
+    enabled: true
+    provider: jaeger
+    endpoint: http://jaeger:14268/api/traces
+    sampling_rate: 0.1
+    
+  # Logging
+  logging:
+    level: info # debug, info, warn, error
+    format: json # json or text
+    
+    # Output destinations
+    outputs:
+      - type: console
+      - type: file
+        path: /var/log/atlas-dns/atlas.log
+        rotate:
+          size: 100MB
+          keep: 10
+      - type: syslog
+        address: localhost:514
+        facility: local0
+        
+  # Alerting
+  alerting:
+    enabled: true
+    
+    # Alert channels
+    channels:
+      - type: email
+        smtp:
+          host: smtp.gmail.com
+          port: 587
+          user: alerts@example.com
+          password: "${SMTP_PASSWORD}"
+        recipients:
+          - ops@example.com
+      - type: slack
+        webhook: "${SLACK_WEBHOOK_URL}"
+        channel: "#dns-alerts"
+      - type: pagerduty
+        api_key: "${PAGERDUTY_API_KEY}"
+        
+    # Alert rules
+    rules:
+      - name: high-query-rate
+        condition: rate(dns_queries_total) > 10000
+        severity: warning
+        channels: [slack]
+      - name: zone-failure
+        condition: dns_zone_health == 0
+        severity: critical
+        channels: [email, pagerduty]
+
+# Clustering configuration
+clustering:
+  enabled: false
+  
+  # Node configuration
+  node:
+    id: "${NODE_ID}"
+    advertise_addr: "${NODE_IP}"
+    
+  # Cluster members
+  members:
+    - dns1.example.com:7946
+    - dns2.example.com:7946
+    - dns3.example.com:7946
+    
+  # Replication
+  replication:
+    enabled: true
+    factor: 3
+    consistency: eventual # eventual or strong
+    
+  # Leader election
+  leader_election:
+    enabled: true
+    timeout: 10s
+    
+# Backup configuration
+backup:
+  enabled: true
+  
+  # Backup schedule
+  schedule:
+    full: "0 2 * * 0"  # Weekly at 2 AM Sunday
+    incremental: "0 2 * * 1-6"  # Daily at 2 AM Mon-Sat
+    
+  # Backup destination
+  destination:
+    type: s3 # s3, gcs, azure, local
+    
+    # S3 configuration
+    s3:
+      bucket: atlas-dns-backups
+      region: us-east-1
+      access_key: "${AWS_ACCESS_KEY}"
+      secret_key: "${AWS_SECRET_KEY}"
+      
+  # Retention policy
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 12
+    yearly: 5
+    
+  # Encryption
+  encryption:
+    enabled: true
+    key: "${BACKUP_ENCRYPTION_KEY}"
+
+# Performance tuning
+performance:
+  # Buffer sizes
+  buffers:
+    udp: 65536
+    tcp: 131072
+    
+  # Connection limits
+  connections:
+    max_udp: 10000
+    max_tcp: 1000
+    
+  # Worker threads
+  workers:
+    udp: 4
+    tcp: 2
+    
+  # Query processing
+  queries:
+    max_concurrent: 10000
+    timeout: 5s
+    
+  # Memory limits
+  memory:
+    cache_size: 1GB
+    max_heap: 4GB
+    
+# Security configuration
+security:
+  # Access control
+  acl:
+    enabled: true
+    
+    # Allow lists
+    allow:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+      - 127.0.0.1/32
+      
+    # Deny lists
+    deny:
+      - 0.0.0.0/8
+      - 224.0.0.0/4
+      
+  # Query filtering
+  filtering:
+    # Block query types
+    blocked_types:
+      - ANY
+      - AXFR
+      - IXFR
+      
+    # Response validation
+    validation:
+      enabled: true
+      strict: false
+      
+  # Audit logging
+  audit:
+    enabled: true
+    log_queries: false
+    log_changes: true
+    
+# Environment variable substitution
+# Use ${VAR_NAME} syntax to reference environment variables
+# Example: password: "${DB_PASSWORD}"
+
+# Include additional configuration files
+includes:
+  - /etc/atlas-dns/conf.d/*.yaml
+  - /etc/atlas-dns/zones/*.yaml

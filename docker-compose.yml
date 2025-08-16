@@ -1,9 +1,157 @@
-version: "3.9"
+version: '3.9'
+
 services:
-  web:
-    build: .
+  # Primary Atlas DNS Server
+  atlas-dns-primary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: atlas-dns-primary
+    hostname: dns-primary
+    restart: unless-stopped
     ports:
+      # DNS ports
+      - "53:53/udp"
+      - "53:53/tcp"
+      # Web interface
       - "5380:5380"
-      - "53:53"
-  rust:
-    image: "rust:latest"
+      # DoH (DNS-over-HTTPS)
+      - "443:443"
+      # DoT (DNS-over-TLS)
+      - "853:853"
+      # Prometheus metrics
+      - "9090:9090"
+    environment:
+      - RUST_LOG=info
+      - DNS_MODE=primary
+      - CLUSTER_ENABLED=true
+      - NODE_ID=primary
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - DNSSEC_ENABLED=${DNSSEC_ENABLED:-false}
+      - DOH_ENABLED=${DOH_ENABLED:-true}
+      - DOT_ENABLED=${DOT_ENABLED:-true}
+      - CACHE_SIZE=${CACHE_SIZE:-10000}
+      - RATE_LIMIT=${RATE_LIMIT:-1000}
+    volumes:
+      - atlas-zones:/var/lib/atlas-dns/zones
+      - atlas-config:/etc/atlas-dns
+      - atlas-certs:/etc/atlas-dns/certs
+      - atlas-logs:/var/log/atlas-dns
+    networks:
+      - atlas-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5380/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Secondary Atlas DNS Server
+  atlas-dns-secondary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: atlas-dns-secondary
+    hostname: dns-secondary
+    restart: unless-stopped
+    ports:
+      - "5353:53/udp"
+      - "5353:53/tcp"
+      - "5381:5380"
+    environment:
+      - RUST_LOG=info
+      - DNS_MODE=secondary
+      - PRIMARY_SERVER=atlas-dns-primary:53
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+    volumes:
+      - atlas-zones-secondary:/var/lib/atlas-dns/zones
+      - atlas-config-secondary:/etc/atlas-dns
+    networks:
+      - atlas-network
+    depends_on:
+      - atlas-dns-primary
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: atlas-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - atlas-network
+    volumes:
+      - redis-data:/data
+
+  # PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: atlas-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=atlas_dns
+      - POSTGRES_USER=atlas
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-dbpassword}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - atlas-network
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: atlas-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - atlas-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: atlas-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - atlas-network
+
+networks:
+  atlas-network:
+    driver: bridge
+
+volumes:
+  atlas-zones:
+  atlas-config:
+  atlas-certs:
+  atlas-logs:
+  atlas-zones-secondary:
+  atlas-config-secondary:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:

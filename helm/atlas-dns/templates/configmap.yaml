@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+data:
+  atlas-dns.yaml: |
+    # Atlas DNS Configuration
+    dns:
+      port: {{ .Values.dns.port }}
+      protocol: {{ .Values.dns.protocol }}
+      
+      # Zone configuration
+      zones:
+        enabled: {{ .Values.dns.zones.enabled }}
+        storage: {{ .Values.dns.zones.storage }}
+        directory: {{ .Values.dns.zones.directory }}
+      
+      # Forwarding
+      {{- if .Values.dns.forwarding.enabled }}
+      forwarding:
+        enabled: true
+        servers:
+          {{- range .Values.dns.forwarding.servers }}
+          - {{ . }}
+          {{- end }}
+      {{- end }}
+      
+      # Cache
+      cache:
+        enabled: {{ .Values.dns.cache.enabled }}
+        size: {{ .Values.dns.cache.size }}
+        ttl: {{ .Values.dns.cache.ttl }}
+      
+      # Rate limiting
+      rateLimit:
+        enabled: {{ .Values.dns.rateLimit.enabled }}
+        requestsPerSecond: {{ .Values.dns.rateLimit.requestsPerSecond }}
+        burst: {{ .Values.dns.rateLimit.burst }}
+      
+      # DNSSEC
+      {{- if .Values.dns.dnssec.enabled }}
+      dnssec:
+        enabled: true
+        keyAlgorithm: {{ .Values.dns.dnssec.keyAlgorithm }}
+        autoSign: {{ .Values.dns.dnssec.autoSign }}
+      {{- end }}
+      
+      # DoH
+      {{- if .Values.dns.doh.enabled }}
+      doh:
+        enabled: true
+        port: {{ .Values.dns.doh.port }}
+        path: {{ .Values.dns.doh.path }}
+      {{- end }}
+      
+      # DoT
+      {{- if .Values.dns.dot.enabled }}
+      dot:
+        enabled: true
+        port: {{ .Values.dns.dot.port }}
+      {{- end }}
+    
+    # Web interface
+    web:
+      enabled: {{ .Values.web.enabled }}
+      port: {{ .Values.web.port }}
+      
+      {{- if .Values.web.auth.enabled }}
+      auth:
+        enabled: true
+        sessionTimeout: {{ .Values.web.auth.sessionTimeout }}
+      {{- end }}
+      
+      {{- if .Values.web.tls.enabled }}
+      tls:
+        enabled: true
+        cert: /etc/atlas-dns/tls/tls.crt
+        key: /etc/atlas-dns/tls/tls.key
+      {{- end }}
+    
+    # Monitoring
+    monitoring:
+      {{- if .Values.monitoring.prometheus.enabled }}
+      prometheus:
+        enabled: true
+        port: {{ .Values.monitoring.prometheus.port }}
+        path: {{ .Values.monitoring.prometheus.path }}
+      {{- end }}
+    
+    # Operator
+    {{- if .Values.operator.enabled }}
+    operator:
+      enabled: true
+      watchAllNamespaces: {{ .Values.operator.watchAllNamespaces }}
+      leaderElection: {{ .Values.operator.leaderElection }}
+      reconcileInterval: {{ .Values.operator.reconcileInterval }}
+      
+      serviceDiscovery:
+        enabled: {{ .Values.operator.serviceDiscovery.enabled }}
+        domainSuffix: {{ .Values.operator.serviceDiscovery.domainSuffix }}
+      
+      ingressIntegration:
+        enabled: {{ .Values.operator.ingressIntegration.enabled }}
+    {{- end }}
+    
+    # Multi-region
+    {{- if .Values.multiRegion.enabled }}
+    multiRegion:
+      enabled: true
+      regions:
+        {{- range .Values.multiRegion.regions }}
+        - name: {{ .name }}
+          priority: {{ .priority }}
+          weight: {{ .weight }}
+        {{- end }}
+      
+      failover:
+        enabled: {{ .Values.multiRegion.failover.enabled }}
+        threshold: {{ .Values.multiRegion.failover.threshold }}
+        policy: {{ .Values.multiRegion.failover.policy }}
+    {{- end }}
+    
+    # Traffic steering
+    {{- if .Values.trafficSteering.enabled }}
+    trafficSteering:
+      enabled: true
+      mode: {{ .Values.trafficSteering.mode }}
+      pools:
+        {{- range .Values.trafficSteering.pools }}
+        - name: {{ .name }}
+          percentage: {{ .percentage }}
+        {{- end }}
+    {{- end }}
+    
+    # GeoDNS
+    {{- if .Values.geodns.enabled }}
+    geodns:
+      enabled: true
+      database: {{ .Values.geodns.database }}
+      defaultLocation:
+        continent: {{ .Values.geodns.defaultLocation.continent }}
+        country: {{ .Values.geodns.defaultLocation.country }}
+      caching:
+        enabled: {{ .Values.geodns.caching.enabled }}
+        ttl: {{ .Values.geodns.caching.ttl }}
+    {{- end }}

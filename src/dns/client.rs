@@ -49,17 +49,29 @@ pub trait DnsClient {
 /// handle replies on a single thread. A channel is created for every response,
 /// and the caller will block on the channel until the a response is received.
 pub struct DnsNetworkClient {
-    total_sent: AtomicUsize,
-    total_failed: AtomicUsize,
+    total_sent: Arc<AtomicUsize>,
+    total_failed: Arc<AtomicUsize>,
 
     /// Counter for assigning packet ids
-    seq: AtomicUsize,
+    seq: Arc<AtomicUsize>,
 
     /// The listener socket
-    socket: UdpSocket,
+    socket: Arc<UdpSocket>,
 
     /// Queries in progress
     pending_queries: Arc<Mutex<Vec<PendingQuery>>>,
+}
+
+impl Clone for DnsNetworkClient {
+    fn clone(&self) -> Self {
+        Self {
+            total_sent: self.total_sent.clone(),
+            total_failed: self.total_failed.clone(),
+            seq: self.seq.clone(),
+            socket: self.socket.clone(),
+            pending_queries: self.pending_queries.clone(),
+        }
+    }
 }
 
 /// A query in progress. This struct holds the `id` if the request, and a channel
@@ -93,10 +105,10 @@ impl DnsNetworkClient {
         }
             
         Ok(DnsNetworkClient {
-            total_sent: AtomicUsize::new(0),
-            total_failed: AtomicUsize::new(0),
-            seq: AtomicUsize::new(0),
-            socket,
+            total_sent: Arc::new(AtomicUsize::new(0)),
+            total_failed: Arc::new(AtomicUsize::new(0)),
+            seq: Arc::new(AtomicUsize::new(0)),
+            socket: Arc::new(socket),
             pending_queries: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -227,6 +239,25 @@ impl DnsNetworkClient {
                 Err(ClientError::LookupFailed)
             }
         }
+    }
+}
+
+impl DnsNetworkClient {
+    /// Async version of send_query for use with async code
+    pub async fn send_query_async(&self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
+        // Use a default DNS server (8.8.8.8) for resolution
+        let server = ("8.8.8.8", 53);
+        let recursive = true;
+        
+        // For now, we'll use blocking IO in a spawn_blocking task
+        let qname = qname.to_string();
+        let client = self.clone();
+        
+        tokio::task::spawn_blocking(move || {
+            DnsClient::send_query(&client, &qname, qtype, server, recursive)
+        })
+        .await
+        .map_err(|e| ClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
     }
 }
 

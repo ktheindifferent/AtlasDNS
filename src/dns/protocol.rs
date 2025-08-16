@@ -38,6 +38,8 @@ pub enum QueryType {
     Aaaa,  // 28
     Srv,   // 33
     Opt,   // 41
+    Ixfr,  // 251
+    Axfr,  // 252
 }
 
 impl QueryType {
@@ -53,6 +55,8 @@ impl QueryType {
             QueryType::Aaaa => 28,
             QueryType::Srv => 33,
             QueryType::Opt => 41,
+            QueryType::Ixfr => 251,
+            QueryType::Axfr => 252,
         }
     }
 
@@ -67,6 +71,8 @@ impl QueryType {
             28 => QueryType::Aaaa,
             33 => QueryType::Srv,
             41 => QueryType::Opt,
+            251 => QueryType::Ixfr,
+            252 => QueryType::Axfr,
             _ => QueryType::Unknown(num),
         }
     }
@@ -324,6 +330,17 @@ impl DnsRecord {
                     packet_len: class,
                     flags: ttl,
                     data,
+                })
+            }
+            QueryType::Ixfr | QueryType::Axfr => {
+                // Zone transfer records are handled differently
+                buffer.step(data_len as usize)?;
+
+                Ok(DnsRecord::Unknown {
+                    domain,
+                    qtype: qtype_num,
+                    data_len,
+                    ttl: TransientTtl(ttl),
                 })
             }
             QueryType::Unknown(_) => {

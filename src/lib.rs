@@ -25,5 +25,8 @@ pub mod dns;
 /// Web server and HTTP API for DNS management
 pub mod web;
 
+/// Kubernetes integration for native K8s resource management
+pub mod k8s;
+
 /// Privilege escalation utilities for binding to privileged ports
 pub mod privilege_escalation;

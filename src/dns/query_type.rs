@@ -20,6 +20,8 @@ pub enum QueryType {
     Aaaa,  // 28
     Srv,   // 33
     Opt,   // 41
+    Axfr,  // 252
+    Ixfr,  // 251
 }
 
 impl QueryType {
@@ -35,6 +37,8 @@ impl QueryType {
             QueryType::Aaaa => 28,
             QueryType::Srv => 33,
             QueryType::Opt => 41,
+            QueryType::Axfr => 252,
+            QueryType::Ixfr => 251,
         }
     }
 
@@ -49,6 +53,8 @@ impl QueryType {
             28 => QueryType::Aaaa,
             33 => QueryType::Srv,
             41 => QueryType::Opt,
+            252 => QueryType::Axfr,
+            251 => QueryType::Ixfr,
             _ => QueryType::Unknown(num),
         }
     }

@@ -1,22 +1,34 @@
-Atlas DNS server
-=================
+# Atlas DNS Server
 
 ![Rust](https://github.com/EmilHernvall/hermes/workflows/Rust/badge.svg)
 
-A high-performance DNS server with built-in SSL/TLS support and automatic certificate management via ACME protocol.
+A high-performance, feature-rich DNS server implementation in Rust with built-in SSL/TLS support, automatic certificate management via ACME protocol, and a comprehensive web-based management interface.
 
-## Features
+## 🚀 Features
 
-- Full DNS server implementation (UDP and TCP)
-- Authoritative zone management
-- Recursive and forwarding resolution
-- Response caching
-- Web-based management interface
-- **SSL/TLS Support with ACME certificates**
-  - Automatic certificate acquisition and renewal
-  - Support for Let's Encrypt and ZeroSSL
-  - DNS-01 challenge support for wildcard certificates
-  - Manual certificate configuration option
+### Core DNS Functionality
+- **Full DNS Protocol Support**: UDP and TCP transport protocols
+- **Authoritative Zone Management**: Host your own DNS zones
+- **Recursive Resolution**: Full recursive DNS resolver capabilities
+- **Forwarding Support**: Forward queries to upstream DNS servers
+- **Response Caching**: Built-in cache with TTL management
+- **Rate Limiting**: Protection against DNS amplification attacks
+
+### Advanced Features
+- **SSL/TLS Support with ACME**: Automatic certificate management
+- **Web Management Interface**: Modern Bootstrap 5 UI
+- **Multi-User Support**: Role-based access control (Admin, User, ReadOnly)
+- **Session Management**: Secure token-based authentication
+- **RESTful API v2**: Complete CRUD operations for DNS resources
+- **DNS-over-HTTPS (DoH)**: Encrypted DNS queries over HTTPS
+- **DNS-over-TLS (DoT)**: Encrypted DNS queries over TLS
+- **Split-Horizon DNS**: Different responses based on client source
+- **Geo-Load Balancing**: Route queries based on geographic location
+- **CNAME Flattening**: Automatic CNAME resolution at zone apex
+- **Dynamic DNS Updates**: RFC 2136 compliant dynamic updates
+- **Health Checking**: Monitor endpoint availability
+- **Alert Management**: Configurable alerts and notifications
+- **Metrics & Analytics**: Comprehensive statistics and monitoring
 
 ## SSL/TLS Configuration
 
@@ -80,28 +92,164 @@ If you have existing SSL certificates:
 
 You can also configure SSL via a JSON configuration file. See `config/ssl-example.json` for an example.
 
-## Building
+## 📦 Installation
 
-```bash
-cargo build --release
-```
+### Prerequisites
 
-## Running
-
-Basic usage:
-```bash
-./atlas
-```
-
-With SSL and Let's Encrypt:
-```bash
-./atlas --ssl --acme-provider letsencrypt --acme-email admin@example.com --acme-domains example.com
-```
-
-## Requirements
-
-- Rust 1.56 or later
+- Rust 1.70 or later
 - OpenSSL development libraries
-- Port 53 (DNS) and port 5380/5343 (HTTP/HTTPS) available
+- Administrator/root privileges (for binding to port 53)
 
-Fork in progress. Don't use!!!!!!
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/ktheindifferent/AtlasDNS.git
+cd AtlasDNS
+
+# Build in release mode
+cargo build --release
+
+# The binary will be at target/release/atlas
+```
+
+## 🚀 Quick Start
+
+### Basic DNS Server
+
+```bash
+# Run with default settings (requires sudo for port 53)
+sudo ./target/release/atlas
+```
+
+### With Forwarding to Google DNS
+
+```bash
+sudo ./target/release/atlas --forward-address 8.8.8.8
+```
+
+### With Web Interface and SSL
+
+```bash
+sudo ./target/release/atlas --ssl \
+  --acme-provider letsencrypt \
+  --acme-email admin@example.com \
+  --acme-domains example.com
+```
+
+## 🔧 Configuration Options
+
+### Command Line Arguments
+
+| Option | Short | Description | Example |
+|--------|-------|-------------|---------|
+| `--forward-address` | `-f` | Upstream DNS server for forwarding | `-f 8.8.8.8` |
+| `--ssl` | `-s` | Enable SSL/TLS for web interface | `--ssl` |
+| `--acme-provider` | | ACME provider (letsencrypt, zerossl) | `--acme-provider letsencrypt` |
+| `--acme-email` | | Email for ACME registration | `--acme-email admin@example.com` |
+| `--acme-domains` | | Domains for certificate (comma-separated) | `--acme-domains example.com,www.example.com` |
+| `--ssl-cert` | | Path to SSL certificate (manual mode) | `--ssl-cert /path/to/cert.pem` |
+| `--ssl-key` | | Path to SSL private key (manual mode) | `--ssl-key /path/to/key.pem` |
+| `--disable-api` | `-x` | Disable web interface | `--disable-api` |
+| `--zones-dir` | `-j` | Directory for zone files | `--zones-dir /etc/atlas/zones` |
+| `--skip-privilege-check` | | Skip privilege escalation (development) | `--skip-privilege-check` |
+
+### Default Ports
+
+- **DNS**: Port 53 (UDP/TCP)
+- **HTTP Web Interface**: Port 5380
+- **HTTPS Web Interface**: Port 5343 (when SSL enabled)
+
+## 🌐 Web Interface
+
+The web interface provides:
+
+- **Dashboard**: Real-time server statistics
+- **Zone Management**: Create, edit, and delete DNS zones
+- **Record Management**: Full CRUD operations for all record types
+- **User Management**: Add and manage users with different roles
+- **Session Monitoring**: View active sessions
+- **Cache Viewer**: Monitor and manage DNS cache
+- **API Documentation**: Interactive API explorer
+
+Access the web interface at:
+- HTTP: `http://your-server:5380`
+- HTTPS: `https://your-server:5343` (when SSL enabled)
+
+## 🔒 Security Features
+
+- **Automatic Privilege Escalation**: Handles privilege requirements for port 53
+- **Rate Limiting**: Protects against DNS amplification attacks
+- **DNSSEC Support**: Planned for future release
+- **Secure Session Management**: Token-based authentication with IP validation
+- **TLS 1.2/1.3**: Modern encryption for web interface
+- **Password Hashing**: SHA256 for user credentials
+
+## 🐳 Docker Support
+
+```bash
+# Build Docker image
+docker build -t atlas-dns .
+
+# Run with Docker Compose
+docker-compose up -d
+```
+
+## 📊 API v2 Endpoints
+
+The RESTful API provides complete DNS management capabilities:
+
+- `GET /api/v2/zones` - List all zones
+- `POST /api/v2/zones` - Create new zone
+- `GET /api/v2/zones/{zone}` - Get zone details
+- `PUT /api/v2/zones/{zone}` - Update zone
+- `DELETE /api/v2/zones/{zone}` - Delete zone
+- `GET /api/v2/zones/{zone}/records` - List zone records
+- `POST /api/v2/zones/{zone}/records` - Create record
+- Plus many more...
+
+## 🧪 Development
+
+### Running Tests
+
+```bash
+cargo test
+```
+
+### Running with Debug Logging
+
+```bash
+RUST_LOG=debug sudo ./target/release/atlas
+```
+
+### Development Mode (without privilege escalation)
+
+```bash
+./target/release/atlas --skip-privilege-check
+```
+
+## 📝 License
+
+This project is a fork of the original Hermes DNS server. See LICENSE file for details.
+
+## ⚠️ Status
+
+This is an active development fork with significant enhancements over the original project. The codebase has been extensively refactored and expanded with enterprise-grade features.
+
+### Recent Updates
+- ✅ Fixed all compilation errors
+- ✅ Added comprehensive user authentication and session management
+- ✅ Implemented RESTful API v2 with full CRUD operations
+- ✅ Added DNS-over-HTTPS and DNS-over-TLS support
+- ✅ Implemented split-horizon DNS and geo-load balancing
+- ✅ Added CNAME flattening and dynamic DNS updates
+- ✅ Revamped UI with Bootstrap 5
+- ✅ Enhanced error handling and logging throughout
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+
+## 📞 Support
+
+For issues and questions, please use the GitHub issue tracker.

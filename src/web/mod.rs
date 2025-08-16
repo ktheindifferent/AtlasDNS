@@ -9,6 +9,9 @@ pub mod users;
 pub mod util;
 pub mod system_info;
 pub mod graphql;
+pub mod api_v2;
+pub mod bulk_operations;
+pub mod webhooks;
 
 #[derive(Debug, Display)]
 pub enum WebError {
@@ -31,6 +34,22 @@ impl From<crate::dns::authority::AuthorityError> for WebError {
     fn from(err: crate::dns::authority::AuthorityError) -> Self {
         WebError::Authority(err)
     }
+}
+
+/// Helper function to create JSON response
+pub fn handle_json_response<T: serde::Serialize>(
+    data: &T,
+    status: tiny_http::StatusCode,
+) -> Result<tiny_http::Response<std::io::Cursor<Vec<u8>>>> {
+    let json = serde_json::to_string(data)
+        .map_err(WebError::Serialization)?;
+    
+    let response = tiny_http::Response::from_string(json)
+        .with_status_code(status)
+        .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+            .unwrap());
+    
+    Ok(response)
 }
 
 impl From<std::io::Error> for WebError {

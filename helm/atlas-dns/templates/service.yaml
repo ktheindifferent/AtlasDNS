@@ -1,0 +1,127 @@
+---
+# DNS UDP Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}-dns-udp
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+    component: dns-udp
+  {{- with .Values.service.dns.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.dns.type }}
+  {{- if .Values.service.dns.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.service.dns.loadBalancerIP }}
+  {{- end }}
+  {{- if .Values.service.dns.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.service.dns.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.service.dns.port }}
+      targetPort: dns-udp
+      protocol: UDP
+      name: dns-udp
+  selector:
+    {{- include "atlas-dns.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.service.dnsTcp.enabled }}
+# DNS TCP Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}-dns-tcp
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+    component: dns-tcp
+  {{- with .Values.service.dnsTcp.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.dnsTcp.type }}
+  {{- if .Values.service.dnsTcp.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.service.dnsTcp.loadBalancerIP }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.service.dnsTcp.port }}
+      targetPort: dns-tcp
+      protocol: TCP
+      name: dns-tcp
+  selector:
+    {{- include "atlas-dns.selectorLabels" . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.web.enabled }}
+# Web Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}-web
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+    component: web
+  {{- with .Values.service.web.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.web.type }}
+  ports:
+    - port: {{ .Values.service.web.port }}
+      targetPort: web
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "atlas-dns.selectorLabels" . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.dns.doh.enabled }}
+# DoH Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}-doh
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+    component: doh
+  {{- with .Values.service.doh.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.doh.type }}
+  ports:
+    - port: {{ .Values.service.doh.port }}
+      targetPort: doh
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "atlas-dns.selectorLabels" . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.dns.dot.enabled }}
+# DoT Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}-dot
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+    component: dot
+  {{- with .Values.service.dot.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.dot.type }}
+  ports:
+    - port: {{ .Values.service.dot.port }}
+      targetPort: dot
+      protocol: TCP
+      name: dot
+  selector:
+    {{- include "atlas-dns.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,411 @@
+# Default values for atlas-dns.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration
+global:
+  # DNS domain for the cluster
+  domain: cluster.local
+  # Image pull secrets
+  imagePullSecrets: []
+  # Global labels
+  labels: {}
+  # Global annotations
+  annotations: {}
+
+# Deployment configuration
+deployment:
+  # Number of replicas
+  replicaCount: 3
+  
+  # Update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 1
+  
+  # Anti-affinity configuration
+  antiAffinity: soft  # soft, hard, none
+
+# Image configuration
+image:
+  repository: atlasdns/atlas-dns
+  pullPolicy: IfNotPresent
+  tag: ""  # Overrides the image tag whose default is the chart appVersion
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  # The name of the service account to use
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 53
+  runAsGroup: 53
+  fsGroup: 53
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - NET_BIND_SERVICE
+  readOnlyRootFilesystem: true
+
+# DNS server configuration
+dns:
+  # DNS server settings
+  port: 53
+  protocol: "udp"  # udp, tcp, both
+  
+  # Zone configuration
+  zones:
+    # Enable zone management
+    enabled: true
+    # Zone storage backend
+    storage: "configmap"  # configmap, persistent, s3
+    # Zone directory (if using persistent storage)
+    directory: "/var/lib/atlas-dns/zones"
+  
+  # Forwarding configuration
+  forwarding:
+    enabled: false
+    servers:
+      - "8.8.8.8"
+      - "8.8.4.4"
+  
+  # Cache configuration
+  cache:
+    enabled: true
+    size: "1000"
+    ttl: "3600"
+  
+  # Rate limiting
+  rateLimit:
+    enabled: true
+    requestsPerSecond: 1000
+    burst: 2000
+  
+  # DNSSEC configuration
+  dnssec:
+    enabled: false
+    keyAlgorithm: "ECDSA256"
+    autoSign: true
+  
+  # DoH (DNS-over-HTTPS) configuration
+  doh:
+    enabled: true
+    port: 443
+    path: "/dns-query"
+  
+  # DoT (DNS-over-TLS) configuration
+  dot:
+    enabled: true
+    port: 853
+
+# Web interface configuration
+web:
+  enabled: true
+  port: 5380
+  
+  # Authentication
+  auth:
+    enabled: true
+    # Default admin password (change in production!)
+    adminPassword: "changeme"
+    # Session timeout (seconds)
+    sessionTimeout: 3600
+  
+  # TLS configuration
+  tls:
+    enabled: false
+    certManager:
+      enabled: false
+      issuer: "letsencrypt-prod"
+    # Manual TLS certificates
+    cert: ""
+    key: ""
+
+# Service configuration
+service:
+  # DNS service
+  dns:
+    type: LoadBalancer
+    port: 53
+    targetPort: 53
+    protocol: UDP
+    annotations: {}
+    loadBalancerIP: ""
+    externalTrafficPolicy: Local
+  
+  # DNS TCP service (if enabled)
+  dnsTcp:
+    enabled: false
+    type: LoadBalancer
+    port: 53
+    targetPort: 53
+    protocol: TCP
+    annotations: {}
+  
+  # Web service
+  web:
+    type: ClusterIP
+    port: 80
+    targetPort: 5380
+    annotations: {}
+  
+  # DoH service
+  doh:
+    type: LoadBalancer
+    port: 443
+    targetPort: 443
+    annotations: {}
+  
+  # DoT service
+  dot:
+    type: LoadBalancer
+    port: 853
+    targetPort: 853
+    annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: dns.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: atlas-dns-tls
+    #   hosts:
+    #     - dns.example.com
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Autoscaling configuration
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Persistence configuration
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  # Existing PVC to use
+  existingClaim: ""
+
+# Monitoring configuration
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+  
+  # Grafana dashboards
+  grafana:
+    enabled: false
+    dashboards:
+      enabled: false
+      label: grafana_dashboard
+  
+  # Health checks
+  healthCheck:
+    enabled: true
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: web
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /ready
+        port: web
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+# Kubernetes operator configuration
+operator:
+  enabled: false
+  # Watch all namespaces
+  watchAllNamespaces: false
+  # Leader election
+  leaderElection: true
+  # Reconciliation interval
+  reconcileInterval: 30s
+  # Service discovery
+  serviceDiscovery:
+    enabled: true
+    domainSuffix: "cluster.local"
+  # Ingress integration
+  ingressIntegration:
+    enabled: true
+
+# Backup configuration
+backup:
+  enabled: false
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention: 30  # Days
+  storage:
+    type: "s3"  # s3, gcs, azure
+    bucket: ""
+    prefix: "atlas-dns-backups"
+    credentials:
+      secret: ""
+      key: ""
+
+# Multi-region configuration
+multiRegion:
+  enabled: false
+  regions:
+    - name: us-east
+      priority: 1
+      weight: 0.5
+    - name: us-west
+      priority: 2
+      weight: 0.5
+  failover:
+    enabled: true
+    threshold: 3
+    policy: automatic  # automatic, manual, gradual
+
+# Traffic steering configuration
+trafficSteering:
+  enabled: false
+  mode: weighted  # weighted, roundrobin, random, geographic
+  pools:
+    - name: production
+      percentage: 90
+      endpoints: []
+    - name: canary
+      percentage: 10
+      endpoints: []
+
+# GeoDNS configuration
+geodns:
+  enabled: false
+  database: "/usr/share/GeoIP/GeoLite2-City.mmdb"
+  defaultLocation:
+    continent: "NA"
+    country: "US"
+  caching:
+    enabled: true
+    ttl: 3600
+
+# Environment variables
+env: []
+  # - name: LOG_LEVEL
+  #   value: "info"
+  # - name: RUST_LOG
+  #   value: "atlas_dns=debug"
+
+# Extra volumes
+extraVolumes: []
+  # - name: custom-config
+  #   configMap:
+  #     name: custom-config
+
+# Extra volume mounts
+extraVolumeMounts: []
+  # - name: custom-config
+  #   mountPath: /etc/atlas-dns/custom
+
+# Extra containers (sidecars)
+extraContainers: []
+  # - name: logging-sidecar
+  #   image: fluent/fluent-bit:latest
+  #   volumeMounts:
+  #     - name: logs
+  #       mountPath: /var/log
+
+# Init containers
+initContainers: []
+  # - name: init-zones
+  #   image: busybox:latest
+  #   command: ['sh', '-c', 'echo initializing zones...']
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Priority class name
+priorityClassName: ""
+
+# Topology spread constraints
+topologySpreadConstraints: []
+
+# Runtime class name
+runtimeClassName: ""
+
+# Scheduler name
+schedulerName: ""
+
+# Host networking
+hostNetwork: false
+
+# DNS policy
+dnsPolicy: ClusterFirst
+
+# DNS config
+dnsConfig: {}
+
+# Lifecycle hooks
+lifecycle: {}
+  # preStop:
+  #   exec:
+  #     command: ["/bin/sh", "-c", "sleep 15"]
+
+# Termination grace period
+terminationGracePeriodSeconds: 30

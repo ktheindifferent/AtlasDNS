@@ -1,0 +1,238 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "atlas-dns.fullname" . }}
+  labels:
+    {{- include "atlas-dns.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.deployment.replicaCount }}
+  {{- end }}
+  strategy:
+    {{- toYaml .Values.deployment.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "atlas-dns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "atlas-dns.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "atlas-dns.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/local/bin/atlas
+          args:
+            {{- if .Values.dns.forwarding.enabled }}
+            - --forward-address={{ index .Values.dns.forwarding.servers 0 }}
+            {{- end }}
+            {{- if .Values.web.tls.enabled }}
+            - --ssl
+            - --ssl-cert=/etc/atlas-dns/tls/tls.crt
+            - --ssl-key=/etc/atlas-dns/tls/tls.key
+            {{- end }}
+            {{- if .Values.dns.zones.enabled }}
+            - --zones-dir={{ .Values.dns.zones.directory }}
+            {{- end }}
+            {{- if not .Values.web.enabled }}
+            - --disable-api
+            {{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            {{- if .Values.web.auth.enabled }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "atlas-dns.fullname" . }}-auth
+                  key: admin-password
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: dns-udp
+              containerPort: {{ .Values.dns.port }}
+              protocol: UDP
+            {{- if or (eq .Values.dns.protocol "tcp") (eq .Values.dns.protocol "both") }}
+            - name: dns-tcp
+              containerPort: {{ .Values.dns.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.web.enabled }}
+            - name: web
+              containerPort: {{ .Values.web.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.dns.doh.enabled }}
+            - name: doh
+              containerPort: {{ .Values.dns.doh.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.dns.dot.enabled }}
+            - name: dot
+              containerPort: {{ .Values.dns.dot.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.monitoring.prometheus.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.monitoring.prometheus.port }}
+              protocol: TCP
+            {{- end }}
+          {{- if .Values.monitoring.healthCheck.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.monitoring.healthCheck.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.monitoring.healthCheck.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if .Values.dns.zones.enabled }}
+            - name: zones
+              mountPath: {{ .Values.dns.zones.directory }}
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /var/lib/atlas-dns
+            {{- end }}
+            {{- if .Values.web.tls.enabled }}
+            - name: tls
+              mountPath: /etc/atlas-dns/tls
+              readOnly: true
+            {{- end }}
+            - name: config
+              mountPath: /etc/atlas-dns/config
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- with .Values.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "atlas-dns.fullname" . }}
+        {{- if .Values.dns.zones.enabled }}
+        - name: zones
+          {{- if eq .Values.dns.zones.storage "configmap" }}
+          configMap:
+            name: {{ include "atlas-dns.fullname" . }}-zones
+          {{- else if eq .Values.dns.zones.storage "persistent" }}
+          persistentVolumeClaim:
+            claimName: {{ include "atlas-dns.fullname" . }}-zones
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "atlas-dns.fullname" .) }}
+        {{- end }}
+        {{- if .Values.web.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ include "atlas-dns.fullname" . }}-tls
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.deployment.antiAffinity }}
+      affinity:
+        podAntiAffinity:
+          {{- if eq .Values.deployment.antiAffinity "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - {{ include "atlas-dns.name" . }}
+              topologyKey: kubernetes.io/hostname
+          {{- else if eq .Values.deployment.antiAffinity "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - {{ include "atlas-dns.name" . }}
+                topologyKey: kubernetes.io/hostname
+          {{- end }}
+      {{- else }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.runtimeClassName }}
+      runtimeClassName: {{ .Values.runtimeClassName }}
+      {{- end }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName }}
+      {{- end }}
+      {{- if .Values.hostNetwork }}
+      hostNetwork: true
+      {{- end }}
+      {{- if .Values.dnsPolicy }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}

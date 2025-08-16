@@ -105,5 +105,71 @@ pub mod qname_minimization;
 /// Geographic Load Balancing for global traffic distribution
 pub mod geo_loadbalancing;
 
+/// Enhanced DDoS Protection with pattern detection
+pub mod ddos_protection;
+
+/// Cache Poisoning Protection with multiple defense layers
+pub mod cache_poisoning;
+
+/// Response Policy Zones (RPZ) for threat intelligence
+pub mod rpz;
+
+/// Source IP Validation for strict query source verification
+pub mod source_validation;
+
+/// Intelligent Failover with health monitoring and predictive detection
+pub mod intelligent_failover;
+
+/// Memory Pool Management for pre-allocated buffers
+pub mod memory_pool;
+
+/// Performance Optimizer for sub-10ms response times
+pub mod performance_optimizer;
+
+/// DNS Analytics for comprehensive query analysis
+pub mod analytics;
+
+/// Zone Transfer (AXFR/IXFR) implementation for secondary servers
+pub mod zone_transfer;
+
+/// Dynamic DNS Updates (RFC 2136) for programmatic record modification
+pub mod dynamic_update;
+
+/// CNAME Flattening for apex domain CNAME support
+pub mod cname_flattening;
+
+/// Split-Horizon DNS for different views based on client source
+pub mod split_horizon;
+
+/// Grafana Dashboards for comprehensive monitoring and alerting
+pub mod grafana_dashboards;
+
+/// Distributed Tracing with Jaeger for request flow visualization
+pub mod distributed_tracing;
+
+/// Alert Management with smart alerting and anomaly detection
+pub mod alert_management;
+
+/// Health Check Analytics for uptime and failure pattern analysis
+pub mod health_check_analytics;
+
+/// Proximity-Based Routing for dynamic closest-server selection
+pub mod proximity_routing;
+
+/// Multi-Region Failover for cross-datacenter redundancy
+pub mod multi_region_failover;
+
+/// GeoDNS for location-aware DNS responses
+pub mod geodns;
+
+/// Traffic Steering for percentage-based traffic distribution
+pub mod traffic_steering;
+
+/// Zone Templates for rapid zone deployment from predefined templates
+pub mod zone_templates;
+
+/// DNS Views for conditional responses based on client attributes
+pub mod dns_views;
+
 #[cfg(test)]
 mod cache_test;

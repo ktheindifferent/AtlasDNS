@@ -11,12 +11,49 @@ use derive_more::{Display, From, Error};
 use crate::dns::buffer::{PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
 
-#[derive(Debug, Display, From, Error)]
+#[derive(Debug)]
 pub enum AuthorityError {
     Buffer(crate::dns::buffer::BufferError),
     Protocol(crate::dns::protocol::ProtocolError),
     Io(std::io::Error),
     PoisonedLock,
+    NoSuchZone(String),
+    ZoneExists(String),
+    NoSuchRecord,
+}
+
+impl std::fmt::Display for AuthorityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthorityError::Buffer(e) => write!(f, "Buffer error: {:?}", e),
+            AuthorityError::Protocol(e) => write!(f, "Protocol error: {:?}", e),
+            AuthorityError::Io(e) => write!(f, "IO error: {}", e),
+            AuthorityError::PoisonedLock => write!(f, "Lock was poisoned"),
+            AuthorityError::NoSuchZone(zone) => write!(f, "Zone not found: {}", zone),
+            AuthorityError::ZoneExists(zone) => write!(f, "Zone already exists: {}", zone),
+            AuthorityError::NoSuchRecord => write!(f, "Record not found"),
+        }
+    }
+}
+
+impl std::error::Error for AuthorityError {}
+
+impl From<std::io::Error> for AuthorityError {
+    fn from(err: std::io::Error) -> Self {
+        AuthorityError::Io(err)
+    }
+}
+
+impl From<crate::dns::buffer::BufferError> for AuthorityError {
+    fn from(err: crate::dns::buffer::BufferError) -> Self {
+        AuthorityError::Buffer(err)
+    }
+}
+
+impl From<crate::dns::protocol::ProtocolError> for AuthorityError {
+    fn from(err: crate::dns::protocol::ProtocolError) -> Self {
+        AuthorityError::Protocol(err)
+    }
 }
 
 type Result<T> = std::result::Result<T, AuthorityError>;
@@ -315,5 +352,212 @@ impl Authority {
         zones.zones.get(zone_name).map(|zone| {
             zone.records.iter().cloned().collect()
         })
+    }
+
+    /// List all zone names
+    pub fn list_zones(&self) -> Vec<String> {
+        let zones = self.zones.read().unwrap();
+        zones.zones.keys().cloned().collect()
+    }
+
+    /// Check if a zone exists
+    pub fn zone_exists(&self, zone_name: &str) -> bool {
+        let zones = self.zones.read().unwrap();
+        zones.zones.contains_key(zone_name)
+    }
+
+    /// Create a new zone
+    pub fn create_zone(&self, zone_name: &str, m_name: &str, r_name: &str) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        if zones.zones.contains_key(zone_name) {
+            return Err(AuthorityError::ZoneExists(zone_name.to_string()));
+        }
+        let zone = Zone::new(zone_name.to_string(), m_name.to_string(), r_name.to_string());
+        zones.zones.insert(zone_name.to_string(), zone);
+        Ok(())
+    }
+
+    /// Delete a zone
+    pub fn delete_zone(&self, zone_name: &str) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        if zones.zones.remove(zone_name).is_none() {
+            return Err(AuthorityError::NoSuchZone(zone_name.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Add SOA record to a zone
+    pub fn add_soa_record(&self, zone_name: &str, m_name: &str, r_name: &str, serial: u32, refresh: u32, retry: u32, expire: u32, minimum: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let soa_record = DnsRecord::Soa {
+            domain: zone_name.to_string(),
+            ttl: TransientTtl(3600),
+            m_name: m_name.to_string(),
+            r_name: r_name.to_string(),
+            serial,
+            refresh,
+            retry,
+            expire,
+            minimum,
+        };
+        
+        zone.add_record(&soa_record);
+        Ok(())
+    }
+
+    /// Update SOA record
+    pub fn update_soa_record(&self, zone_name: &str, serial: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        // Find and update SOA record
+        let mut records = zone.records.clone();
+        for record in &records {
+            if let DnsRecord::Soa { domain, ttl, m_name, r_name, serial: _, refresh, retry, expire, minimum } = record {
+                // Remove old SOA record
+                zone.records.remove(record);
+                // Add updated SOA record
+                let updated_soa = DnsRecord::Soa {
+                    domain: domain.clone(),
+                    ttl: *ttl,
+                    m_name: m_name.clone(),
+                    r_name: r_name.clone(),
+                    serial,
+                    refresh: *refresh,
+                    retry: *retry,
+                    expire: *expire,
+                    minimum: *minimum,
+                };
+                zone.records.insert(updated_soa);
+                return Ok(());
+            }
+        }
+        
+        Err(AuthorityError::NoSuchRecord)
+    }
+
+    /// Add NS record to a zone
+    pub fn add_ns_record(&self, zone_name: &str, ns_host: &str) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let ns_record = DnsRecord::Ns {
+            domain: zone_name.to_string(),
+            ttl: TransientTtl(3600),
+            host: ns_host.to_string(),
+        };
+        
+        zone.add_record(&ns_record);
+        Ok(())
+    }
+
+    /// Add A record to a zone
+    pub fn add_a_record(&self, zone_name: &str, domain: &str, addr: std::net::Ipv4Addr, ttl: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let a_record = DnsRecord::A {
+            domain: domain.to_string(),
+            ttl: TransientTtl(ttl),
+            addr,
+        };
+        
+        zone.add_record(&a_record);
+        Ok(())
+    }
+
+    /// Add AAAA record to a zone
+    pub fn add_aaaa_record(&self, zone_name: &str, domain: &str, addr: std::net::Ipv6Addr, ttl: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let aaaa_record = DnsRecord::Aaaa {
+            domain: domain.to_string(),
+            ttl: TransientTtl(ttl),
+            addr,
+        };
+        
+        zone.add_record(&aaaa_record);
+        Ok(())
+    }
+
+    /// Add CNAME record to a zone
+    pub fn add_cname_record(&self, zone_name: &str, domain: &str, host: &str, ttl: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let cname_record = DnsRecord::Cname {
+            domain: domain.to_string(),
+            ttl: TransientTtl(ttl),
+            host: host.to_string(),
+        };
+        
+        zone.add_record(&cname_record);
+        Ok(())
+    }
+
+    /// Add MX record to a zone
+    pub fn add_mx_record(&self, zone_name: &str, domain: &str, priority: u16, host: &str, ttl: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let mx_record = DnsRecord::Mx {
+            domain: domain.to_string(),
+            ttl: TransientTtl(ttl),
+            priority,
+            host: host.to_string(),
+        };
+        
+        zone.add_record(&mx_record);
+        Ok(())
+    }
+
+    /// Add TXT record to a zone
+    pub fn add_txt_record(&self, zone_name: &str, domain: &str, data: &str, ttl: u32) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        let txt_record = DnsRecord::Txt {
+            domain: domain.to_string(),
+            ttl: TransientTtl(ttl),
+            data: data.to_string(),
+        };
+        
+        zone.add_record(&txt_record);
+        Ok(())
+    }
+
+    /// Export zone to string
+    pub fn export_zone(&self, zone_name: &str) -> Result<String> {
+        let zones = self.zones.read().unwrap();
+        let zone = zones.zones.get(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        // Create a simple zone file format
+        let mut output = String::new();
+        output.push_str(&format!("; Zone: {}\n", zone_name));
+        
+        for record in &zone.records {
+            output.push_str(&format!("{:?}\n", record));
+        }
+        
+        Ok(output)
+    }
+
+    /// Import zone from string
+    pub fn import_zone(&self, zone_name: &str, _data: &str) -> Result<()> {
+        // For now, just create an empty zone
+        // TODO: Implement proper zone file parsing
+        self.create_zone(zone_name, &format!("ns1.{}", zone_name), &format!("admin.{}", zone_name))
     }
 }

@@ -31,6 +31,12 @@ pub enum DnsError {
     BufferExhausted,
     /// Direct IO error wrapper
     Io(io::Error),
+    /// No records found
+    NoRecordsFound,
+    /// Recursion limit exceeded
+    RecursionLimit,
+    /// Invalid input provided
+    InvalidInput,
 }
 
 #[derive(Debug)]
@@ -156,6 +162,9 @@ impl fmt::Display for DnsError {
             DnsError::PacketTooLarge => write!(f, "DNS packet size exceeded maximum allowed"),
             DnsError::BufferExhausted => write!(f, "Buffer pool exhausted"),
             DnsError::Io(e) => write!(f, "I/O error: {}", e),
+            DnsError::NoRecordsFound => write!(f, "No DNS records found"),
+            DnsError::RecursionLimit => write!(f, "DNS recursion limit exceeded"),
+            DnsError::InvalidInput => write!(f, "Invalid input provided"),
         }
     }
 }
@@ -202,6 +211,35 @@ impl From<DnsProtocolError> for DnsError {
                 recoverable: false,
             }),
             DnsProtocolError::Io(io_err) => DnsError::Io(io_err),
+        }
+    }
+}
+
+// Import client error type
+use crate::dns::client::ClientError;
+
+impl From<ClientError> for DnsError {
+    fn from(err: ClientError) -> Self {
+        match err {
+            ClientError::Protocol(p) => DnsError::Protocol(ProtocolError {
+                kind: ProtocolErrorKind::MalformedPacket,
+                packet_id: None,
+                query_name: None,
+                recoverable: false,
+            }),
+            ClientError::Io(io_err) => DnsError::Io(io_err),
+            ClientError::PoisonedLock => DnsError::Operation(OperationError {
+                context: "Lock acquisition".to_string(),
+                details: "Lock was poisoned".to_string(),
+                recovery_hint: None,
+            }),
+            ClientError::LookupFailed => DnsError::NoRecordsFound,
+            ClientError::TimeOut => DnsError::Timeout(TimeoutError {
+                operation: "DNS query".to_string(),
+                duration: Duration::from_secs(30),
+                attempts: 1,
+                next_retry: None,
+            }),
         }
     }
 }
