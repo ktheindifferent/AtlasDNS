@@ -1,11 +1,18 @@
 import React from 'react';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 
 const HealthChecks: React.FC = () => {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Health Checks</h1>
-      <p>Monitor service health</p>
-    </div>
+    <Box>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        Health Checks
+      </Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Health check monitoring functionality will be implemented here.
+        </Alert>
+      </Paper>
+    </Box>
   );
 };
 

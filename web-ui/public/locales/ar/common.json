@@ -1,0 +1,86 @@
+{
+  "appName": "مدير DNS أطلس",
+  "navigation": {
+    "dashboard": "لوحة التحكم",
+    "zones": "مناطق DNS",
+    "records": "سجلات DNS",
+    "healthChecks": "فحوصات الصحة",
+    "trafficPolicies": "سياسات المرور",
+    "analytics": "التحليلات",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "المراقبة",
+    "logs": "السجلات",
+    "users": "المستخدمون",
+    "settings": "الإعدادات"
+  },
+  "actions": {
+    "add": "إضافة",
+    "edit": "تحرير",
+    "delete": "حذف",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "confirm": "تأكيد",
+    "refresh": "تحديث",
+    "search": "بحث",
+    "filter": "تصفية",
+    "export": "تصدير",
+    "import": "استيراد",
+    "view": "عرض",
+    "close": "إغلاق",
+    "submit": "إرسال",
+    "reset": "إعادة تعيين",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "more": "المزيد"
+  },
+  "status": {
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "pending": "قيد الانتظار",
+    "success": "نجاح",
+    "error": "خطأ",
+    "warning": "تحذير",
+    "loading": "جاري التحميل...",
+    "online": "متصل",
+    "offline": "غير متصل",
+    "healthy": "صحي",
+    "unhealthy": "غير صحي"
+  },
+  "time": {
+    "seconds": "{{count}} ثانية",
+    "seconds_plural": "{{count}} ثواني",
+    "minutes": "{{count}} دقيقة",
+    "minutes_plural": "{{count}} دقائق",
+    "hours": "{{count}} ساعة",
+    "hours_plural": "{{count}} ساعات",
+    "days": "{{count}} يوم",
+    "days_plural": "{{count}} أيام",
+    "ago": "منذ {{time}}",
+    "in": "خلال {{time}}"
+  },
+  "table": {
+    "noData": "لا توجد بيانات متاحة",
+    "rowsPerPage": "الصفوف في الصفحة:",
+    "page": "الصفحة {{current}} من {{total}}",
+    "selected": "{{count}} محدد",
+    "sortAsc": "ترتيب تصاعدي",
+    "sortDesc": "ترتيب تنازلي"
+  },
+  "language": {
+    "select": "اختر اللغة",
+    "current": "اللغة الحالية"
+  },
+  "theme": {
+    "light": "فاتح",
+    "dark": "داكن",
+    "system": "النظام"
+  },
+  "user": {
+    "profile": "الملف الشخصي",
+    "logout": "تسجيل الخروج",
+    "login": "تسجيل الدخول",
+    "settings": "إعدادات المستخدم"
+  }
+}

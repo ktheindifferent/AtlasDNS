@@ -1,17 +1,18 @@
 import React from 'react';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 
 const Logs: React.FC = () => {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Logs</h1>
-      <input 
-        type="text" 
-        placeholder="Search logs..." 
-        data-search="logs"
-        style={{ padding: '8px', width: '300px', marginTop: '10px' }}
-      />
-      <p>View system logs</p>
-    </div>
+    <Box>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        System Logs
+      </Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Log viewer and analysis functionality will be implemented here.
+        </Alert>
+      </Paper>
+    </Box>
   );
 };
 
