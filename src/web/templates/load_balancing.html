@@ -1,0 +1,463 @@
+{{#*inline "title"}}Load Balancing{{/inline}}
+{{#*inline "current_page"}}load-balancing{{/inline}}
+
+{{#*inline "content"}}
+<!-- Load Balancing Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Load Balancing</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Performance</li>
+                    <li class="breadcrumb-item active">Load Balancing</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addPoolModal">
+                <i class="bi bi-plus-circle"></i> Add Pool
+            </button>
+            <button class="btn btn-primary ms-2" onclick="saveConfig()">
+                <i class="bi bi-save"></i> Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Load Balancing Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Pools</h6>
+                        <div class="h3 mb-0">{{active_pools}}</div>
+                        <small class="text-success">Healthy</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-collection text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Total Endpoints</h6>
+                        <div class="h3 mb-0">{{total_endpoints}}</div>
+                        <small class="text-info">Configured</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-server text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Requests/sec</h6>
+                        <div class="h3 mb-0">{{requests_per_sec}}</div>
+                        <small class="text-primary">Current</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-activity text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Failovers</h6>
+                        <div class="h3 mb-0">{{failovers}}</div>
+                        <small class="text-warning">Last 24h</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-arrow-repeat text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Load Balancing Pools -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Load Balancing Pools</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Pool Name</th>
+                        <th>Algorithm</th>
+                        <th>Endpoints</th>
+                        <th>Health</th>
+                        <th>Requests</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Primary Pool</div>
+                            <small class="text-muted">api.example.com</small>
+                        </td>
+                        <td><span class="badge bg-info">Round Robin</span></td>
+                        <td>4/5 healthy</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar bg-success" style="width: 80%"></div>
+                                <div class="progress-bar bg-danger" style="width: 20%"></div>
+                            </div>
+                        </td>
+                        <td>125.4K</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editPool('primary')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewPool('primary')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deletePool('primary')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Backup Pool</div>
+                            <small class="text-muted">backup.example.com</small>
+                        </td>
+                        <td><span class="badge bg-warning">Least Connections</span></td>
+                        <td>3/3 healthy</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar bg-success" style="width: 100%"></div>
+                            </div>
+                        </td>
+                        <td>45.2K</td>
+                        <td><span class="badge bg-secondary">Standby</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editPool('backup')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewPool('backup')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deletePool('backup')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Endpoints Configuration -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h5 class="mb-0">Endpoints</h5>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-success" onclick="addEndpoint()">
+                            <i class="bi bi-plus"></i> Add Endpoint
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Endpoint</th>
+                                <th>Weight</th>
+                                <th>Priority</th>
+                                <th>Health</th>
+                                <th>Response Time</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>192.168.1.10:53</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="100" style="width: 60px;">
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="1" style="width: 50px;">
+                                </td>
+                                <td><span class="badge bg-success">Healthy</span></td>
+                                <td>12ms</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.10')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>192.168.1.11:53</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="100" style="width: 60px;">
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="1" style="width: 50px;">
+                                </td>
+                                <td><span class="badge bg-success">Healthy</span></td>
+                                <td>15ms</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.11')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>192.168.1.12:53</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="50" style="width: 60px;">
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="2" style="width: 50px;">
+                                </td>
+                                <td><span class="badge bg-danger">Unhealthy</span></td>
+                                <td>-</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.12')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Load Balancing Algorithms</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Algorithm</label>
+                    <select class="form-select">
+                        <option value="round-robin">Round Robin</option>
+                        <option value="weighted">Weighted Round Robin</option>
+                        <option value="least-conn">Least Connections</option>
+                        <option value="least-time">Least Response Time</option>
+                        <option value="random">Random</option>
+                        <option value="ip-hash">IP Hash</option>
+                        <option value="geo">Geographic</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Session Persistence</label>
+                    <select class="form-select">
+                        <option value="none">None</option>
+                        <option value="ip">Source IP</option>
+                        <option value="cookie">Cookie-based</option>
+                        <option value="custom">Custom Header</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Failover Threshold</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" value="3">
+                        <span class="input-group-text">failures</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Recovery Checks</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" value="2">
+                        <span class="input-group-text">successes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Health Checks Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Health Check Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Check Type</label>
+                <select class="form-select">
+                    <option value="dns">DNS Query</option>
+                    <option value="tcp">TCP Connect</option>
+                    <option value="http">HTTP/HTTPS</option>
+                    <option value="icmp">ICMP Ping</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Check Interval</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="30">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Timeout</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="5">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Retries</label>
+                <input type="number" class="form-control" value="2">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Health Check Query</label>
+                <input type="text" class="form-control" value="health.example.com" placeholder="Domain to query for health check">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Distribution Chart -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Traffic Distribution</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="trafficChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- Add Pool Modal -->
+<div class="modal fade" id="addPoolModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Load Balancing Pool</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Pool Name</label>
+                        <input type="text" class="form-control" id="poolName">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Domain</label>
+                        <input type="text" class="form-control" id="poolDomain" placeholder="e.g., api.example.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Algorithm</label>
+                        <select class="form-select" id="poolAlgorithm">
+                            <option value="round-robin">Round Robin</option>
+                            <option value="weighted">Weighted Round Robin</option>
+                            <option value="least-conn">Least Connections</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Priority</label>
+                        <input type="number" class="form-control" id="poolPriority" value="1">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createPool()">Create Pool</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Traffic Distribution Chart
+const ctx = document.getElementById('trafficChart').getContext('2d');
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Endpoint 1', 'Endpoint 2', 'Endpoint 3', 'Endpoint 4', 'Endpoint 5'],
+        datasets: [{
+            label: 'Requests',
+            data: [30000, 28000, 15000, 12000, 8000],
+            backgroundColor: 'rgba(0, 102, 255, 0.8)'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+function saveConfig() {
+    showToast('Load balancing configuration saved', 'success');
+}
+
+function editPool(poolId) {
+    showToast('Loading pool configuration...', 'info');
+}
+
+function viewPool(poolId) {
+    showToast('Loading pool details...', 'info');
+}
+
+function deletePool(poolId) {
+    if (confirm('Delete this load balancing pool?')) {
+        showToast('Pool deleted', 'success');
+    }
+}
+
+function createPool() {
+    showToast('Load balancing pool created', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('addPoolModal')).hide();
+}
+
+function addEndpoint() {
+    showToast('Add new endpoint...', 'info');
+}
+
+function removeEndpoint(endpoint) {
+    if (confirm(`Remove endpoint ${endpoint}?`)) {
+        showToast('Endpoint removed', 'success');
+    }
+}
+</script>
+{{/inline}}
+
+{{> layout}}

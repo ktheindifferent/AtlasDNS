@@ -512,7 +512,7 @@ enum TransferCommands {
     },
 }
 
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, Debug)]
 enum Shell {
     Bash,
     Zsh,

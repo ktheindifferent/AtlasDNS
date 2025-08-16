@@ -1,0 +1,529 @@
+{{#*inline "title"}}Traffic Steering{{/inline}}
+{{#*inline "current_page"}}traffic-steering{{/inline}}
+
+{{#*inline "content"}}
+<!-- Traffic Steering Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Traffic Steering</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Performance</li>
+                    <li class="breadcrumb-item active">Traffic Steering</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" onclick="addPolicy()">
+                <i class="bi bi-plus-circle"></i> Add Policy
+            </button>
+            <button class="btn btn-primary ms-2" onclick="saveConfig()">
+                <i class="bi bi-save"></i> Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Policies</h6>
+                        <div class="h3 mb-0">{{active_policies}}</div>
+                        <small class="text-success">Routing traffic</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shuffle text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Traffic Splits</h6>
+                        <div class="h3 mb-0">{{traffic_splits}}</div>
+                        <small class="text-info">Configured</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-diagram-2 text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">A/B Tests</h6>
+                        <div class="h3 mb-0">{{ab_tests}}</div>
+                        <small class="text-warning">Running</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-percent text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Redirects</h6>
+                        <div class="h3 mb-0">{{redirects}}</div>
+                        <small class="text-primary">Today</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-arrow-right-circle text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Policies -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Traffic Steering Policies</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Policy Name</th>
+                        <th>Type</th>
+                        <th>Rules</th>
+                        <th>Distribution</th>
+                        <th>Traffic</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Production Traffic Split</div>
+                            <small class="text-muted">api.example.com</small>
+                        </td>
+                        <td><span class="badge bg-info">Weighted</span></td>
+                        <td>3 rules</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-primary me-2">Primary: 70%</span>
+                                <span class="badge bg-secondary">Canary: 30%</span>
+                            </div>
+                        </td>
+                        <td>125K req/hr</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editPolicy('prod')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewMetrics('prod')">
+                                    <i class="bi bi-graph-up"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deletePolicy('prod')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">A/B Test Campaign</div>
+                            <small class="text-muted">www.example.com</small>
+                        </td>
+                        <td><span class="badge bg-warning">A/B Test</span></td>
+                        <td>2 rules</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-success me-2">Version A: 50%</span>
+                                <span class="badge bg-info">Version B: 50%</span>
+                            </div>
+                        </td>
+                        <td>50K req/hr</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editPolicy('ab')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewMetrics('ab')">
+                                    <i class="bi bi-graph-up"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deletePolicy('ab')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Maintenance Redirect</div>
+                            <small class="text-muted">legacy.example.com</small>
+                        </td>
+                        <td><span class="badge bg-secondary">Redirect</span></td>
+                        <td>1 rule</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <span class="badge bg-warning">100% → maintenance</span>
+                            </div>
+                        </td>
+                        <td>5K req/hr</td>
+                        <td><span class="badge bg-warning">Scheduled</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editPolicy('maint')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewMetrics('maint')">
+                                    <i class="bi bi-graph-up"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deletePolicy('maint')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Policy Configuration -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Policy Rules</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Policy Type</label>
+                    <select class="form-select" id="policyType" onchange="updatePolicyOptions()">
+                        <option value="weighted">Weighted Distribution</option>
+                        <option value="ab">A/B Testing</option>
+                        <option value="canary">Canary Deployment</option>
+                        <option value="bluegreen">Blue-Green</option>
+                        <option value="failover">Failover</option>
+                        <option value="redirect">Redirect</option>
+                    </select>
+                </div>
+                
+                <div id="weightedConfig">
+                    <h6>Traffic Distribution</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Pool</label>
+                            <div class="input-group">
+                                <select class="form-select">
+                                    <option>production-pool</option>
+                                    <option>staging-pool</option>
+                                </select>
+                                <input type="number" class="form-control" value="70" style="max-width: 80px;">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Secondary Pool</label>
+                            <div class="input-group">
+                                <select class="form-select">
+                                    <option>canary-pool</option>
+                                    <option>backup-pool</option>
+                                </select>
+                                <input type="number" class="form-control" value="30" style="max-width: 80px;">
+                                <span class="input-group-text">%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h6>Routing Conditions</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Condition</th>
+                                <th>Operator</th>
+                                <th>Value</th>
+                                <th>Target</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    <select class="form-select form-select-sm">
+                                        <option>Source IP</option>
+                                        <option>User Agent</option>
+                                        <option>Cookie</option>
+                                        <option>Header</option>
+                                        <option>Query String</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm">
+                                        <option>equals</option>
+                                        <option>contains</option>
+                                        <option>matches</option>
+                                        <option>starts with</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" placeholder="Value">
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm">
+                                        <option>Pool A</option>
+                                        <option>Pool B</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <button class="btn btn-sm btn-success" onclick="addCondition()">
+                        <i class="bi bi-plus"></i> Add Condition
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Policy Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Policy Name</label>
+                    <input type="text" class="form-control" placeholder="Enter policy name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Domain</label>
+                    <input type="text" class="form-control" placeholder="example.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Schedule</label>
+                    <select class="form-select">
+                        <option>Always Active</option>
+                        <option>Business Hours</option>
+                        <option>Custom Schedule</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Session Persistence</label>
+                    <select class="form-select">
+                        <option>None</option>
+                        <option>Cookie-based</option>
+                        <option>IP-based</option>
+                    </select>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="enableLogging" checked>
+                    <label class="form-check-label" for="enableLogging">
+                        Enable Detailed Logging
+                    </label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="enableMetrics" checked>
+                    <label class="form-check-label" for="enableMetrics">
+                        Collect Metrics
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Traffic Analytics -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Traffic Flow Visualization</h5>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm">
+                    <option>Last 1 Hour</option>
+                    <option>Last 24 Hours</option>
+                    <option>Last 7 Days</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <canvas id="trafficFlowChart" height="80"></canvas>
+    </div>
+</div>
+
+<!-- A/B Test Results -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">A/B Test Performance</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h6>Version A (Control)</h6>
+                <div class="list-group">
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Response Time</span>
+                            <strong>125ms</strong>
+                        </div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Success Rate</span>
+                            <strong>99.2%</strong>
+                        </div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Traffic Volume</span>
+                            <strong>50,234 requests</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6>Version B (Variant)</h6>
+                <div class="list-group">
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Response Time</span>
+                            <strong class="text-success">118ms (-5.6%)</strong>
+                        </div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Success Rate</span>
+                            <strong class="text-success">99.5% (+0.3%)</strong>
+                        </div>
+                    </div>
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between">
+                            <span>Traffic Volume</span>
+                            <strong>49,876 requests</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button class="btn btn-success" onclick="promoteVariant()">
+                <i class="bi bi-check-circle"></i> Promote Version B
+            </button>
+            <button class="btn btn-secondary ms-2" onclick="continueTest()">
+                <i class="bi bi-arrow-clockwise"></i> Continue Testing
+            </button>
+            <button class="btn btn-danger ms-2" onclick="stopTest()">
+                <i class="bi bi-stop-circle"></i> Stop Test
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Traffic Flow Chart
+const ctx = document.getElementById('trafficFlowChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+        datasets: [{
+            label: 'Primary',
+            data: [3000, 2800, 4500, 8000, 9500, 7000, 4000],
+            borderColor: 'rgb(75, 192, 192)',
+            tension: 0.1
+        }, {
+            label: 'Canary',
+            data: [1000, 950, 1500, 2700, 3200, 2300, 1300],
+            borderColor: 'rgb(255, 159, 64)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+function saveConfig() {
+    showToast('Traffic steering configuration saved', 'success');
+}
+
+function addPolicy() {
+    showToast('Creating new traffic policy...', 'info');
+}
+
+function editPolicy(id) {
+    showToast(`Loading policy ${id}...`, 'info');
+}
+
+function viewMetrics(id) {
+    showToast(`Loading metrics for ${id}...`, 'info');
+}
+
+function deletePolicy(id) {
+    if (confirm('Delete this traffic policy?')) {
+        showToast('Policy deleted', 'success');
+    }
+}
+
+function updatePolicyOptions() {
+    const type = document.getElementById('policyType').value;
+    showToast(`Policy type changed to ${type}`, 'info');
+}
+
+function addCondition() {
+    showToast('Adding routing condition...', 'info');
+}
+
+function promoteVariant() {
+    if (confirm('Promote Version B to 100% traffic?')) {
+        showToast('Version B promoted successfully', 'success');
+    }
+}
+
+function continueTest() {
+    showToast('A/B test will continue running', 'info');
+}
+
+function stopTest() {
+    if (confirm('Stop the A/B test?')) {
+        showToast('A/B test stopped', 'warning');
+    }
+}
+</script>
+{{/inline}}
+
+{{> layout}}

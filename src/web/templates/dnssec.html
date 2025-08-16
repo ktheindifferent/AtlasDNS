@@ -1,0 +1,721 @@
+{{#*inline "title"}}DNSSEC{{/inline}}
+{{#*inline "current_page"}}dnssec{{/inline}}
+
+{{#*inline "content"}}
+<!-- DNSSEC Management -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">DNSSEC Management</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">DNS Management</li>
+                    <li class="breadcrumb-item active">DNSSEC</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" onclick="runDNSSECValidation()">
+                <i class="bi bi-check-circle"></i> Validate All
+            </button>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#dnssecWizard">
+                <i class="bi bi-plus-circle"></i> Enable DNSSEC
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- DNSSEC Status Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Signed Zones</h6>
+                        <div class="h3 mb-0">{{signed_zones}}/{{total_zones}}</div>
+                        <div class="progress" style="height: 4px;">
+                            <div class="progress-bar bg-success" style="width: {{signed_percent}}%"></div>
+                        </div>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shield-check text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Keys</h6>
+                        <div class="h3 mb-0">{{active_keys}}</div>
+                        <small class="text-muted">KSK: {{ksk_count}}, ZSK: {{zsk_count}}</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-key-fill text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Key Rollovers</h6>
+                        <div class="h3 mb-0">{{pending_rollovers}}</div>
+                        <small class="text-warning">Next in {{next_rollover_days}} days</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-arrow-repeat text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Validation Status</h6>
+                        <div class="h3 mb-0 text-success">Valid</div>
+                        <small class="text-muted">Last check: {{last_check}}</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-patch-check-fill text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DNSSEC Zones Table -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">DNSSEC-Enabled Zones</h5>
+            </div>
+            <div class="col-auto">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Search zones..." id="searchZones">
+                    <button class="btn btn-outline-secondary" type="button">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Zone</th>
+                        <th>Status</th>
+                        <th>Algorithm</th>
+                        <th>KSK</th>
+                        <th>ZSK</th>
+                        <th>DS Record</th>
+                        <th>Next Rollover</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each dnssec_zones}}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-globe2 text-primary me-2"></i>
+                                <div>
+                                    <div class="fw-semibold">{{zone_name}}</div>
+                                    <small class="text-muted">{{record_count}} records</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {{#if signed}}
+                            <span class="badge bg-success">
+                                <i class="bi bi-shield-check"></i> Signed
+                            </span>
+                            {{else}}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-shield-x"></i> Unsigned
+                            </span>
+                            {{/if}}
+                        </td>
+                        <td>
+                            <span class="badge bg-info">{{algorithm}}</span>
+                        </td>
+                        <td>
+                            <div class="small">
+                                <div>ID: {{ksk_id}}</div>
+                                <div class="text-muted">{{ksk_bits}} bits</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="small">
+                                <div>ID: {{zsk_id}}</div>
+                                <div class="text-muted">{{zsk_bits}} bits</div>
+                            </div>
+                        </td>
+                        <td>
+                            {{#if ds_published}}
+                            <span class="badge bg-success">Published</span>
+                            {{else}}
+                            <span class="badge bg-warning">Pending</span>
+                            {{/if}}
+                        </td>
+                        <td>
+                            <div class="small">
+                                <div>{{next_rollover_date}}</div>
+                                <div class="text-muted">{{rollover_type}}</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="viewDNSSECDetails('{{zone_id}}')" title="View Details">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" onclick="rolloverKeys('{{zone_id}}')" title="Rollover Keys">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="exportDS('{{zone_id}}')" title="Export DS">
+                                    <i class="bi bi-download"></i>
+                                </button>
+                                {{#if signed}}
+                                <button class="btn btn-outline-danger" onclick="disableDNSSEC('{{zone_id}}')" title="Disable DNSSEC">
+                                    <i class="bi bi-shield-x"></i>
+                                </button>
+                                {{else}}
+                                <button class="btn btn-outline-success" onclick="enableDNSSEC('{{zone_id}}')" title="Enable DNSSEC">
+                                    <i class="bi bi-shield-check"></i>
+                                </button>
+                                {{/if}}
+                            </div>
+                        </td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Key Management -->
+<div class="row g-3 mb-4">
+    <!-- Key Store -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Key Store</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3">
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary active">All</button>
+                        <button class="btn btn-outline-primary">KSK</button>
+                        <button class="btn btn-outline-primary">ZSK</button>
+                    </div>
+                    <button class="btn btn-sm btn-success" onclick="generateNewKey()">
+                        <i class="bi bi-plus"></i> Generate Key
+                    </button>
+                </div>
+                <div class="list-group">
+                    {{#each keys}}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <div class="fw-semibold">
+                                    <i class="bi bi-key-fill text-{{key_type_color}}"></i>
+                                    {{key_type}} - {{key_id}}
+                                </div>
+                                <small class="text-muted">
+                                    {{algorithm}} / {{bits}} bits / Created: {{created_date}}
+                                </small>
+                                <div class="mt-1">
+                                    <span class="badge bg-{{status_color}}">{{status}}</span>
+                                    {{#if expires_soon}}
+                                    <span class="badge bg-warning">Expires in {{days_until_expiry}} days</span>
+                                    {{/if}}
+                                </div>
+                            </div>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" onclick="viewKey('{{key_id}}')">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="revokeKey('{{key_id}}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rollover Schedule -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Key Rollover Schedule</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <button class="btn btn-sm btn-primary" onclick="scheduleRollover()">
+                        <i class="bi bi-calendar-plus"></i> Schedule Rollover
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="viewRolloverPolicy()">
+                        <i class="bi bi-gear"></i> Rollover Policy
+                    </button>
+                </div>
+                <div class="timeline">
+                    {{#each rollover_schedule}}
+                    <div class="timeline-item">
+                        <div class="timeline-marker bg-{{status_color}}"></div>
+                        <div class="timeline-content">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="mb-1">{{zone_name}} - {{key_type}}</h6>
+                                    <small class="text-muted">{{scheduled_date}}</small>
+                                </div>
+                                <div>
+                                    <span class="badge bg-{{status_color}}">{{status}}</span>
+                                </div>
+                            </div>
+                            <div class="mt-2">
+                                <small>{{description}}</small>
+                            </div>
+                            {{#if can_cancel}}
+                            <button class="btn btn-sm btn-outline-danger mt-2" onclick="cancelRollover('{{rollover_id}}')">
+                                Cancel
+                            </button>
+                            {{/if}}
+                        </div>
+                    </div>
+                    {{/each}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DNSSEC Validation -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">DNSSEC Validation Results</h5>
+    </div>
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Enter domain to validate" id="validateDomain">
+                    <button class="btn btn-primary" onclick="validateDomain()">
+                        <i class="bi bi-check-circle"></i> Validate
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="validateChain" checked>
+                    <label class="form-check-label" for="validateChain">
+                        Validate entire chain
+                    </label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="validateNSEC3">
+                    <label class="form-check-label" for="validateNSEC3">
+                        Check NSEC3
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <div id="validationResults" class="mt-3">
+            <!-- Validation results will be displayed here -->
+        </div>
+    </div>
+</div>
+
+<!-- DNSSEC Enable Wizard Modal -->
+<div class="modal fade" id="dnssecWizard" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Enable DNSSEC</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Step Indicator -->
+                <div class="steps-indicator mb-4">
+                    <div class="step active" data-step="1">
+                        <div class="step-number">1</div>
+                        <div class="step-title">Select Zone</div>
+                    </div>
+                    <div class="step" data-step="2">
+                        <div class="step-number">2</div>
+                        <div class="step-title">Configure Keys</div>
+                    </div>
+                    <div class="step" data-step="3">
+                        <div class="step-number">3</div>
+                        <div class="step-title">Sign Zone</div>
+                    </div>
+                    <div class="step" data-step="4">
+                        <div class="step-number">4</div>
+                        <div class="step-title">Publish DS</div>
+                    </div>
+                </div>
+                
+                <!-- Step 1: Select Zone -->
+                <div class="wizard-step" data-step="1">
+                    <h6>Select Zone to Enable DNSSEC</h6>
+                    <select class="form-select" id="wizardZoneSelect">
+                        <option value="">Choose a zone...</option>
+                        {{#each unsigned_zones}}
+                        <option value="{{zone_id}}">{{zone_name}}</option>
+                        {{/each}}
+                    </select>
+                </div>
+                
+                <!-- Step 2: Configure Keys -->
+                <div class="wizard-step d-none" data-step="2">
+                    <h6>Key Configuration</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Algorithm</label>
+                            <select class="form-select" id="wizardAlgorithm">
+                                <option value="ECDSAP256SHA256">ECDSA P-256 (Recommended)</option>
+                                <option value="RSASHA256">RSA SHA-256</option>
+                                <option value="ED25519">Ed25519</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Key Size (bits)</label>
+                            <select class="form-select" id="wizardKeySize">
+                                <option value="256">256 (ECDSA)</option>
+                                <option value="2048">2048 (RSA)</option>
+                                <option value="4096">4096 (RSA)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">KSK Lifetime (days)</label>
+                            <input type="number" class="form-control" id="wizardKSKLifetime" value="365">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">ZSK Lifetime (days)</label>
+                            <input type="number" class="form-control" id="wizardZSKLifetime" value="30">
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="wizardNSEC3" checked>
+                                <label class="form-check-label" for="wizardNSEC3">
+                                    Use NSEC3 (Recommended for privacy)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Step 3: Sign Zone -->
+                <div class="wizard-step d-none" data-step="3">
+                    <h6>Zone Signing</h6>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        The zone will be signed with the configured parameters. This process may take a few moments.
+                    </div>
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                    </div>
+                    <div id="signingLog" class="bg-dark text-light p-3 rounded" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.875rem;">
+                        <!-- Signing progress will be shown here -->
+                    </div>
+                </div>
+                
+                <!-- Step 4: Publish DS -->
+                <div class="wizard-step d-none" data-step="4">
+                    <h6>DS Record for Parent Zone</h6>
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i>
+                        Zone signed successfully! Add the following DS record to your parent zone:
+                    </div>
+                    <div class="bg-light p-3 rounded mb-3">
+                        <code id="dsRecord">
+                            example.com. 3600 IN DS 12345 8 2 1234567890ABCDEF...
+                        </code>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button class="btn btn-outline-primary w-100" onclick="copyDSRecord()">
+                                <i class="bi bi-clipboard"></i> Copy DS Record
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-outline-secondary w-100" onclick="emailDSRecord()">
+                                <i class="bi bi-envelope"></i> Email to Registrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="wizardPrev" onclick="wizardPrev()" disabled>
+                    <i class="bi bi-arrow-left"></i> Previous
+                </button>
+                <button type="button" class="btn btn-primary" id="wizardNext" onclick="wizardNext()">
+                    Next <i class="bi bi-arrow-right"></i>
+                </button>
+                <button type="button" class="btn btn-success d-none" id="wizardFinish" onclick="wizardFinish()">
+                    <i class="bi bi-check-circle"></i> Finish
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+
+.timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+}
+
+.timeline-item:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 20px;
+    height: calc(100% - 20px);
+    width: 2px;
+    background: #dee2e6;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: -25px;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+
+.steps-indicator {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+}
+
+.step {
+    text-align: center;
+    position: relative;
+    flex: 1;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #6c757d;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 10px;
+    font-weight: bold;
+}
+
+.step.active .step-number {
+    background: var(--atlas-primary);
+}
+
+.step-title {
+    font-size: 0.875rem;
+    color: #6c757d;
+}
+
+.step.active .step-title {
+    color: var(--atlas-primary);
+    font-weight: 600;
+}
+</style>
+
+<script>
+let currentWizardStep = 1;
+
+function wizardNext() {
+    if (currentWizardStep < 4) {
+        document.querySelector(`.wizard-step[data-step="${currentWizardStep}"]`).classList.add('d-none');
+        currentWizardStep++;
+        document.querySelector(`.wizard-step[data-step="${currentWizardStep}"]`).classList.remove('d-none');
+        
+        document.querySelector(`.step[data-step="${currentWizardStep}"]`).classList.add('active');
+        document.getElementById('wizardPrev').disabled = false;
+        
+        if (currentWizardStep === 3) {
+            startZoneSigning();
+        }
+        
+        if (currentWizardStep === 4) {
+            document.getElementById('wizardNext').classList.add('d-none');
+            document.getElementById('wizardFinish').classList.remove('d-none');
+        }
+    }
+}
+
+function wizardPrev() {
+    if (currentWizardStep > 1) {
+        document.querySelector(`.wizard-step[data-step="${currentWizardStep}"]`).classList.add('d-none');
+        document.querySelector(`.step[data-step="${currentWizardStep}"]`).classList.remove('active');
+        currentWizardStep--;
+        document.querySelector(`.wizard-step[data-step="${currentWizardStep}"]`).classList.remove('d-none');
+        
+        if (currentWizardStep === 1) {
+            document.getElementById('wizardPrev').disabled = true;
+        }
+        
+        document.getElementById('wizardNext').classList.remove('d-none');
+        document.getElementById('wizardFinish').classList.add('d-none');
+    }
+}
+
+function wizardFinish() {
+    showToast('DNSSEC enabled successfully!', 'success');
+    document.getElementById('dnssecWizard').querySelector('.btn-close').click();
+    location.reload();
+}
+
+function startZoneSigning() {
+    const progressBar = document.querySelector('.wizard-step[data-step="3"] .progress-bar');
+    const log = document.getElementById('signingLog');
+    
+    const messages = [
+        'Generating KSK (Key Signing Key)...',
+        'Generating ZSK (Zone Signing Key)...',
+        'Signing SOA record...',
+        'Signing NS records...',
+        'Signing A/AAAA records...',
+        'Generating NSEC3 chain...',
+        'Computing DS record...',
+        'Zone signing complete!'
+    ];
+    
+    let progress = 0;
+    let messageIndex = 0;
+    
+    const interval = setInterval(() => {
+        if (messageIndex < messages.length) {
+            log.innerHTML += messages[messageIndex] + '<br>';
+            log.scrollTop = log.scrollHeight;
+            messageIndex++;
+            progress += 100 / messages.length;
+            progressBar.style.width = progress + '%';
+        } else {
+            clearInterval(interval);
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-success');
+        }
+    }, 500);
+}
+
+function validateDomain() {
+    const domain = document.getElementById('validateDomain').value;
+    const resultsDiv = document.getElementById('validationResults');
+    
+    resultsDiv.innerHTML = `
+        <div class="alert alert-info">
+            <i class="bi bi-hourglass-split"></i> Validating ${domain}...
+        </div>
+    `;
+    
+    setTimeout(() => {
+        resultsDiv.innerHTML = `
+            <div class="alert alert-success">
+                <i class="bi bi-check-circle"></i> DNSSEC validation successful for ${domain}
+            </div>
+            <div class="validation-chain">
+                <h6>Validation Chain:</h6>
+                <ul class="list-unstyled">
+                    <li><i class="bi bi-check text-success"></i> Root zone (.) - Valid</li>
+                    <li><i class="bi bi-check text-success"></i> TLD zone (.com) - Valid</li>
+                    <li><i class="bi bi-check text-success"></i> Domain zone (${domain}) - Valid</li>
+                </ul>
+            </div>
+        `;
+    }, 2000);
+}
+
+function enableDNSSEC(zoneId) {
+    document.getElementById('wizardZoneSelect').value = zoneId;
+    new bootstrap.Modal(document.getElementById('dnssecWizard')).show();
+}
+
+function disableDNSSEC(zoneId) {
+    if (confirm('Are you sure you want to disable DNSSEC for this zone? This will remove all signatures and keys.')) {
+        showToast('DNSSEC disabled for zone', 'warning');
+    }
+}
+
+function viewDNSSECDetails(zoneId) {
+    showToast('Loading DNSSEC details...', 'info');
+}
+
+function rolloverKeys(zoneId) {
+    if (confirm('Start key rollover process for this zone?')) {
+        showToast('Key rollover initiated', 'success');
+    }
+}
+
+function exportDS(zoneId) {
+    showToast('DS record copied to clipboard', 'success');
+}
+
+function copyDSRecord() {
+    const dsRecord = document.getElementById('dsRecord').textContent;
+    navigator.clipboard.writeText(dsRecord);
+    showToast('DS record copied to clipboard', 'success');
+}
+
+function generateNewKey() {
+    showToast('Generating new key pair...', 'info');
+}
+
+function viewKey(keyId) {
+    showToast('Loading key details...', 'info');
+}
+
+function revokeKey(keyId) {
+    if (confirm('Are you sure you want to revoke this key?')) {
+        showToast('Key revoked successfully', 'warning');
+    }
+}
+
+function scheduleRollover() {
+    showToast('Opening rollover scheduler...', 'info');
+}
+
+function cancelRollover(rolloverId) {
+    if (confirm('Cancel this scheduled rollover?')) {
+        showToast('Rollover cancelled', 'warning');
+    }
+}
+
+function runDNSSECValidation() {
+    showToast('Running DNSSEC validation on all zones...', 'info');
+}
+</script>
+{{/inline}}
+
+{{> layout}}

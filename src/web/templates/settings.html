@@ -1,0 +1,399 @@
+{{#*inline "title"}}Settings{{/inline}}
+{{#*inline "current_page"}}settings{{/inline}}
+
+{{#*inline "content"}}
+<!-- Settings -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Settings</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Administration</li>
+                    <li class="breadcrumb-item active">Settings</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-outline-secondary" onclick="exportSettings()">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <button class="btn btn-outline-secondary" onclick="importSettings()">
+                <i class="bi bi-upload"></i> Import
+            </button>
+            <button class="btn btn-primary" onclick="saveAllSettings()">
+                <i class="bi bi-save"></i> Save All Changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Tabs -->
+<ul class="nav nav-tabs mb-4" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#general">
+            <i class="bi bi-gear"></i> General
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#network">
+            <i class="bi bi-ethernet"></i> Network
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#performance">
+            <i class="bi bi-speedometer2"></i> Performance
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#security">
+            <i class="bi bi-shield"></i> Security
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#logging">
+            <i class="bi bi-file-text"></i> Logging
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#advanced">
+            <i class="bi bi-tools"></i> Advanced
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- General Settings -->
+    <div class="tab-pane fade show active" id="general">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">General Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Server Name</label>
+                        <input type="text" class="form-control" value="Atlas DNS Server">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Server ID</label>
+                        <input type="text" class="form-control" value="atlas-001" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Administrator Email</label>
+                        <input type="email" class="form-control" value="admin@example.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Time Zone</label>
+                        <select class="form-select">
+                            <option>UTC</option>
+                            <option>America/New_York</option>
+                            <option>Europe/London</option>
+                            <option>Asia/Tokyo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Default TTL</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="3600">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Max Zone Size</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="10">
+                            <span class="input-group-text">MB</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Network Settings -->
+    <div class="tab-pane fade" id="network">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Network Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">DNS Port (UDP)</label>
+                        <input type="number" class="form-control" value="53">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">DNS Port (TCP)</label>
+                        <input type="number" class="form-control" value="53">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">API Port</label>
+                        <input type="number" class="form-control" value="5380">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Listen Address</label>
+                        <input type="text" class="form-control" value="0.0.0.0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">IPv6 Listen Address</label>
+                        <input type="text" class="form-control" value="::">
+                    </div>
+                    <div class="col-12">
+                        <h6>Upstream DNS Servers</h6>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" placeholder="Add upstream DNS server">
+                            <button class="btn btn-outline-secondary">Add</button>
+                        </div>
+                        <div class="list-group">
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>8.8.8.8</span>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>1.1.1.1</span>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Performance Settings -->
+    <div class="tab-pane fade" id="performance">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Performance Tuning</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Worker Threads</label>
+                        <input type="number" class="form-control" value="4" min="1" max="64">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Max Connections</label>
+                        <input type="number" class="form-control" value="10000">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Connection Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="30">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cache Size</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="100">
+                            <span class="input-group-text">MB</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cache TTL</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="300">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="prefetch" checked>
+                            <label class="form-check-label" for="prefetch">
+                                Enable Cache Prefetching
+                            </label>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="compression" checked>
+                            <label class="form-check-label" for="compression">
+                                Enable Response Compression
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Security Settings -->
+    <div class="tab-pane fade" id="security">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Security Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="dnssec" checked>
+                            <label class="form-check-label" for="dnssec">
+                                Enable DNSSEC Validation
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="rateLimit" checked>
+                            <label class="form-check-label" for="rateLimit">
+                                Enable Rate Limiting
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="ddos" checked>
+                            <label class="form-check-label" for="ddos">
+                                Enable DDoS Protection
+                            </label>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="firewall" checked>
+                            <label class="form-check-label" for="firewall">
+                                Enable DNS Firewall
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Session Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="3600">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Max Login Attempts</label>
+                        <input type="number" class="form-control" value="5">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Logging Settings -->
+    <div class="tab-pane fade" id="logging">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Logging Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Log Level</label>
+                        <select class="form-select">
+                            <option>Error</option>
+                            <option>Warning</option>
+                            <option selected>Info</option>
+                            <option>Debug</option>
+                            <option>Trace</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Log Format</label>
+                        <select class="form-select">
+                            <option>JSON</option>
+                            <option>Plain Text</option>
+                            <option>Syslog</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Log Directory</label>
+                        <input type="text" class="form-control" value="/var/log/atlas">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Max Log Size</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="100">
+                            <span class="input-group-text">MB</span>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="logQueries" checked>
+                            <label class="form-check-label" for="logQueries">
+                                Log DNS Queries
+                            </label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="logErrors" checked>
+                            <label class="form-check-label" for="logErrors">
+                                Log Errors
+                            </label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="logSecurity" checked>
+                            <label class="form-check-label" for="logSecurity">
+                                Log Security Events
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Advanced Settings -->
+    <div class="tab-pane fade" id="advanced">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Advanced Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Warning:</strong> Modifying these settings may affect system stability.
+                </div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Custom Configuration (JSON)</label>
+                        <textarea class="form-control font-monospace" rows="10">{
+  "experimental_features": {
+    "enable_http3": false,
+    "enable_ebpf": false,
+    "enable_ml_cache": false
+  },
+  "internal_settings": {
+    "buffer_size": 4096,
+    "max_packet_size": 512,
+    "recursion_depth": 10
+  }
+}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-warning" onclick="validateConfig()">
+                            <i class="bi bi-check"></i> Validate Configuration
+                        </button>
+                        <button class="btn btn-danger ms-2" onclick="resetDefaults()">
+                            <i class="bi bi-arrow-counterclockwise"></i> Reset to Defaults
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveAllSettings() {
+    showToast('All settings saved successfully', 'success');
+}
+
+function exportSettings() {
+    showToast('Exporting settings...', 'info');
+}
+
+function importSettings() {
+    showToast('Opening import dialog...', 'info');
+}
+
+function validateConfig() {
+    showToast('Configuration is valid', 'success');
+}
+
+function resetDefaults() {
+    if (confirm('Reset all settings to defaults? This cannot be undone.')) {
+        showToast('Settings reset to defaults', 'warning');
+    }
+}
+</script>
+{{/inline}}
+
+{{> layout}}

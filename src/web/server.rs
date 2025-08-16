@@ -172,6 +172,27 @@ impl<'a> WebServer<'a> {
         register_template("users", include_str!("templates/users.html"));
         register_template("sessions", include_str!("templates/sessions.html"));
         register_template("profile", include_str!("templates/profile.html"));
+        
+        // Register new templates
+        register_template("analytics", include_str!("templates/analytics.html"));
+        register_template("dnssec", include_str!("templates/dnssec.html"));
+        register_template("firewall", include_str!("templates/firewall.html"));
+        register_template("rate_limiting", include_str!("templates/rate_limiting.html"));
+        register_template("ddos_protection", include_str!("templates/ddos_protection.html"));
+        register_template("doh", include_str!("templates/doh.html"));
+        register_template("dot", include_str!("templates/dot.html"));
+        register_template("doq", include_str!("templates/doq.html"));
+        register_template("load_balancing", include_str!("templates/load_balancing.html"));
+        register_template("geodns", include_str!("templates/geodns.html"));
+        register_template("traffic_steering", include_str!("templates/traffic_steering.html"));
+        register_template("health_checks", include_str!("templates/health_checks.html"));
+        register_template("logs", include_str!("templates/logs.html"));
+        register_template("alerts", include_str!("templates/alerts.html"));
+        register_template("api", include_str!("templates/api.html"));
+        register_template("webhooks", include_str!("templates/webhooks.html"));
+        register_template("certificates", include_str!("templates/certificates.html"));
+        register_template("templates", include_str!("templates/templates.html"));
+        register_template("settings", include_str!("templates/settings.html"));
 
         server
     }
@@ -241,6 +262,28 @@ impl<'a> WebServer<'a> {
             (Method::Post, ["graphql"]) => self.graphql_handler(request),
             (Method::Get, ["dns-query"]) => self.doh_handler(request),
             (Method::Post, ["dns-query"]) => self.doh_handler(request),
+            
+            // New UI routes
+            (Method::Get, ["analytics"]) => self.analytics_page(request),
+            (Method::Get, ["dnssec"]) => self.dnssec_page(request),
+            (Method::Get, ["firewall"]) => self.firewall_page(request),
+            (Method::Get, ["templates"]) => self.templates_page(request),
+            (Method::Get, ["rate-limiting"]) => self.rate_limiting_page(request),
+            (Method::Get, ["ddos-protection"]) => self.ddos_protection_page(request),
+            (Method::Get, ["protocols", "doh"]) => self.doh_page(request),
+            (Method::Get, ["protocols", "dot"]) => self.dot_page(request),
+            (Method::Get, ["protocols", "doq"]) => self.doq_page(request),
+            (Method::Get, ["load-balancing"]) => self.load_balancing_page(request),
+            (Method::Get, ["geodns"]) => self.geodns_page(request),
+            (Method::Get, ["traffic-steering"]) => self.traffic_steering_page(request),
+            (Method::Get, ["health-checks"]) => self.health_checks_page(request),
+            (Method::Get, ["logs"]) => self.logs_page(request),
+            (Method::Get, ["alerts"]) => self.alerts_page(request),
+            (Method::Get, ["api"]) => self.api_page(request),
+            (Method::Get, ["webhooks"]) => self.webhooks_page(request),
+            (Method::Get, ["certificates"]) => self.certificates_page(request),
+            (Method::Get, ["settings"]) => self.settings_page(request),
+            
             (Method::Get, []) => self.index(request),
             (_, _) => self.not_found(request),
         }
@@ -929,5 +972,380 @@ impl<'a> WebServer<'a> {
         })?;
         
         Ok(response)
+    }
+    
+    // New page handlers
+    fn analytics_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get real statistics from backend
+        let tcp_count = self.context.statistics.get_tcp_query_count();
+        let udp_count = self.context.statistics.get_udp_query_count();
+        let total_queries = tcp_count + udp_count;
+        
+        // Get cache statistics
+        let cache_size = if let Ok(cache_list) = self.context.cache.list() {
+            cache_list.len()
+        } else {
+            0
+        };
+        
+        // Calculate percentages for TCP/UDP
+        let (tcp_percent, udp_percent) = if total_queries > 0 {
+            let tcp_pct = (tcp_count as f64 / total_queries as f64 * 100.0) as u64;
+            let udp_pct = (udp_count as f64 / total_queries as f64 * 100.0) as u64;
+            (tcp_pct, udp_pct)
+        } else {
+            (0, 0)
+        };
+        
+        let data = serde_json::json!({
+            "title": "Analytics",
+            "total_queries": total_queries,
+            "tcp_queries": tcp_count,
+            "udp_queries": udp_count,
+            "cache_entries": cache_size,
+            "tcp_percent": tcp_percent,
+            "udp_percent": udp_percent,
+            // TODO: Add cache hit rate tracking to metrics
+            "cache_hit_rate": 0,
+            // TODO: Add response time tracking to metrics
+            "avg_response_time": 0.0,
+            // TODO: Add unique client tracking
+            "unique_clients": 0,
+            // TODO: Add response code tracking to metrics
+            "noerror_count": 0,
+            "noerror_percent": 0,
+            "nxdomain_count": 0,
+            "nxdomain_percent": 0,
+            "servfail_count": 0,
+            "servfail_percent": 0,
+            "other_count": 0,
+            "other_percent": 0,
+            // TODO: Add query type tracking to metrics
+            "a_count": 0,
+            "a_percent": 0,
+            "aaaa_count": 0,
+            "aaaa_percent": 0,
+            "cname_count": 0,
+            "cname_percent": 0,
+            "mx_count": 0,
+            "mx_percent": 0,
+            "txt_count": 0,
+            "txt_percent": 0,
+            // TODO: Add latency percentile tracking to metrics
+            "p50_latency": 0,
+            "p90_latency": 0,
+            "p95_latency": 0,
+            "p99_latency": 0,
+            // TODO: Add DoH/DoT/DoQ protocol tracking
+            "doh_percent": 0,
+            "dot_percent": 0,
+            "doq_percent": 0,
+        });
+        self.response_from_media_type(request, "analytics", data)
+    }
+    
+    fn dnssec_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get real zone count from authority
+        let total_zones = if let Ok(zones) = self.context.authority.read() {
+            zones.zones().len()
+        } else {
+            0
+        };
+        
+        let data = serde_json::json!({
+            "title": "DNSSEC Management",
+            "total_zones": total_zones,
+            // TODO: Implement DNSSEC support
+            "signed_zones": 0,
+            "signed_percent": 0,
+            "active_keys": 0,
+            "ksk_count": 0,
+            "zsk_count": 0,
+            "pending_rollovers": 0,
+            "next_rollover_days": 0,
+            "last_check": "Not implemented",
+        });
+        self.response_from_media_type(request, "dnssec", data)
+    }
+    
+    fn firewall_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "DNS Firewall",
+            // TODO: Implement DNS firewall functionality
+            "blocked_queries": 0,
+            "active_rules": 0,
+            "custom_rules": 0,
+            "threat_feeds": 0,
+            "block_rate": 0.0,
+        });
+        self.response_from_media_type(request, "firewall", data)
+    }
+    
+    fn templates_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Zone Templates",
+        });
+        self.response_from_media_type(request, "templates", data)
+    }
+    
+    fn rate_limiting_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Rate Limiting",
+            // TODO: Connect to rate limiting manager when implemented
+            "throttled_queries": 0,
+            "blocked_clients": 0,
+            "active_limits": 0,
+            "avg_qps": 0,
+        });
+        self.response_from_media_type(request, "rate_limiting", data)
+    }
+    
+    fn ddos_protection_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "DDoS Protection",
+            // TODO: Implement DDoS protection functionality
+            "blocked_attacks": 0,
+            "detection_rules": 0,
+            "threat_level": "Low",
+            "auto_block_enabled": false,
+        });
+        self.response_from_media_type(request, "ddos_protection", data)
+    }
+    
+    fn doh_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get DoH configuration from server
+        let doh_enabled = self.doh_server.is_enabled();
+        let doh_config = self.doh_server.get_config();
+        
+        let data = serde_json::json!({
+            "title": "DNS-over-HTTPS",
+            "enabled": doh_enabled,
+            "port": doh_config.port,
+            "path": doh_config.path,
+            "http2_enabled": doh_config.http2,
+            "cors_enabled": doh_config.cors,
+            "max_message_size": doh_config.max_message_size,
+            "cache_max_age": doh_config.cache_max_age,
+            // TODO: Add DoH query tracking to metrics
+            "doh_queries": 0,
+            "active_connections": 0,
+            "avg_latency": 0,
+            "cache_hit_rate": 0,
+        });
+        self.response_from_media_type(request, "doh", data)
+    }
+    
+    fn dot_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "DNS-over-TLS",
+            // TODO: Implement DoT server functionality
+            "enabled": false,
+            "port": 853,
+            "dot_connections": 0,
+            "qps": 0,
+            "tls_version": "Not configured",
+        });
+        self.response_from_media_type(request, "dot", data)
+    }
+    
+    fn doq_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "DNS-over-QUIC",
+            // TODO: Implement DoQ server functionality
+            "enabled": false,
+            "port": 853,
+            "quic_streams": 0,
+            "zero_rtt": 0,
+            "packet_loss": 0.0,
+            "latency": 0,
+            "http3_enabled": false,
+        });
+        self.response_from_media_type(request, "doq", data)
+    }
+    
+    fn load_balancing_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Load Balancing",
+            // TODO: Implement load balancing manager
+            "enabled": false,
+            "active_pools": 0,
+            "total_endpoints": 0,
+            "requests_per_sec": 0,
+            "failovers": 0,
+            "health_check_interval": 30,
+        });
+        self.response_from_media_type(request, "load_balancing", data)
+    }
+    
+    fn geodns_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "GeoDNS",
+            // TODO: Implement GeoDNS manager
+            "enabled": false,
+            "regions": 0,
+            "countries": 0,
+            "asn_rules": 0,
+            "geo_routes": 0,
+            "default_response": "Not configured",
+        });
+        self.response_from_media_type(request, "geodns", data)
+    }
+    
+    fn traffic_steering_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Traffic Steering",
+            // TODO: Implement traffic steering manager
+            "enabled": false,
+            "active_policies": 0,
+            "traffic_splits": 0,
+            "ab_tests": 0,
+            "redirects": 0,
+            "canary_deployments": 0,
+        });
+        self.response_from_media_type(request, "traffic_steering", data)
+    }
+    
+    fn health_checks_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get basic server health indicators
+        let tcp_queries = self.context.statistics.get_tcp_query_count();
+        let udp_queries = self.context.statistics.get_udp_query_count();
+        let server_responsive = tcp_queries > 0 || udp_queries > 0;
+        
+        let data = serde_json::json!({
+            "title": "Health Checks",
+            "server_status": if server_responsive { "Healthy" } else { "Starting" },
+            "dns_port_status": if self.context.enable_udp || self.context.enable_tcp { "Listening" } else { "Disabled" },
+            "api_port_status": if self.context.enable_api { "Listening" } else { "Disabled" },
+            "zones_loaded": if let Ok(zones) = self.context.authority.read() { zones.zones().len() } else { 0 },
+            // TODO: Implement endpoint health check manager
+            "healthy_endpoints": 0,
+            "degraded_endpoints": 0,
+            "unhealthy_endpoints": 0,
+            "uptime_percent": 100.0, // TODO: Calculate real uptime from start time
+        });
+        self.response_from_media_type(request, "health_checks", data)
+    }
+    
+    fn logs_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get real statistics from context
+        let tcp_count = self.context.statistics.get_tcp_query_count();
+        let udp_count = self.context.statistics.get_udp_query_count();
+        let total_logs = tcp_count + udp_count;
+        
+        let data = serde_json::json!({
+            "title": "Query Logs",
+            "total_queries": total_logs,
+            "tcp_queries": tcp_count,
+            "udp_queries": udp_count,
+            "recent_queries": [], // TODO: Implement query log storage
+            // TODO: Track errors and warnings in metrics
+            "error_count": 0,
+            "warning_count": 0,
+            "log_level": "INFO",
+            "log_size": "N/A", // TODO: Calculate actual log size
+        });
+        self.response_from_media_type(request, "logs", data)
+    }
+    
+    fn alerts_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Alerts",
+            // TODO: Implement alert manager
+            "active_alerts": 0,
+            "critical_alerts": 0,
+            "warning_alerts": 0,
+            "info_alerts": 0,
+            "alerts": [],
+            "notification_channels": 0,
+            "alert_rules": 0,
+        });
+        self.response_from_media_type(request, "alerts", data)
+    }
+    
+    fn api_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get user count for API usage context
+        let user_count = self.user_manager.list_users().unwrap_or_default().len();
+        let session_count = self.user_manager.list_sessions(None).unwrap_or_default().len();
+        
+        let data = serde_json::json!({
+            "title": "API & GraphQL",
+            "api_enabled": self.context.enable_api,
+            "graphql_enabled": true,
+            "doh_enabled": self.doh_server.is_enabled(),
+            "active_users": user_count,
+            "active_sessions": session_count,
+            // TODO: Implement API key management
+            "api_keys": 0,
+            // TODO: Track API request metrics
+            "requests_today": 0,
+            "avg_response_time": 0,
+        });
+        self.response_from_media_type(request, "api", data)
+    }
+    
+    fn webhooks_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Webhooks",
+            // TODO: Implement webhook functionality
+            "enabled": false,
+            "active_webhooks": 0,
+            "pending_deliveries": 0,
+            "failed_deliveries": 0,
+            "success_rate": 0.0,
+            "supported_events": [],
+        });
+        self.response_from_media_type(request, "webhooks", data)
+    }
+    
+    fn certificates_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get SSL configuration from context
+        let ssl_enabled = self.context.ssl_config.enabled;
+        let acme_enabled = self.context.ssl_config.acme.is_some();
+        let acme_provider = if let Some(ref acme_config) = self.context.ssl_config.acme {
+            match &acme_config.provider {
+                crate::dns::acme::AcmeProvider::LetsEncrypt => "Let's Encrypt",
+                crate::dns::acme::AcmeProvider::LetsEncryptStaging => "Let's Encrypt (Staging)",
+                crate::dns::acme::AcmeProvider::ZeroSSL => "ZeroSSL",
+                crate::dns::acme::AcmeProvider::Custom { url } => "Custom",
+            }
+        } else {
+            "None"
+        };
+        
+        let data = serde_json::json!({
+            "title": "SSL/ACME Certificates",
+            "ssl_enabled": ssl_enabled,
+            "acme_enabled": acme_enabled,
+            "acme_provider": acme_provider,
+            "ssl_port": self.context.ssl_config.port,
+            "cert_path": self.context.ssl_config.cert_path.as_ref().map(|p| p.to_string_lossy()).unwrap_or("Not configured".into()),
+            "key_path": self.context.ssl_config.key_path.as_ref().map(|p| p.to_string_lossy()).unwrap_or("Not configured".into()),
+            // TODO: Implement certificate status checking
+            "certificate_valid": ssl_enabled,
+            "days_until_expiry": 0,
+            "auto_renewal_enabled": acme_enabled,
+        });
+        self.response_from_media_type(request, "certificates", data)
+    }
+    
+    fn settings_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get current server configuration
+        let data = serde_json::json!({
+            "title": "Settings",
+            "dns_port": self.context.dns_port,
+            "api_port": self.context.api_port,
+            "ssl_port": self.context.ssl_config.port,
+            "udp_enabled": self.context.enable_udp,
+            "tcp_enabled": self.context.enable_tcp,
+            "api_enabled": self.context.enable_api,
+            "ssl_enabled": self.context.ssl_config.enabled,
+            "recursive_enabled": self.context.allow_recursive,
+            "zones_directory": self.context.zones_dir,
+            "resolve_strategy": match self.context.resolve_strategy {
+                crate::dns::context::ResolveStrategy::Recursive => "Recursive",
+                crate::dns::context::ResolveStrategy::Forward { .. } => "Forward",
+            },
+        });
+        self.response_from_media_type(request, "settings", data)
     }
 }

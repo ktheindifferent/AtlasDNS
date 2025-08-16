@@ -1,0 +1,765 @@
+{{#*inline "title"}}API & GraphQL{{/inline}}
+{{#*inline "current_page"}}api{{/inline}}
+
+{{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">API & GraphQL Documentation</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">API & GraphQL</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- API Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">API Requests</h6>
+                        <h3 class="mb-0">{{#if api_requests}}{{api_requests}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-graph-up fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Success Rate</h6>
+                        <h3 class="mb-0">{{#if success_rate}}{{success_rate}}%{{else}}100%{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-check-circle fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">API Keys</h6>
+                        <h3 class="mb-0">{{#if api_keys}}{{api_keys}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-key fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Rate Limit</h6>
+                        <h6 class="mb-0">{{#if rate_limit}}{{rate_limit}}/min{{else}}1000/min{{/if}}</h6>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-speedometer fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API Tabs -->
+<div class="card">
+    <div class="card-header border-0">
+        <ul class="nav nav-tabs card-header-tabs" id="apiTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="documentation-tab" data-bs-toggle="tab" data-bs-target="#documentation" type="button" role="tab">
+                    <i class="bi bi-book me-2"></i>Documentation
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="playground-tab" data-bs-toggle="tab" data-bs-target="#playground" type="button" role="tab">
+                    <i class="bi bi-play me-2"></i>API Playground
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="graphql-tab" data-bs-toggle="tab" data-bs-target="#graphql" type="button" role="tab">
+                    <i class="bi bi-diagram-3 me-2"></i>GraphQL
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="keys-tab" data-bs-toggle="tab" data-bs-target="#keys" type="button" role="tab">
+                    <i class="bi bi-key me-2"></i>API Keys
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="apiTabsContent">
+            <!-- Documentation Tab -->
+            <div class="tab-pane fade show active" id="documentation" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="list-group" id="endpointsList">
+                            <a href="#zones-endpoints" class="list-group-item list-group-item-action active" onclick="showEndpointGroup('zones')">
+                                <i class="bi bi-diagram-3 me-2"></i>DNS Zones
+                            </a>
+                            <a href="#records-endpoints" class="list-group-item list-group-item-action" onclick="showEndpointGroup('records')">
+                                <i class="bi bi-list-ul me-2"></i>DNS Records
+                            </a>
+                            <a href="#cache-endpoints" class="list-group-item list-group-item-action" onclick="showEndpointGroup('cache')">
+                                <i class="bi bi-archive me-2"></i>Cache Management
+                            </a>
+                            <a href="#users-endpoints" class="list-group-item list-group-item-action" onclick="showEndpointGroup('users')">
+                                <i class="bi bi-people me-2"></i>User Management
+                            </a>
+                            <a href="#metrics-endpoints" class="list-group-item list-group-item-action" onclick="showEndpointGroup('metrics')">
+                                <i class="bi bi-bar-chart me-2"></i>Metrics
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div id="endpointDetails">
+                            <!-- DNS Zones Endpoints -->
+                            <div id="zones-endpoints" class="endpoint-group">
+                                <h4>DNS Zones API</h4>
+                                <p class="text-muted mb-4">Manage DNS zones and their configurations</p>
+                                
+                                <div class="endpoint mb-4">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-success me-2">GET</span>
+                                        <code>/api/v1/zones</code>
+                                    </div>
+                                    <p class="mb-2">List all DNS zones</p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="testEndpoint('GET', '/api/v1/zones')">Test</button>
+                                </div>
+                                
+                                <div class="endpoint mb-4">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-primary me-2">POST</span>
+                                        <code>/api/v1/zones</code>
+                                    </div>
+                                    <p class="mb-2">Create a new DNS zone</p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="testEndpoint('POST', '/api/v1/zones')">Test</button>
+                                </div>
+                                
+                                <div class="endpoint mb-4">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-success me-2">GET</span>
+                                        <code>/api/v1/zones/{domain}</code>
+                                    </div>
+                                    <p class="mb-2">Get zone details</p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="testEndpoint('GET', '/api/v1/zones/{domain}')">Test</button>
+                                </div>
+                                
+                                <div class="endpoint mb-4">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-warning me-2">PUT</span>
+                                        <code>/api/v1/zones/{domain}</code>
+                                    </div>
+                                    <p class="mb-2">Update zone configuration</p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="testEndpoint('PUT', '/api/v1/zones/{domain}')">Test</button>
+                                </div>
+                                
+                                <div class="endpoint mb-4">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="badge bg-danger me-2">DELETE</span>
+                                        <code>/api/v1/zones/{domain}</code>
+                                    </div>
+                                    <p class="mb-2">Delete a DNS zone</p>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="testEndpoint('DELETE', '/api/v1/zones/{domain}')">Test</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Other endpoint groups would be hidden initially -->
+                            <div id="records-endpoints" class="endpoint-group" style="display: none;">
+                                <h4>DNS Records API</h4>
+                                <p class="text-muted mb-4">Manage DNS records within zones</p>
+                                <!-- Records endpoints would go here -->
+                            </div>
+                            
+                            <div id="cache-endpoints" class="endpoint-group" style="display: none;">
+                                <h4>Cache Management API</h4>
+                                <p class="text-muted mb-4">Control DNS cache operations</p>
+                                <!-- Cache endpoints would go here -->
+                            </div>
+                            
+                            <div id="users-endpoints" class="endpoint-group" style="display: none;">
+                                <h4>User Management API</h4>
+                                <p class="text-muted mb-4">Manage users and permissions</p>
+                                <!-- User endpoints would go here -->
+                            </div>
+                            
+                            <div id="metrics-endpoints" class="endpoint-group" style="display: none;">
+                                <h4>Metrics API</h4>
+                                <p class="text-muted mb-4">Retrieve system metrics and statistics</p>
+                                <!-- Metrics endpoints would go here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Playground Tab -->
+            <div class="tab-pane fade" id="playground" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Request</h5>
+                        <form id="apiTestForm">
+                            <div class="mb-3">
+                                <label for="apiMethod" class="form-label">Method</label>
+                                <select class="form-select" id="apiMethod">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="apiUrl" class="form-label">Endpoint URL</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{base_url}}</span>
+                                    <input type="text" class="form-control" id="apiUrl" value="/api/v1/zones" placeholder="/api/v1/...">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="apiHeaders" class="form-label">Headers</label>
+                                <textarea class="form-control" id="apiHeaders" rows="3" placeholder='{"Authorization": "Bearer your-api-key", "Content-Type": "application/json"}'></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="apiBody" class="form-label">Request Body</label>
+                                <textarea class="form-control" id="apiBody" rows="5" placeholder='{"domain": "example.com", "m_name": "ns1.example.com"}'></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-play me-1"></i>Send Request
+                            </button>
+                        </form>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Response</h5>
+                        <div class="bg-light rounded p-3" style="min-height: 400px; font-family: monospace;">
+                            <div id="apiResponse" class="text-muted">Response will appear here after sending a request...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- GraphQL Tab -->
+            <div class="tab-pane fade" id="graphql" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>GraphQL Query</h5>
+                        <textarea class="form-control" id="graphqlQuery" rows="15" placeholder="query {
+  zones {
+    domain
+    records {
+      name
+      type
+      value
+    }
+  }
+}"></textarea>
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="executeGraphQL()">
+                                <i class="bi bi-play me-1"></i>Execute Query
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearGraphQL()">
+                                <i class="bi bi-trash me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Schema Explorer</h5>
+                        <div class="accordion" id="schemaAccordion">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#zoneSchema">
+                                        Zone
+                                    </button>
+                                </h2>
+                                <div id="zoneSchema" class="accordion-collapse collapse show">
+                                    <div class="accordion-body">
+                                        <small class="text-muted">
+                                            <strong>Fields:</strong><br>
+                                            domain: String<br>
+                                            m_name: String<br>
+                                            r_name: String<br>
+                                            serial: Int<br>
+                                            refresh: Int<br>
+                                            retry: Int<br>
+                                            expire: Int<br>
+                                            minimum: Int<br>
+                                            records: [Record]
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#recordSchema">
+                                        Record
+                                    </button>
+                                </h2>
+                                <div id="recordSchema" class="accordion-collapse collapse">
+                                    <div class="accordion-body">
+                                        <small class="text-muted">
+                                            <strong>Fields:</strong><br>
+                                            name: String<br>
+                                            type: RecordType<br>
+                                            value: String<br>
+                                            ttl: Int<br>
+                                            priority: Int
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <h6 class="mt-4">Result</h6>
+                        <div class="bg-light rounded p-3" style="min-height: 200px; font-family: monospace;">
+                            <div id="graphqlResponse" class="text-muted">Query result will appear here...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Keys Tab -->
+            <div class="tab-pane fade" id="keys" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="mb-0">API Keys</h5>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
+                        <i class="bi bi-plus-circle me-1"></i>Generate New Key
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Key</th>
+                                <th>Permissions</th>
+                                <th>Last Used</th>
+                                <th>Created</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#if api_keys_list}}
+                                {{#each api_keys_list}}
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">{{name}}</div>
+                                        <small class="text-muted">{{description}}</small>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <code class="text-truncate" style="max-width: 200px;">{{key_preview}}</code>
+                                            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="copyToClipboard('{{key}}')" title="Copy to clipboard">
+                                                <i class="bi bi-clipboard"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-1">
+                                            {{#each permissions}}
+                                            <span class="badge bg-secondary">{{this}}</span>
+                                            {{/each}}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{last_used}}</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{created_at}}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{#if active}}success{{else}}secondary{{/if}}">
+                                            {{#if active}}Active{{else}}Inactive{{/if}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-outline-warning" onclick="toggleApiKey('{{id}}')" title="{{#if active}}Deactivate{{else}}Activate{{/if}}">
+                                                <i class="bi bi-{{#if active}}pause{{else}}play{{/if}}"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteApiKey('{{id}}')" title="Delete">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="bi bi-key fs-1 d-block mb-2"></i>
+                                        No API keys generated yet
+                                    </td>
+                                </tr>
+                            {{/if}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New API Key Modal -->
+<div class="modal fade" id="newApiKeyModal" tabindex="-1" aria-labelledby="newApiKeyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="newApiKeyModalLabel">
+                    <i class="bi bi-key me-2"></i>
+                    Generate New API Key
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="newApiKeyForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="keyName" class="form-label">Key Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="keyName" name="name" required>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="keyDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="keyDescription" name="description" rows="2"></textarea>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Permissions <span class="text-danger">*</span></label>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permZones" name="permissions" value="zones">
+                                        <label class="form-check-label" for="permZones">
+                                            DNS Zones
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permRecords" name="permissions" value="records">
+                                        <label class="form-check-label" for="permRecords">
+                                            DNS Records
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permCache" name="permissions" value="cache">
+                                        <label class="form-check-label" for="permCache">
+                                            Cache Management
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permUsers" name="permissions" value="users">
+                                        <label class="form-check-label" for="permUsers">
+                                            User Management
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permMetrics" name="permissions" value="metrics">
+                                        <label class="form-check-label" for="permMetrics">
+                                            Metrics (Read Only)
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="permAdmin" name="permissions" value="admin">
+                                        <label class="form-check-label" for="permAdmin">
+                                            Administrative
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="keyExpiration" class="form-label">Expiration</label>
+                            <select class="form-select" id="keyExpiration" name="expiration">
+                                <option value="never">Never</option>
+                                <option value="30">30 days</option>
+                                <option value="90">90 days</option>
+                                <option value="365">1 year</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="keyRateLimit" class="form-label">Rate Limit (requests/minute)</label>
+                            <input type="number" class="form-control" id="keyRateLimit" name="rateLimit" value="1000" min="1">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-key me-1"></i>
+                        Generate Key
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Endpoint group navigation
+function showEndpointGroup(group) {
+    // Hide all endpoint groups
+    document.querySelectorAll('.endpoint-group').forEach(el => el.style.display = 'none');
+    
+    // Show selected group
+    document.getElementById(group + '-endpoints').style.display = 'block';
+    
+    // Update active state in navigation
+    document.querySelectorAll('#endpointsList .list-group-item').forEach(el => {
+        el.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
+// Test endpoint function
+function testEndpoint(method, endpoint) {
+    // Switch to playground tab
+    const playgroundTab = new bootstrap.Tab(document.getElementById('playground-tab'));
+    playgroundTab.show();
+    
+    // Populate form
+    document.getElementById('apiMethod').value = method;
+    document.getElementById('apiUrl').value = endpoint;
+    
+    // Set default headers
+    const headers = {
+        'Authorization': 'Bearer your-api-key',
+        'Content-Type': 'application/json'
+    };
+    document.getElementById('apiHeaders').value = JSON.stringify(headers, null, 2);
+    
+    // Set sample body for POST/PUT requests
+    if (method === 'POST' || method === 'PUT') {
+        if (endpoint.includes('/zones')) {
+            const sampleBody = {
+                domain: 'example.com',
+                m_name: 'ns1.example.com',
+                r_name: 'admin.example.com',
+                refresh: 3600,
+                retry: 1800,
+                expire: 604800,
+                minimum: 86400
+            };
+            document.getElementById('apiBody').value = JSON.stringify(sampleBody, null, 2);
+        }
+    }
+}
+
+// API test form submission
+document.getElementById('apiTestForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const method = document.getElementById('apiMethod').value;
+    const url = document.getElementById('apiUrl').value;
+    const headersText = document.getElementById('apiHeaders').value;
+    const body = document.getElementById('apiBody').value;
+    
+    const responseDiv = document.getElementById('apiResponse');
+    responseDiv.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending request...';
+    
+    // Simulate API call
+    setTimeout(() => {
+        const mockResponse = {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-RateLimit-Remaining': '999'
+            },
+            data: {
+                success: true,
+                message: 'Mock response from ' + method + ' ' + url,
+                timestamp: new Date().toISOString()
+            }
+        };
+        
+        responseDiv.innerHTML = `
+            <div class="text-success mb-2">✓ ${mockResponse.status} OK</div>
+            <pre class="mb-0">${JSON.stringify(mockResponse, null, 2)}</pre>
+        `;
+    }, 1000);
+});
+
+// GraphQL functions
+function executeGraphQL() {
+    const query = document.getElementById('graphqlQuery').value;
+    const responseDiv = document.getElementById('graphqlResponse');
+    
+    if (!query.trim()) {
+        responseDiv.innerHTML = '<span class="text-warning">Please enter a GraphQL query</span>';
+        return;
+    }
+    
+    responseDiv.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Executing query...';
+    
+    // Simulate GraphQL execution
+    setTimeout(() => {
+        const mockResponse = {
+            data: {
+                zones: [
+                    {
+                        domain: 'example.com',
+                        records: [
+                            { name: '@', type: 'A', value: '192.168.1.1' },
+                            { name: 'www', type: 'CNAME', value: 'example.com' }
+                        ]
+                    }
+                ]
+            }
+        };
+        
+        responseDiv.innerHTML = `<pre>${JSON.stringify(mockResponse, null, 2)}</pre>`;
+        showToast('GraphQL query executed successfully', 'success');
+    }, 1000);
+}
+
+function clearGraphQL() {
+    document.getElementById('graphqlQuery').value = '';
+    document.getElementById('graphqlResponse').innerHTML = 'Query result will appear here...';
+}
+
+// API Key management
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('API key copied to clipboard', 'success');
+    }).catch(() => {
+        showToast('Failed to copy to clipboard', 'error');
+    });
+}
+
+function toggleApiKey(keyId) {
+    showToast('API key status toggled', 'info');
+    // In real implementation, this would toggle the key status
+}
+
+function deleteApiKey(keyId) {
+    if (confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+        const row = event.target.closest('tr');
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            row.remove();
+            showToast('API key deleted', 'success');
+        }, 300);
+    }
+}
+
+// New API key form
+document.getElementById('newApiKeyForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Generating...';
+    submitBtn.disabled = true;
+    
+    setTimeout(() => {
+        // Generate mock API key
+        const newKey = 'atlas_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        
+        const modal = bootstrap.Modal.getInstance(document.getElementById('newApiKeyModal'));
+        modal.hide();
+        
+        // Show success modal with the new key
+        showNewKeyModal(newKey);
+        
+        this.reset();
+        submitBtn.innerHTML = '<i class="bi bi-key me-1"></i>Generate Key';
+        submitBtn.disabled = false;
+    }, 2000);
+});
+
+function showNewKeyModal(apiKey) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        API Key Generated
+                    </h5>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Important:</strong> This is the only time you'll see this key. Save it securely.
+                    </div>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="${apiKey}" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('${apiKey}')">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        I've Saved The Key
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+// Initialize default GraphQL query
+document.addEventListener('DOMContentLoaded', function() {
+    const defaultQuery = `query {
+  zones {
+    domain
+    m_name
+    serial
+    records {
+      name
+      type
+      value
+      ttl
+    }
+  }
+}`;
+    
+    const graphqlTextarea = document.getElementById('graphqlQuery');
+    if (graphqlTextarea && !graphqlTextarea.value) {
+        graphqlTextarea.value = defaultQuery;
+    }
+});
+</script>
+
+{{/inline}}
+
+{{> layout}}

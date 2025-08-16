@@ -1,0 +1,797 @@
+{{#*inline "title"}}SSL/ACME Certificates{{/inline}}
+{{#*inline "current_page"}}certificates{{/inline}}
+
+{{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">SSL/ACME Certificate Management</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">SSL/ACME</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Certificates</h6>
+                        <h3 class="mb-0">{{#if active_certificates}}{{active_certificates}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-patch-check fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Expiring Soon</h6>
+                        <h3 class="mb-0">{{#if expiring_soon}}{{expiring_soon}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-clock-history fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Auto-Renewal</h6>
+                        <h3 class="mb-0">{{#if auto_renewal}}ON{{else}}OFF{{/if}}</h3>
+                    </div>
+                    <div class="text-{{#if auto_renewal}}success{{else}}secondary{{/if}}">
+                        <i class="bi bi-arrow-clockwise fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">ACME Provider</h6>
+                        <h6 class="mb-0">{{#if acme_provider}}{{acme_provider}}{{else}}None{{/if}}</h6>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-shield-check fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Certificate Tabs -->
+<div class="card">
+    <div class="card-header border-0">
+        <ul class="nav nav-tabs card-header-tabs" id="certificateTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="certificates-tab" data-bs-toggle="tab" data-bs-target="#certificates" type="button" role="tab">
+                    <i class="bi bi-patch-check me-2"></i>Certificates
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="acme-config-tab" data-bs-toggle="tab" data-bs-target="#acme-config" type="button" role="tab">
+                    <i class="bi bi-gear me-2"></i>ACME Configuration
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="renewal-log-tab" data-bs-toggle="tab" data-bs-target="#renewal-log" type="button" role="tab">
+                    <i class="bi bi-clock-history me-2"></i>Renewal Log
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="certificateTabsContent">
+            <!-- Certificates Tab -->
+            <div class="tab-pane fade show active" id="certificates" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="mb-0">SSL Certificates</h5>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-outline-secondary" onclick="refreshCertificates()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newCertificateModal">
+                            <i class="bi bi-plus-circle me-1"></i>
+                            Request Certificate
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Domain(s)</th>
+                                <th>Issuer</th>
+                                <th>Status</th>
+                                <th>Issue Date</th>
+                                <th>Expiry Date</th>
+                                <th>Days Remaining</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#if certificates}}
+                                {{#each certificates}}
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">{{primary_domain}}</div>
+                                        {{#if san_domains}}
+                                            <small class="text-muted">
+                                                +{{san_count}} additional domains
+                                            </small>
+                                        {{/if}}
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <img src="https://cdn.jsdelivr.net/gh/simple-icons/simple-icons/icons/{{issuer_icon}}.svg" 
+                                                 width="16" height="16" class="me-2" alt="{{issuer}}">
+                                            {{issuer}}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{#eq status 'valid'}}success{{else}}{{#eq status 'expiring'}}warning{{else}}danger{{/eq}}{{/eq}}">
+                                            {{status}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small>{{issue_date}}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{expiry_date}}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{#gte days_remaining 30}}success{{else}}{{#gte days_remaining 7}}warning{{else}}danger{{/gte}}{{/gte}}">
+                                            {{days_remaining}} days
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-sm btn-outline-info" onclick="viewCertificate('{{id}}')" title="View Details">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-warning" onclick="renewCertificate('{{id}}')" title="Renew Now">
+                                                <i class="bi bi-arrow-clockwise"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-primary" onclick="downloadCertificate('{{id}}')" title="Download">
+                                                <i class="bi bi-download"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="revokeCertificate('{{id}}')" title="Revoke">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <i class="bi bi-patch-check fs-1 d-block mb-2"></i>
+                                        No certificates configured yet
+                                    </td>
+                                </tr>
+                            {{/if}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- ACME Configuration Tab -->
+            <div class="tab-pane fade" id="acme-config" role="tabpanel">
+                <form id="acmeConfigForm">
+                    <div class="row g-4">
+                        <div class="col-12">
+                            <h5>ACME Provider Settings</h5>
+                            <p class="text-muted">Configure automatic certificate management via ACME protocol</p>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="acmeProvider" class="form-label">ACME Provider</label>
+                            <select class="form-select" id="acmeProvider" name="provider">
+                                <option value="">Select provider...</option>
+                                <option value="letsencrypt" {{#eq acme_provider 'letsencrypt'}}selected{{/eq}}>Let's Encrypt</option>
+                                <option value="zerossl" {{#eq acme_provider 'zerossl'}}selected{{/eq}}>ZeroSSL</option>
+                                <option value="buypass" {{#eq acme_provider 'buypass'}}selected{{/eq}}>Buypass</option>
+                                <option value="custom">Custom ACME Server</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="acmeEmail" class="form-label">Account Email</label>
+                            <input type="email" class="form-control" id="acmeEmail" name="email" 
+                                   value="{{acme_email}}" placeholder="admin@example.com">
+                        </div>
+                        
+                        <div class="col-12" id="customServerField" style="display: none;">
+                            <label for="customServer" class="form-label">Custom ACME Server URL</label>
+                            <input type="url" class="form-control" id="customServer" name="customServer" 
+                                   placeholder="https://acme.example.com/directory">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="challengeType" class="form-label">Challenge Type</label>
+                            <select class="form-select" id="challengeType" name="challengeType">
+                                <option value="dns-01" selected>DNS-01 (Recommended)</option>
+                                <option value="http-01">HTTP-01</option>
+                                <option value="tls-alpn-01">TLS-ALPN-01</option>
+                            </select>
+                            <small class="text-muted">DNS-01 is recommended for wildcard certificates</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="keyType" class="form-label">Key Type</label>
+                            <select class="form-select" id="keyType" name="keyType">
+                                <option value="rsa2048">RSA 2048</option>
+                                <option value="rsa4096" selected>RSA 4096</option>
+                                <option value="ecdsa256">ECDSA P-256</option>
+                                <option value="ecdsa384">ECDSA P-384</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-12">
+                            <h6>Auto-Renewal Settings</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="autoRenewal" name="autoRenewal" 
+                                       {{#if auto_renewal}}checked{{/if}}>
+                                <label class="form-check-label" for="autoRenewal">
+                                    Enable automatic renewal
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="renewalDays" class="form-label">Renew before expiry (days)</label>
+                            <input type="number" class="form-control" id="renewalDays" name="renewalDays" 
+                                   value="{{renewal_days}}" min="1" max="90">
+                        </div>
+                        
+                        <div class="col-12">
+                            <h6>Notification Settings</h6>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="emailNotifications" name="emailNotifications" checked>
+                                <label class="form-check-label" for="emailNotifications">
+                                    Email notifications
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="webhookNotifications" name="webhookNotifications">
+                                <label class="form-check-label" for="webhookNotifications">
+                                    Webhook notifications
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle me-1"></i>
+                                Save Configuration
+                            </button>
+                            <button type="button" class="btn btn-outline-info ms-2" onclick="testAcmeConnection()">
+                                <i class="bi bi-play me-1"></i>
+                                Test Connection
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Renewal Log Tab -->
+            <div class="tab-pane fade" id="renewal-log" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="mb-0">Certificate Renewal History</h5>
+                    <button type="button" class="btn btn-outline-secondary" onclick="refreshRenewalLog()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Domain</th>
+                                <th>Action</th>
+                                <th>Status</th>
+                                <th>Provider</th>
+                                <th>Duration</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#if renewal_log}}
+                                {{#each renewal_log}}
+                                <tr>
+                                    <td>
+                                        <small>{{timestamp}}</small>
+                                    </td>
+                                    <td>
+                                        <small class="fw-semibold">{{domain}}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{#eq action 'renewal'}}primary{{else}}{{#eq action 'issuance'}}success{{else}}info{{/eq}}{{/eq}}">
+                                            {{action}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{#eq status 'success'}}success{{else}}danger{{/eq}}">
+                                            {{status}}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small>{{provider}}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{duration}}</small>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="viewRenewalDetails('{{id}}')">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            {{else}}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-3">
+                                        No renewal activity recorded yet
+                                    </td>
+                                </tr>
+                            {{/if}}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Certificate Modal -->
+<div class="modal fade" id="newCertificateModal" tabindex="-1" aria-labelledby="newCertificateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="newCertificateModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Request New Certificate
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="certificateRequestForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="certDomains" class="form-label">Domain Names <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="certDomains" name="domains" rows="3" 
+                                      placeholder="example.com&#10;www.example.com&#10;*.example.com" required></textarea>
+                            <small class="text-muted">Enter one domain per line. Use *.domain.com for wildcards.</small>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="certProvider" class="form-label">ACME Provider</label>
+                            <select class="form-select" id="certProvider" name="provider">
+                                <option value="letsencrypt" selected>Let's Encrypt</option>
+                                <option value="zerossl">ZeroSSL</option>
+                                <option value="buypass">Buypass</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="certKeyType" class="form-label">Key Type</label>
+                            <select class="form-select" id="certKeyType" name="keyType">
+                                <option value="rsa2048">RSA 2048</option>
+                                <option value="rsa4096" selected>RSA 4096</option>
+                                <option value="ecdsa256">ECDSA P-256</option>
+                                <option value="ecdsa384">ECDSA P-384</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="certAutoRenew" name="autoRenew" checked>
+                                <label class="form-check-label" for="certAutoRenew">
+                                    Enable automatic renewal
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>Note:</strong> Certificate issuance may take a few minutes. You'll be notified when the process is complete.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-patch-check me-1"></i>
+                        Request Certificate
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// ACME provider selection
+document.getElementById('acmeProvider')?.addEventListener('change', function() {
+    const customField = document.getElementById('customServerField');
+    if (this.value === 'custom') {
+        customField.style.display = 'block';
+    } else {
+        customField.style.display = 'none';
+    }
+});
+
+// Certificate management functions
+function refreshCertificates() {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        showToast('Certificate list refreshed', 'success');
+    }, 1000);
+}
+
+function viewCertificate(certId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye me-2"></i>
+                        Certificate Details
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Primary Domain</label>
+                            <div class="fw-semibold">example.com</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <div><span class="badge bg-success">Valid</span></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Issuer</label>
+                            <div>Let's Encrypt</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Key Type</label>
+                            <div>RSA 4096</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Issue Date</label>
+                            <div>${new Date().toLocaleDateString()}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Expiry Date</label>
+                            <div>${new Date(Date.now() + 90*24*60*60*1000).toLocaleDateString()}</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Subject Alternative Names</label>
+                            <div class="d-flex gap-1 flex-wrap">
+                                <span class="badge bg-secondary">example.com</span>
+                                <span class="badge bg-secondary">www.example.com</span>
+                                <span class="badge bg-secondary">*.example.com</span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Certificate Fingerprint</label>
+                            <div class="font-monospace small bg-light p-2 rounded">
+                                SHA256: 1A:2B:3C:4D:5E:6F:7A:8B:9C:0D:1E:2F:3A:4B:5C:6D:7E:8F:9A:0B:1C:2D:3E:4F:5A:6B:7C:8D:9E:0F:1A:2B
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="downloadCertificate('${certId}')">
+                        <i class="bi bi-download me-1"></i>Download
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+function renewCertificate(certId) {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+    
+    // Simulate renewal process
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        showToast('Certificate renewal initiated', 'success');
+        
+        // Add to renewal log
+        addRenewalLogEntry({
+            domain: 'example.com',
+            action: 'renewal',
+            status: 'success',
+            provider: 'Let\'s Encrypt',
+            duration: '45s'
+        });
+    }, 3000);
+}
+
+function downloadCertificate(certId) {
+    // Simulate certificate download
+    const certContent = `-----BEGIN CERTIFICATE-----
+MIIFXTCCBEWgAwIBAgISA1B2C...[truncated for demo]
+-----END CERTIFICATE-----`;
+    
+    const blob = new Blob([certContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'certificate.pem';
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    showToast('Certificate downloaded', 'success');
+}
+
+function revokeCertificate(certId) {
+    if (confirm('Are you sure you want to revoke this certificate? This action cannot be undone.')) {
+        const row = event.target.closest('tr');
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            row.remove();
+            showToast('Certificate revoked', 'warning');
+        }, 300);
+    }
+}
+
+function testAcmeConnection() {
+    const btn = event.target;
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Testing...';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        
+        // Random success/failure for demo
+        if (Math.random() > 0.2) {
+            showToast('ACME connection successful', 'success');
+        } else {
+            showToast('ACME connection failed - please check configuration', 'error');
+        }
+    }, 2000);
+}
+
+function refreshRenewalLog() {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        showToast('Renewal log refreshed', 'success');
+    }, 1000);
+}
+
+function viewRenewalDetails(renewalId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-clock-history me-2"></i>
+                        Renewal Details
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Domain</label>
+                            <div class="fw-semibold">example.com</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Status</label>
+                            <div><span class="badge bg-success">Success</span></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Provider</label>
+                            <div>Let's Encrypt</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Duration</label>
+                            <div>45 seconds</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Challenge Details</label>
+                            <div class="bg-light p-3 rounded">
+                                <div><strong>Type:</strong> DNS-01</div>
+                                <div><strong>Token:</strong> abc123def456...</div>
+                                <div><strong>Validation:</strong> Successful</div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Log Output</label>
+                            <pre class="bg-dark text-light p-3 rounded small">2023-12-01 10:00:00 - Starting certificate renewal for example.com
+2023-12-01 10:00:05 - Creating DNS challenge record
+2023-12-01 10:00:15 - DNS challenge validated
+2023-12-01 10:00:30 - Certificate issued successfully
+2023-12-01 10:00:35 - Certificate installed</pre>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+function addRenewalLogEntry(entry) {
+    const logTable = document.querySelector('#renewal-log tbody');
+    if (!logTable) return;
+    
+    // Remove "no activity" message if present
+    const noActivity = logTable.querySelector('.text-center.text-muted');
+    if (noActivity) {
+        noActivity.closest('tr').remove();
+    }
+    
+    const newRow = document.createElement('tr');
+    newRow.innerHTML = `
+        <td><small>${new Date().toLocaleString()}</small></td>
+        <td><small class="fw-semibold">${entry.domain}</small></td>
+        <td><span class="badge bg-primary">${entry.action}</span></td>
+        <td><span class="badge bg-success">${entry.status}</span></td>
+        <td><small>${entry.provider}</small></td>
+        <td><small>${entry.duration}</small></td>
+        <td>
+            <button class="btn btn-sm btn-outline-secondary" onclick="viewRenewalDetails('${Date.now()}')">
+                <i class="bi bi-eye"></i>
+            </button>
+        </td>
+    `;
+    
+    logTable.insertBefore(newRow, logTable.firstChild);
+}
+
+// Form submissions
+document.getElementById('acmeConfigForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    submitBtn.disabled = true;
+    
+    setTimeout(() => {
+        submitBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Save Configuration';
+        submitBtn.disabled = false;
+        showToast('ACME configuration saved successfully', 'success');
+    }, 1500);
+});
+
+document.getElementById('certificateRequestForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const domains = document.getElementById('certDomains').value.trim();
+    if (!domains) {
+        showToast('Please enter at least one domain', 'warning');
+        return;
+    }
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Requesting...';
+    submitBtn.disabled = true;
+    
+    // Simulate certificate request process
+    setTimeout(() => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('newCertificateModal'));
+        modal.hide();
+        this.reset();
+        
+        showToast('Certificate request initiated - this may take a few minutes', 'info');
+        
+        // Simulate progress notifications
+        setTimeout(() => showToast('DNS challenge record created', 'info'), 5000);
+        setTimeout(() => showToast('Challenge validated successfully', 'success'), 10000);
+        setTimeout(() => showToast('Certificate issued and installed', 'success'), 15000);
+        
+        // Add to renewal log
+        setTimeout(() => {
+            addRenewalLogEntry({
+                domain: domains.split('\n')[0],
+                action: 'issuance',
+                status: 'success',
+                provider: 'Let\'s Encrypt',
+                duration: '2m 15s'
+            });
+        }, 15000);
+        
+        submitBtn.innerHTML = '<i class="bi bi-patch-check me-1"></i>Request Certificate';
+        submitBtn.disabled = false;
+    }, 3000);
+});
+
+// Auto-renewal simulation (for demo)
+setInterval(() => {
+    if (Math.random() < 0.1) { // 10% chance every 30 seconds
+        const domains = ['example.com', 'test.com', 'demo.org'];
+        const domain = domains[Math.floor(Math.random() * domains.length)];
+        
+        addRenewalLogEntry({
+            domain: domain,
+            action: 'auto-renewal',
+            status: 'success',
+            provider: 'Let\'s Encrypt',
+            duration: Math.floor(Math.random() * 60 + 30) + 's'
+        });
+        
+        showToast(`Auto-renewal completed for ${domain}`, 'success');
+    }
+}, 30000);
+</script>
+
+{{/inline}}
+
+{{> layout}}

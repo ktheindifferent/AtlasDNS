@@ -1,0 +1,598 @@
+{{#*inline "title"}}Health Checks{{/inline}}
+{{#*inline "current_page"}}health-checks{{/inline}}
+
+{{#*inline "content"}}
+<!-- Health Checks Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Health Checks</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Performance</li>
+                    <li class="breadcrumb-item active">Health Checks</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addHealthCheckModal">
+                <i class="bi bi-plus-circle"></i> Add Health Check
+            </button>
+            <button class="btn btn-primary ms-2" onclick="runAllChecks()">
+                <i class="bi bi-arrow-clockwise"></i> Run All Checks
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Health Status Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Healthy</h6>
+                        <div class="h3 mb-0 text-success">{{healthy_endpoints}}</div>
+                        <small class="text-success">Endpoints up</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Degraded</h6>
+                        <div class="h3 mb-0 text-warning">{{degraded_endpoints}}</div>
+                        <small class="text-warning">Performance issues</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Unhealthy</h6>
+                        <div class="h3 mb-0 text-danger">{{unhealthy_endpoints}}</div>
+                        <small class="text-danger">Endpoints down</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-x-circle-fill text-danger" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Uptime</h6>
+                        <div class="h3 mb-0">{{uptime}}%</div>
+                        <small class="text-info">Last 30 days</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-graph-up text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Health Checks -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Active Health Checks</h5>
+            </div>
+            <div class="col-auto">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                    <label class="form-check-label" for="autoRefresh">
+                        Auto-refresh (30s)
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Response Time</th>
+                        <th>Last Check</th>
+                        <th>Uptime</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">dns1.example.com</div>
+                            <small class="text-muted">192.168.1.10:53</small>
+                        </td>
+                        <td><span class="badge bg-info">DNS</span></td>
+                        <td>
+                            <span class="badge bg-success">
+                                <i class="bi bi-circle-fill"></i> Healthy
+                            </span>
+                        </td>
+                        <td>12ms</td>
+                        <td>30s ago</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar bg-success" style="width: 99.9%">99.9%</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="runCheck('dns1')">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewHistory('dns1')">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="editCheck('dns1')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">api.example.com</div>
+                            <small class="text-muted">https://api.example.com/health</small>
+                        </td>
+                        <td><span class="badge bg-primary">HTTP</span></td>
+                        <td>
+                            <span class="badge bg-warning">
+                                <i class="bi bi-circle-fill"></i> Degraded
+                            </span>
+                        </td>
+                        <td class="text-warning">523ms</td>
+                        <td>45s ago</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar bg-warning" style="width: 95.2%">95.2%</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="runCheck('api')">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewHistory('api')">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="editCheck('api')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">db-master.internal</div>
+                            <small class="text-muted">10.0.0.5:3306</small>
+                        </td>
+                        <td><span class="badge bg-secondary">TCP</span></td>
+                        <td>
+                            <span class="badge bg-danger">
+                                <i class="bi bi-circle-fill"></i> Unhealthy
+                            </span>
+                        </td>
+                        <td class="text-danger">Timeout</td>
+                        <td>15s ago</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar bg-danger" style="width: 89.5%">89.5%</div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="runCheck('db')">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                                <button class="btn btn-outline-info" onclick="viewHistory('db')">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="editCheck('db')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Health Check Configuration -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Check Types Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="checkTypesAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#dnsCheck">
+                                <i class="bi bi-hdd-network me-2"></i> DNS Health Check
+                            </button>
+                        </h2>
+                        <div id="dnsCheck" class="accordion-collapse collapse show" data-bs-parent="#checkTypesAccordion">
+                            <div class="accordion-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Query Type</label>
+                                        <select class="form-select form-select-sm">
+                                            <option>A</option>
+                                            <option>AAAA</option>
+                                            <option>SOA</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Expected Response</label>
+                                        <input type="text" class="form-control form-control-sm" placeholder="IP or domain">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#httpCheck">
+                                <i class="bi bi-globe me-2"></i> HTTP/HTTPS Health Check
+                            </button>
+                        </h2>
+                        <div id="httpCheck" class="accordion-collapse collapse" data-bs-parent="#checkTypesAccordion">
+                            <div class="accordion-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Method</label>
+                                        <select class="form-select form-select-sm">
+                                            <option>GET</option>
+                                            <option>POST</option>
+                                            <option>HEAD</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Expected Status</label>
+                                        <input type="number" class="form-control form-control-sm" value="200">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#tcpCheck">
+                                <i class="bi bi-ethernet me-2"></i> TCP Port Check
+                            </button>
+                        </h2>
+                        <div id="tcpCheck" class="accordion-collapse collapse" data-bs-parent="#checkTypesAccordion">
+                            <div class="accordion-body">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Port</label>
+                                        <input type="number" class="form-control form-control-sm" placeholder="Port number">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Connection Timeout</label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control" value="5">
+                                            <span class="input-group-text">seconds</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Global Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Check Interval</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="30">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="10">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Retries</label>
+                        <input type="number" class="form-control" value="3">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Retry Delay</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="5">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <h6>Notification Settings</h6>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyEmail" checked>
+                            <label class="form-check-label" for="notifyEmail">
+                                Email notifications
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyWebhook" checked>
+                            <label class="form-check-label" for="notifyWebhook">
+                                Webhook notifications
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifySlack">
+                            <label class="form-check-label" for="notifySlack">
+                                Slack notifications
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Health History Chart -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Health History</h5>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm">
+                    <option>Last 1 Hour</option>
+                    <option>Last 24 Hours</option>
+                    <option>Last 7 Days</option>
+                    <option>Last 30 Days</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <canvas id="healthHistoryChart" height="60"></canvas>
+    </div>
+</div>
+
+<!-- Recent Incidents -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Recent Incidents</h5>
+    </div>
+    <div class="card-body">
+        <div class="timeline">
+            <div class="timeline-item">
+                <div class="timeline-marker bg-danger"></div>
+                <div class="timeline-content">
+                    <h6 class="mb-1">db-master.internal went down</h6>
+                    <p class="text-muted mb-1">Connection timeout after 10 seconds</p>
+                    <small class="text-muted">2 minutes ago • Duration: Ongoing</small>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-marker bg-success"></div>
+                <div class="timeline-content">
+                    <h6 class="mb-1">api.example.com recovered</h6>
+                    <p class="text-muted mb-1">Response time back to normal (45ms)</p>
+                    <small class="text-muted">1 hour ago • Downtime: 5 minutes</small>
+                </div>
+            </div>
+            <div class="timeline-item">
+                <div class="timeline-marker bg-warning"></div>
+                <div class="timeline-content">
+                    <h6 class="mb-1">dns2.example.com performance degraded</h6>
+                    <p class="text-muted mb-1">Response time increased to 250ms</p>
+                    <small class="text-muted">3 hours ago • Duration: 15 minutes</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Health Check Modal -->
+<div class="modal fade" id="addHealthCheckModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Health Check</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Name</label>
+                        <input type="text" class="form-control" placeholder="Health check name">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Type</label>
+                        <select class="form-select">
+                            <option>DNS</option>
+                            <option>HTTP/HTTPS</option>
+                            <option>TCP</option>
+                            <option>ICMP Ping</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Endpoint</label>
+                        <input type="text" class="form-control" placeholder="e.g., dns.example.com or https://api.example.com/health">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Interval</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="30">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="10">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Regions</label>
+                        <select class="form-select">
+                            <option>All Regions</option>
+                            <option>North America</option>
+                            <option>Europe</option>
+                            <option>Asia Pacific</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createHealthCheck()">Create Health Check</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.timeline {
+    position: relative;
+    padding-left: 30px;
+}
+.timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+}
+.timeline-item:not(:last-child):before {
+    content: '';
+    position: absolute;
+    left: -21px;
+    top: 20px;
+    height: calc(100% - 10px);
+    width: 2px;
+    background: #dee2e6;
+}
+.timeline-marker {
+    position: absolute;
+    left: -25px;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Health History Chart
+const ctx = document.getElementById('healthHistoryChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+        datasets: [{
+            label: 'Healthy',
+            data: [15, 15, 14, 15, 15, 14, 15],
+            borderColor: 'rgb(40, 167, 69)',
+            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+            fill: true
+        }, {
+            label: 'Degraded',
+            data: [0, 0, 1, 0, 0, 1, 0],
+            borderColor: 'rgb(255, 193, 7)',
+            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+            fill: true
+        }, {
+            label: 'Unhealthy',
+            data: [0, 0, 0, 0, 0, 0, 1],
+            borderColor: 'rgb(220, 53, 69)',
+            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                stacked: true
+            }
+        }
+    }
+});
+
+function runAllChecks() {
+    showToast('Running all health checks...', 'info');
+}
+
+function runCheck(id) {
+    showToast(`Running health check for ${id}...`, 'info');
+}
+
+function viewHistory(id) {
+    showToast(`Loading history for ${id}...`, 'info');
+}
+
+function editCheck(id) {
+    showToast(`Loading configuration for ${id}...`, 'info');
+}
+
+function createHealthCheck() {
+    showToast('Health check created successfully', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('addHealthCheckModal')).hide();
+}
+
+// Auto-refresh
+let refreshInterval;
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+        refreshInterval = setInterval(() => {
+            showToast('Refreshing health status...', 'info');
+        }, 30000);
+    } else {
+        clearInterval(refreshInterval);
+    }
+});
+</script>
+{{/inline}}
+
+{{> layout}}

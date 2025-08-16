@@ -1,0 +1,492 @@
+{{#*inline "title"}}GeoDNS{{/inline}}
+{{#*inline "current_page"}}geodns{{/inline}}
+
+{{#*inline "content"}}
+<!-- GeoDNS Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">GeoDNS</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Performance</li>
+                    <li class="breadcrumb-item active">GeoDNS</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch form-check-reverse">
+                <input class="form-check-input" type="checkbox" id="geoEnabled" checked>
+                <label class="form-check-label" for="geoEnabled">
+                    GeoDNS Enabled
+                </label>
+            </div>
+            <button class="btn btn-primary ms-3" onclick="saveGeoConfig()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- GeoDNS Overview -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Regions</h6>
+                        <div class="h3 mb-0">{{regions}}</div>
+                        <small class="text-success">Configured</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-globe-americas text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Countries</h6>
+                        <div class="h3 mb-0">{{countries}}</div>
+                        <small class="text-info">Mapped</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-flag text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">ASN Rules</h6>
+                        <div class="h3 mb-0">{{asn_rules}}</div>
+                        <small class="text-warning">Active</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-diagram-3 text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Geo Routes</h6>
+                        <div class="h3 mb-0">{{geo_routes}}</div>
+                        <small class="text-primary">Today</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-signpost-split text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Geographic Map -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Global Traffic Distribution</h5>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" onchange="updateMap(this.value)">
+                    <option value="traffic">Traffic Volume</option>
+                    <option value="latency">Average Latency</option>
+                    <option value="endpoints">Active Endpoints</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="worldMap" style="height: 400px; background: #f8f9fa; display: flex; align-items: center; justify-content: center;">
+            <span class="text-muted">World Map Visualization</span>
+        </div>
+    </div>
+</div>
+
+<!-- Region Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Region Configuration</h5>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addRegionModal">
+                    <i class="bi bi-plus"></i> Add Region
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th>Countries</th>
+                        <th>Endpoints</th>
+                        <th>Latency</th>
+                        <th>Traffic %</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">North America</div>
+                            <small class="text-muted">US, CA, MX</small>
+                        </td>
+                        <td>3 countries</td>
+                        <td>
+                            <span class="badge bg-success">5 endpoints</span>
+                        </td>
+                        <td>12ms avg</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar" style="width: 45%">45%</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editRegion('na')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteRegion('na')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Europe</div>
+                            <small class="text-muted">UK, FR, DE, IT, ES</small>
+                        </td>
+                        <td>27 countries</td>
+                        <td>
+                            <span class="badge bg-success">8 endpoints</span>
+                        </td>
+                        <td>15ms avg</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar" style="width: 35%">35%</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editRegion('eu')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteRegion('eu')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">Asia Pacific</div>
+                            <small class="text-muted">JP, CN, IN, AU, SG</small>
+                        </td>
+                        <td>15 countries</td>
+                        <td>
+                            <span class="badge bg-warning">3 endpoints</span>
+                        </td>
+                        <td>45ms avg</td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar" style="width: 20%">20%</div>
+                            </div>
+                        </td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" onclick="editRegion('apac')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger" onclick="deleteRegion('apac')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Geo Rules -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h5 class="mb-0">Geo Routing Rules</h5>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-success" onclick="addRule()">
+                            <i class="bi bi-plus"></i> Add Rule
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Priority</th>
+                                <th>Type</th>
+                                <th>Match</th>
+                                <th>Action</th>
+                                <th>Endpoint</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td><span class="badge bg-info">Country</span></td>
+                                <td>CN</td>
+                                <td>Route to</td>
+                                <td>asia-pool-1</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(1)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td><span class="badge bg-warning">ASN</span></td>
+                                <td>AS15169</td>
+                                <td>Route to</td>
+                                <td>google-optimized</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(2)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td><span class="badge bg-primary">Continent</span></td>
+                                <td>EU</td>
+                                <td>Route to</td>
+                                <td>eu-pool-1</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(3)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td><span class="badge bg-secondary">Default</span></td>
+                                <td>*</td>
+                                <td>Route to</td>
+                                <td>global-pool</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule(4)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">GeoIP Database</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Database Provider</label>
+                    <select class="form-select">
+                        <option value="maxmind">MaxMind GeoLite2</option>
+                        <option value="ip2location">IP2Location</option>
+                        <option value="dbip">DB-IP</option>
+                        <option value="custom">Custom Database</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Database Version</label>
+                    <input type="text" class="form-control" value="2024.01.15" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Last Updated</label>
+                    <input type="text" class="form-control" value="3 days ago" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Auto Update</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoUpdate" checked>
+                        <label class="form-check-label" for="autoUpdate">
+                            Update weekly
+                        </label>
+                    </div>
+                </div>
+                <button class="btn btn-primary w-100" onclick="updateDatabase()">
+                    <i class="bi bi-arrow-clockwise"></i> Update Now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Failover Configuration -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Geo Failover Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Failover Strategy</label>
+                <select class="form-select">
+                    <option value="nearest">Nearest Region</option>
+                    <option value="priority">Priority List</option>
+                    <option value="random">Random Available</option>
+                    <option value="manual">Manual Override</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Health Check Interval</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="30">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Failover Threshold</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="3">
+                    <span class="input-group-text">failures</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Region Modal -->
+<div class="modal fade" id="addRegionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Geographic Region</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Region Name</label>
+                        <input type="text" class="form-control" id="regionName">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Region Code</label>
+                        <input type="text" class="form-control" id="regionCode" placeholder="e.g., NA, EU, APAC">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Countries</label>
+                        <select class="form-select" multiple size="5">
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="UK">United Kingdom</option>
+                            <option value="FR">France</option>
+                            <option value="DE">Germany</option>
+                            <option value="JP">Japan</option>
+                            <option value="CN">China</option>
+                            <option value="IN">India</option>
+                            <option value="AU">Australia</option>
+                        </select>
+                        <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Endpoints</label>
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control" placeholder="Add endpoint IP or hostname">
+                            <button class="btn btn-outline-secondary">Add</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createRegion()">Create Region</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveGeoConfig() {
+    showToast('GeoDNS configuration saved', 'success');
+}
+
+function updateMap(type) {
+    showToast(`Updating map view: ${type}`, 'info');
+}
+
+function editRegion(region) {
+    showToast(`Loading region ${region} configuration...`, 'info');
+}
+
+function deleteRegion(region) {
+    if (confirm(`Delete region ${region}?`)) {
+        showToast('Region deleted', 'success');
+    }
+}
+
+function addRule() {
+    showToast('Add new geo routing rule...', 'info');
+}
+
+function deleteRule(id) {
+    if (confirm('Delete this routing rule?')) {
+        showToast('Rule deleted', 'success');
+    }
+}
+
+function updateDatabase() {
+    showToast('Updating GeoIP database...', 'info');
+}
+
+function createRegion() {
+    showToast('Geographic region created', 'success');
+    bootstrap.Modal.getInstance(document.getElementById('addRegionModal')).hide();
+}
+
+document.getElementById('geoEnabled').addEventListener('change', function() {
+    showToast(`GeoDNS ${this.checked ? 'enabled' : 'disabled'}`, this.checked ? 'success' : 'warning');
+});
+</script>
+{{/inline}}
+
+{{> layout}}

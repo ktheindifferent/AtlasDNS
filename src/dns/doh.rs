@@ -135,6 +135,16 @@ impl DohServer {
         Self { context, config }
     }
 
+    /// Check if DoH server is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.enabled
+    }
+
+    /// Get DoH configuration
+    pub fn get_config(&self) -> &DohConfig {
+        &self.config
+    }
+
     /// Handle DoH request
     pub async fn handle_doh_request(
         &self,

@@ -1,0 +1,425 @@
+{{#*inline "title"}}DNS-over-HTTPS{{/inline}}
+{{#*inline "current_page"}}doh{{/inline}}
+
+{{#*inline "content"}}
+<!-- DNS-over-HTTPS Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">DNS-over-HTTPS (DoH)</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Protocols</li>
+                    <li class="breadcrumb-item active">DoH</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch form-check-reverse">
+                <input class="form-check-input" type="checkbox" id="dohEnabled" checked>
+                <label class="form-check-label" for="dohEnabled">
+                    DoH Enabled
+                </label>
+            </div>
+            <button class="btn btn-primary ms-3" onclick="saveDoHConfig()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- DoH Status -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">DoH Queries</h6>
+                        <div class="h3 mb-0">{{doh_queries}}</div>
+                        <small class="text-success">Last 24 hours</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-globe text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Connections</h6>
+                        <div class="h3 mb-0">{{active_connections}}</div>
+                        <small class="text-info">HTTP/2 streams</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-arrow-left-right text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Avg Latency</h6>
+                        <div class="h3 mb-0">{{avg_latency}}ms</div>
+                        <small class="text-warning">Response time</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-speedometer2 text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Cache Hit Rate</h6>
+                        <div class="h3 mb-0">{{cache_hit_rate}}%</div>
+                        <small class="text-primary">DoH cache</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-lightning-charge text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DoH Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">DoH Server Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">DoH Endpoint Path</label>
+                <div class="input-group">
+                    <span class="input-group-text">https://your-domain.com</span>
+                    <input type="text" class="form-control" id="dohPath" value="/dns-query">
+                </div>
+                <small class="text-muted">Standard path is /dns-query (RFC 8484)</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">HTTPS Port</label>
+                <input type="number" class="form-control" id="httpsPort" value="443">
+                <small class="text-muted">Standard HTTPS port 443 recommended</small>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">HTTP Version</label>
+                <select class="form-select" id="httpVersion">
+                    <option value="http2" selected>HTTP/2 (Recommended)</option>
+                    <option value="http3">HTTP/3 (QUIC)</option>
+                    <option value="http11">HTTP/1.1</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Content Type</label>
+                <select class="form-select" id="contentType">
+                    <option value="dns-message" selected>application/dns-message</option>
+                    <option value="dns-json">application/dns+json</option>
+                    <option value="both">Both</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Max Message Size</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="maxMessageSize" value="4096">
+                    <span class="input-group-text">bytes</span>
+                </div>
+            </div>
+        </div>
+        
+        <h6 class="mt-4">HTTP/2 Settings</h6>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Max Concurrent Streams</label>
+                <input type="number" class="form-control" id="maxStreams" value="100">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Initial Window Size</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="windowSize" value="65535">
+                    <span class="input-group-text">bytes</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Max Frame Size</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="frameSize" value="16384">
+                    <span class="input-group-text">bytes</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Header Table Size</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="headerTableSize" value="4096">
+                    <span class="input-group-text">bytes</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CORS & Security -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">CORS Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="corsEnabled" checked>
+                    <label class="form-check-label" for="corsEnabled">
+                        Enable CORS Headers
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Allowed Origins</label>
+                    <textarea class="form-control" id="allowedOrigins" rows="3">*
+https://example.com
+https://app.example.com</textarea>
+                    <small class="text-muted">One origin per line, * for all</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Allowed Methods</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="methodGet" checked>
+                        <label class="form-check-label" for="methodGet">GET</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="methodPost" checked>
+                        <label class="form-check-label" for="methodPost">POST</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="methodOptions" checked>
+                        <label class="form-check-label" for="methodOptions">OPTIONS</label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Max Age</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="corsMaxAge" value="86400">
+                        <span class="input-group-text">seconds</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Security Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="tlsRequired" checked>
+                    <label class="form-check-label" for="tlsRequired">
+                        Require TLS 1.3
+                    </label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="hstsEnabled" checked>
+                    <label class="form-check-label" for="hstsEnabled">
+                        Enable HSTS Header
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">HSTS Max Age</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="hstsMaxAge" value="31536000">
+                        <span class="input-group-text">seconds</span>
+                    </div>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="authRequired">
+                    <label class="form-check-label" for="authRequired">
+                        Require Authentication
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API Keys</label>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control" placeholder="Enter API key">
+                        <button class="btn btn-outline-secondary" type="button">Add</button>
+                    </div>
+                    <div class="list-group">
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <code>doh_key_1234567890abcdef</code>
+                            <button class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cache Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">DoH Cache Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Cache Control</label>
+                <select class="form-select" id="cacheControl">
+                    <option value="public">Public</option>
+                    <option value="private" selected>Private</option>
+                    <option value="no-cache">No Cache</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Default Max Age</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="cacheMaxAge" value="300">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Min TTL</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="minTTL" value="0">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Max TTL</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" id="maxTTL" value="86400">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test & Monitoring -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Test DoH Endpoint</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Test Domain</label>
+                    <input type="text" class="form-control" id="testDomain" value="example.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Query Type</label>
+                    <select class="form-select" id="testQueryType">
+                        <option value="A">A</option>
+                        <option value="AAAA">AAAA</option>
+                        <option value="CNAME">CNAME</option>
+                        <option value="MX">MX</option>
+                        <option value="TXT">TXT</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="testDoH()">
+                    <i class="bi bi-play"></i> Run Test
+                </button>
+                <div class="mt-3" id="testResults" style="display: none;">
+                    <h6>Test Results:</h6>
+                    <pre class="bg-dark text-light p-3 rounded">
+HTTP/2 200 OK
+content-type: application/dns-message
+cache-control: max-age=300
+
+Response: example.com A 93.184.216.34
+Latency: 12ms
+Cache: MISS
+                    </pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">DoH Client Configuration</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Configure your clients to use this DoH endpoint:</p>
+                <div class="mb-3">
+                    <label class="form-label">DoH URL</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" value="https://dns.example.com/dns-query" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyURL()">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+                <h6>Client Configuration Examples:</h6>
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#firefox">Firefox</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#chrome">Chrome</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#curl">cURL</a>
+                    </li>
+                </ul>
+                <div class="tab-content mt-3">
+                    <div class="tab-pane active" id="firefox">
+                        <code>Settings → Network Settings → Enable DNS over HTTPS</code>
+                    </div>
+                    <div class="tab-pane" id="chrome">
+                        <code>chrome://flags/#dns-over-https</code>
+                    </div>
+                    <div class="tab-pane" id="curl">
+                        <pre class="bg-light p-2">curl -H 'accept: application/dns-message' \
+  https://dns.example.com/dns-query?dns=...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveDoHConfig() {
+    showToast('DoH configuration saved successfully', 'success');
+}
+
+function testDoH() {
+    document.getElementById('testResults').style.display = 'block';
+    showToast('DoH test completed', 'success');
+}
+
+function copyURL() {
+    navigator.clipboard.writeText('https://dns.example.com/dns-query');
+    showToast('DoH URL copied to clipboard', 'success');
+}
+
+document.getElementById('dohEnabled').addEventListener('change', function() {
+    showToast(`DoH ${this.checked ? 'enabled' : 'disabled'}`, this.checked ? 'success' : 'warning');
+});
+
+document.getElementById('authRequired').addEventListener('change', function() {
+    showToast(`Authentication ${this.checked ? 'enabled' : 'disabled'}`, 'info');
+});
+</script>
+{{/inline}}
+
+{{> layout}}

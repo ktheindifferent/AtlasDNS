@@ -1,0 +1,443 @@
+{{#*inline "title"}}DDoS Protection{{/inline}}
+{{#*inline "current_page"}}ddos-protection{{/inline}}
+
+{{#*inline "content"}}
+<!-- DDoS Protection -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">DDoS Protection</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Security</li>
+                    <li class="breadcrumb-item active">DDoS Protection</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-danger" onclick="setProtectionLevel('off')">Off</button>
+                <button type="button" class="btn btn-outline-warning" onclick="setProtectionLevel('low')">Low</button>
+                <button type="button" class="btn btn-outline-primary active" onclick="setProtectionLevel('medium')">Medium</button>
+                <button type="button" class="btn btn-outline-success" onclick="setProtectionLevel('high')">High</button>
+                <button type="button" class="btn btn-outline-danger" onclick="setProtectionLevel('emergency')">Emergency</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attack Status -->
+<div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-3" style="font-size: 1.5rem;"></i>
+    <div class="flex-grow-1">
+        <strong>Potential DDoS Attack Detected</strong><br>
+        <small>Unusual traffic pattern detected from multiple sources. Automatic mitigation engaged.</small>
+    </div>
+    <button class="btn btn-sm btn-warning" onclick="viewAttackDetails()">View Details</button>
+</div>
+
+<!-- DDoS Metrics -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-danger">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Current Attack Status</h6>
+                        <div class="h3 mb-0 text-danger">Active</div>
+                        <small class="text-muted">Started 15 min ago</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shield-exclamation text-danger" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Queries Mitigated</h6>
+                        <div class="h3 mb-0">2.5M</div>
+                        <small class="text-warning">Last hour</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shield-check text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Attack Sources</h6>
+                        <div class="h3 mb-0">1,247</div>
+                        <small class="text-info">Unique IPs</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-geo-alt text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Mitigation Rate</h6>
+                        <div class="h3 mb-0">98.5%</div>
+                        <small class="text-success">Effectiveness</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-percent text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time Attack Monitoring -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Real-time Attack Monitoring</h5>
+            </div>
+            <div class="col-auto">
+                <span class="badge bg-danger">LIVE</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <canvas id="attackChart" height="100"></canvas>
+        <div class="row mt-3">
+            <div class="col-md-3">
+                <small class="text-muted">Current QPS</small>
+                <div class="h4">125,430</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Normal QPS</small>
+                <div class="h4 text-success">8,500</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Peak QPS</small>
+                <div class="h4 text-danger">458,320</div>
+            </div>
+            <div class="col-md-3">
+                <small class="text-muted">Duration</small>
+                <div class="h4">15:32</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attack Patterns & Mitigation -->
+<div class="row g-3 mb-4">
+    <!-- Attack Patterns -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Attack Pattern Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>DNS Amplification</span>
+                        <span class="badge bg-danger">45%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-danger" style="width: 45%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Random Subdomain</span>
+                        <span class="badge bg-warning">30%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-warning" style="width: 30%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>NXDOMAIN Flood</span>
+                        <span class="badge bg-info">15%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-info" style="width: 15%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Query Flood</span>
+                        <span class="badge bg-secondary">10%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-secondary" style="width: 10%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Active Mitigations -->
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Active Mitigations</h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            <strong>Rate Limiting</strong>
+                            <small class="text-muted d-block">Throttling to 10 QPS per IP</small>
+                        </div>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            <strong>SYN Cookies</strong>
+                            <small class="text-muted d-block">TCP connection validation</small>
+                        </div>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-check-circle text-success me-2"></i>
+                            <strong>Query Validation</strong>
+                            <small class="text-muted d-block">Dropping malformed queries</small>
+                        </div>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-pause-circle text-warning me-2"></i>
+                            <strong>IP Blacklisting</strong>
+                            <small class="text-muted d-block">1,247 IPs blocked</small>
+                        </div>
+                        <span class="badge bg-warning">Updating</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DDoS Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">DDoS Protection Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h6>Detection Settings</h6>
+                <div class="mb-3">
+                    <label class="form-label">Query Rate Threshold</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" value="50000">
+                        <span class="input-group-text">QPS</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Unique Source Threshold</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" value="1000">
+                        <span class="input-group-text">IPs</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Pattern Detection Sensitivity</label>
+                    <select class="form-select">
+                        <option>Low</option>
+                        <option selected>Medium</option>
+                        <option>High</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6>Mitigation Actions</h6>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="enableRateLimit" checked>
+                    <label class="form-check-label" for="enableRateLimit">
+                        Automatic Rate Limiting
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="enableBlacklist" checked>
+                    <label class="form-check-label" for="enableBlacklist">
+                        Dynamic IP Blacklisting
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="enableChallenge" checked>
+                    <label class="form-check-label" for="enableChallenge">
+                        DNS Challenge Responses
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="enableGeoBlock">
+                    <label class="form-check-label" for="enableGeoBlock">
+                        Geographic Blocking
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="enableCloudflare">
+                    <label class="form-check-label" for="enableCloudflare">
+                        Cloudflare Integration
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="mt-3">
+            <button class="btn btn-primary" onclick="saveConfig()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+            <button class="btn btn-outline-secondary" onclick="testConfig()">
+                <i class="bi bi-play"></i> Test Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Attack History -->
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Attack History</h5>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" style="width: auto;">
+                    <option>Last 7 Days</option>
+                    <option>Last 30 Days</option>
+                    <option>Last 90 Days</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Duration</th>
+                        <th>Peak QPS</th>
+                        <th>Sources</th>
+                        <th>Type</th>
+                        <th>Mitigated</th>
+                        <th>Impact</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each attack_history}}
+                    <tr>
+                        <td>{{date}}</td>
+                        <td>{{duration}}</td>
+                        <td>{{peak_qps}}</td>
+                        <td>{{sources}}</td>
+                        <td><span class="badge bg-{{type_color}}">{{type}}</span></td>
+                        <td>{{mitigated}}%</td>
+                        <td><span class="badge bg-{{impact_color}}">{{impact}}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="viewAttack('{{attack_id}}')">
+                                <i class="bi bi-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Real-time attack monitoring chart
+const ctx = document.getElementById('attackChart').getContext('2d');
+const attackChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: Array.from({length: 60}, (_, i) => i + ' sec'),
+        datasets: [{
+            label: 'Attack Traffic',
+            data: Array.from({length: 60}, () => Math.floor(Math.random() * 200000 + 100000)),
+            borderColor: 'rgb(255, 99, 132)',
+            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+            tension: 0.4
+        }, {
+            label: 'Legitimate Traffic',
+            data: Array.from({length: 60}, () => Math.floor(Math.random() * 10000 + 5000)),
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Queries Per Second'
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Update chart with real-time data
+setInterval(() => {
+    attackChart.data.datasets[0].data.shift();
+    attackChart.data.datasets[0].data.push(Math.floor(Math.random() * 200000 + 100000));
+    attackChart.data.datasets[1].data.shift();
+    attackChart.data.datasets[1].data.push(Math.floor(Math.random() * 10000 + 5000));
+    attackChart.update('none');
+}, 1000);
+
+function setProtectionLevel(level) {
+    document.querySelectorAll('.btn-group .btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    showToast(`DDoS protection level set to ${level}`, 'info');
+}
+
+function viewAttackDetails() {
+    showToast('Loading attack details...', 'info');
+}
+
+function saveConfig() {
+    showToast('DDoS protection configuration saved', 'success');
+}
+
+function testConfig() {
+    showToast('Running configuration test...', 'info');
+}
+
+function viewAttack(attackId) {
+    showToast('Loading attack report...', 'info');
+}
+</script>{{/inline}}
+
+{{> layout}}

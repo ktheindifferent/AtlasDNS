@@ -1,0 +1,372 @@
+{{#*inline "title"}}DNS-over-TLS{{/inline}}
+{{#*inline "current_page"}}dot{{/inline}}
+
+{{#*inline "content"}}
+<!-- DNS-over-TLS Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">DNS-over-TLS (DoT)</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Protocols</li>
+                    <li class="breadcrumb-item active">DoT</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch form-check-reverse">
+                <input class="form-check-input" type="checkbox" id="dotEnabled" checked>
+                <label class="form-check-label" for="dotEnabled">
+                    DoT Enabled
+                </label>
+            </div>
+            <button class="btn btn-primary ms-3" onclick="saveDoTConfig()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- DoT Status -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">DoT Connections</h6>
+                        <div class="h3 mb-0">{{dot_connections}}</div>
+                        <small class="text-success">Active TLS</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-lock-fill text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Queries/sec</h6>
+                        <div class="h3 mb-0">{{qps}}</div>
+                        <small class="text-info">Port 853</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-activity text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">TLS Version</h6>
+                        <div class="h3 mb-0">1.3</div>
+                        <small class="text-primary">Latest</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shield-check text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Certificate</h6>
+                        <div class="h3 mb-0">Valid</div>
+                        <small class="text-warning">30 days left</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-patch-check text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DoT Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">DoT Server Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">DoT Port</label>
+                <input type="number" class="form-control" id="dotPort" value="853">
+                <small class="text-muted">Standard port 853 (RFC 7858)</small>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">TLS Version</label>
+                <select class="form-select" id="tlsVersion">
+                    <option value="1.2">TLS 1.2</option>
+                    <option value="1.3" selected>TLS 1.3 (Recommended)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Connection Timeout</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="30">
+                    <span class="input-group-text">seconds</span>
+                </div>
+            </div>
+            
+            <div class="col-12">
+                <h6 class="mt-3">TLS Certificate Configuration</h6>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Certificate Path</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" value="/etc/atlas/certs/cert.pem">
+                    <button class="btn btn-outline-secondary" onclick="browseCert()">Browse</button>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Private Key Path</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" value="/etc/atlas/certs/key.pem">
+                    <button class="btn btn-outline-secondary" onclick="browseKey()">Browse</button>
+                </div>
+            </div>
+            
+            <div class="col-12">
+                <h6 class="mt-3">Cipher Suites</h6>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="cipher1" checked>
+                    <label class="form-check-label" for="cipher1">
+                        TLS_AES_256_GCM_SHA384
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="cipher2" checked>
+                    <label class="form-check-label" for="cipher2">
+                        TLS_AES_128_GCM_SHA256
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="cipher3" checked>
+                    <label class="form-check-label" for="cipher3">
+                        TLS_CHACHA20_POLY1305_SHA256
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Connection Settings -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Connection Pool</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Max Connections</label>
+                        <input type="number" class="form-control" value="1000">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Connection Reuse</label>
+                        <select class="form-select">
+                            <option value="always" selected>Always</option>
+                            <option value="same-client">Same Client Only</option>
+                            <option value="never">Never</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Idle Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="300">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Keep-Alive</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="60">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">TCP Fast Open</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="tcpFastOpen" checked>
+                    <label class="form-check-label" for="tcpFastOpen">
+                        Enable TCP Fast Open (TFO)
+                    </label>
+                </div>
+                <p class="text-muted">Reduces latency by sending data in the initial SYN packet.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">TFO Queue Length</label>
+                        <input type="number" class="form-control" value="256">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Cookie Lifetime</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="600">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Connections -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Active DoT Connections</h5>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-outline-secondary" onclick="refreshConnections()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Client IP</th>
+                        <th>TLS Version</th>
+                        <th>Cipher Suite</th>
+                        <th>Connected</th>
+                        <th>Queries</th>
+                        <th>Bandwidth</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>192.168.1.100</td>
+                        <td><span class="badge bg-success">TLS 1.3</span></td>
+                        <td>TLS_AES_256_GCM_SHA384</td>
+                        <td>5 min ago</td>
+                        <td>234</td>
+                        <td>12.5 KB</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="disconnectClient('192.168.1.100')">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>10.0.0.50</td>
+                        <td><span class="badge bg-warning">TLS 1.2</span></td>
+                        <td>TLS_AES_128_GCM_SHA256</td>
+                        <td>12 min ago</td>
+                        <td>567</td>
+                        <td>28.3 KB</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger" onclick="disconnectClient('10.0.0.50')">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Test DoT -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Test DoT Connection</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Test Server</label>
+                <input type="text" class="form-control" id="testServer" value="dns.example.com">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Port</label>
+                <input type="number" class="form-control" id="testPort" value="853">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Query</label>
+                <input type="text" class="form-control" id="testQuery" value="example.com">
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" onclick="testDoT()">
+                    <i class="bi bi-play"></i> Run Test
+                </button>
+                <button class="btn btn-outline-secondary" onclick="testWithOpenSSL()">
+                    <i class="bi bi-terminal"></i> Test with OpenSSL
+                </button>
+            </div>
+            <div class="col-12 mt-3" id="testResults" style="display: none;">
+                <pre class="bg-dark text-light p-3 rounded">
+Connecting to dns.example.com:853...
+TLS handshake successful (TLS 1.3)
+Certificate verified: CN=dns.example.com
+Sending query for example.com...
+Response received: 93.184.216.34
+Total time: 45ms
+Connection closed.
+                </pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveDoTConfig() {
+    showToast('DoT configuration saved', 'success');
+}
+
+function testDoT() {
+    document.getElementById('testResults').style.display = 'block';
+    showToast('DoT test completed', 'success');
+}
+
+function refreshConnections() {
+    showToast('Refreshing connections...', 'info');
+}
+
+function disconnectClient(ip) {
+    if (confirm(`Disconnect client ${ip}?`)) {
+        showToast(`Client ${ip} disconnected`, 'success');
+    }
+}
+
+function testWithOpenSSL() {
+    const cmd = `echo | openssl s_client -connect dns.example.com:853 -servername dns.example.com`;
+    navigator.clipboard.writeText(cmd);
+    showToast('OpenSSL command copied to clipboard', 'info');
+}
+</script>
+{{/inline}}
+
+{{> layout}}

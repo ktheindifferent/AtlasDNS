@@ -1,0 +1,353 @@
+{{#*inline "title"}}DNS-over-QUIC{{/inline}}
+{{#*inline "current_page"}}doq{{/inline}}
+
+{{#*inline "content"}}
+<!-- DNS-over-QUIC Configuration -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">DNS-over-QUIC (DoQ)</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Protocols</li>
+                    <li class="breadcrumb-item active">DoQ</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch form-check-reverse">
+                <input class="form-check-input" type="checkbox" id="doqEnabled" checked>
+                <label class="form-check-label" for="doqEnabled">
+                    DoQ Enabled
+                </label>
+            </div>
+            <button class="btn btn-primary ms-3" onclick="saveDoQConfig()">
+                <i class="bi bi-save"></i> Save Configuration
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- DoQ Status -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">QUIC Streams</h6>
+                        <div class="h3 mb-0">{{quic_streams}}</div>
+                        <small class="text-success">Active</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-lightning-charge-fill text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">0-RTT Connections</h6>
+                        <div class="h3 mb-0">{{zero_rtt}}</div>
+                        <small class="text-info">Fast resume</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-rocket-takeoff text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Packet Loss</h6>
+                        <div class="h3 mb-0">{{packet_loss}}%</div>
+                        <small class="text-warning">Recovery rate</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-wifi text-warning" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Latency</h6>
+                        <div class="h3 mb-0">{{latency}}ms</div>
+                        <small class="text-primary">Average RTT</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-speedometer2 text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QUIC Configuration -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">QUIC Transport Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">DoQ Port</label>
+                <input type="number" class="form-control" value="784">
+                <small class="text-muted">Standard port 784 (draft-ietf-dprive-dnsoquic)</small>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">QUIC Version</label>
+                <select class="form-select">
+                    <option value="1" selected>QUIC v1 (RFC 9000)</option>
+                    <option value="draft29">Draft-29</option>
+                    <option value="draft32">Draft-32</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Max UDP Payload</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="1350">
+                    <span class="input-group-text">bytes</span>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <label class="form-label">Initial Max Data</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="10">
+                    <span class="input-group-text">MB</span>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Initial Max Stream Data</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="1">
+                    <span class="input-group-text">MB</span>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <label class="form-label">Max Idle Timeout</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="30000">
+                    <span class="input-group-text">ms</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Max Concurrent Streams</label>
+                <input type="number" class="form-control" value="100">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">ACK Delay Exponent</label>
+                <input type="number" class="form-control" value="3">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 0-RTT Configuration -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">0-RTT Early Data</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="zeroRttEnabled" checked>
+                    <label class="form-check-label" for="zeroRttEnabled">
+                        Enable 0-RTT Resumption
+                    </label>
+                </div>
+                <p class="text-muted">Allows clients to send DNS queries in the first packet, reducing latency for repeat connections.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Max Early Data</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="16384">
+                            <span class="input-group-text">bytes</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Ticket Lifetime</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="86400">
+                            <span class="input-group-text">seconds</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-warning mt-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Security Note:</strong> 0-RTT data is replayable. Only enable for idempotent queries.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Connection Migration</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="migrationEnabled" checked>
+                    <label class="form-check-label" for="migrationEnabled">
+                        Enable Connection Migration
+                    </label>
+                </div>
+                <p class="text-muted">Maintains connections when client IP changes (mobile networks, WiFi switching).</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Migration Type</label>
+                        <select class="form-select">
+                            <option value="reactive" selected>Reactive</option>
+                            <option value="proactive">Proactive</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Path Challenge Timeout</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" value="1000">
+                            <span class="input-group-text">ms</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Congestion Control -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Congestion Control & Loss Recovery</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Congestion Algorithm</label>
+                <select class="form-select">
+                    <option value="cubic" selected>CUBIC</option>
+                    <option value="bbr">BBR</option>
+                    <option value="reno">Reno</option>
+                    <option value="newreno">NewReno</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Initial Congestion Window</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="10">
+                    <span class="input-group-text">packets</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Loss Detection Threshold</label>
+                <div class="input-group">
+                    <input type="number" class="form-control" value="3">
+                    <span class="input-group-text">packets</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active QUIC Connections -->
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">Active QUIC Connections</h5>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-outline-secondary" onclick="refreshConnections()">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Connection ID</th>
+                        <th>Client</th>
+                        <th>State</th>
+                        <th>Streams</th>
+                        <th>RTT</th>
+                        <th>Loss Rate</th>
+                        <th>Bandwidth</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>a1b2c3d4</code></td>
+                        <td>192.168.1.100:45678</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>5</td>
+                        <td>12ms</td>
+                        <td>0.1%</td>
+                        <td>1.2 Mbps</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewConnection('a1b2c3d4')">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><code>e5f6g7h8</code></td>
+                        <td>10.0.0.50:12345</td>
+                        <td><span class="badge bg-warning">Migrating</span></td>
+                        <td>2</td>
+                        <td>45ms</td>
+                        <td>2.3%</td>
+                        <td>0.8 Mbps</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewConnection('e5f6g7h8')">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveDoQConfig() {
+    showToast('DoQ configuration saved', 'success');
+}
+
+function refreshConnections() {
+    showToast('Refreshing QUIC connections...', 'info');
+}
+
+function viewConnection(connId) {
+    showToast(`Loading connection ${connId} details...`, 'info');
+}
+
+document.getElementById('doqEnabled').addEventListener('change', function() {
+    showToast(`DoQ ${this.checked ? 'enabled' : 'disabled'}`, this.checked ? 'success' : 'warning');
+});
+</script>
+{{/inline}}
+
+{{> layout}}

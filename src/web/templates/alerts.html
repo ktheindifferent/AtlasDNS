@@ -1,0 +1,511 @@
+{{#*inline "title"}}Alerts{{/inline}}
+{{#*inline "current_page"}}alerts{{/inline}}
+
+{{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">Alert Management</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Alerts</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Alerts</h6>
+                        <h3 class="mb-0">{{#if active_alerts}}{{active_alerts}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-danger">
+                        <i class="bi bi-exclamation-triangle fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Rules</h6>
+                        <h3 class="mb-0">{{#if total_rules}}{{total_rules}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-list-check fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Notifications Sent</h6>
+                        <h3 class="mb-0">{{#if notifications_sent}}{{notifications_sent}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-send fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Last Alert</h6>
+                        <h6 class="mb-0">{{#if last_alert}}{{last_alert}}{{else}}None{{/if}}</h6>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-clock-history fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Alerts -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+            Active Alerts
+        </h5>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshAlerts()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearAllAlerts()">
+                <i class="bi bi-trash"></i> Clear All
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="activeAlerts">
+            {{#if alerts}}
+                {{#each alerts}}
+                <div class="alert alert-{{severity}} alert-dismissible fade show" role="alert" data-alert-id="{{id}}">
+                    <div class="d-flex align-items-start">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="bi bi-{{#eq severity 'danger'}}exclamation-triangle{{/eq}}{{#eq severity 'warning'}}exclamation-circle{{/eq}}{{#eq severity 'info'}}info-circle{{/eq}} fs-4"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h6 class="alert-heading mb-1">{{title}}</h6>
+                            <p class="mb-2">{{message}}</p>
+                            <small class="text-muted">{{timestamp}} | Source: {{source}}</small>
+                        </div>
+                        <button type="button" class="btn-close" onclick="dismissAlert('{{id}}')" aria-label="Close"></button>
+                    </div>
+                </div>
+                {{/each}}
+            {{else}}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
+                    No active alerts
+                </div>
+            {{/if}}
+        </div>
+    </div>
+</div>
+
+<!-- Alert Rules -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-list-check me-2"></i>
+            Alert Rules
+        </h5>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newAlertRule">
+            <i class="bi bi-plus-circle me-1"></i>
+            New Rule
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Rule Name</th>
+                        <th>Condition</th>
+                        <th>Threshold</th>
+                        <th>Severity</th>
+                        <th>Notifications</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#if rules}}
+                        {{#each rules}}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{name}}</div>
+                                <small class="text-muted">{{description}}</small>
+                            </td>
+                            <td>
+                                <code>{{condition}}</code>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{threshold}}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-{{#eq severity 'critical'}}danger{{/eq}}{{#eq severity 'warning'}}warning{{/eq}}{{#eq severity 'info'}}info{{/eq}}">
+                                    {{severity}}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    {{#if email}}<span class="badge bg-primary">Email</span>{{/if}}
+                                    {{#if webhook}}<span class="badge bg-info">Webhook</span>{{/if}}
+                                    {{#if sms}}<span class="badge bg-success">SMS</span>{{/if}}
+                                </div>
+                            </td>
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" {{#if enabled}}checked{{/if}} onchange="toggleRule('{{id}}', this.checked)">
+                                </div>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editRule('{{id}}')"
+                                        title="Edit Rule">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRule('{{id}}')"
+                                        title="Delete Rule">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    {{else}}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                No alert rules configured yet
+                            </td>
+                        </tr>
+                    {{/if}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Alert Rule Modal -->
+<div class="modal fade" id="newAlertRule" tabindex="-1" aria-labelledby="newAlertRuleLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="newAlertRuleLabel">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create New Alert Rule
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="alertRuleForm">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label for="ruleName" class="form-label">Rule Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="ruleName" name="name" required>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label for="ruleDescription" class="form-label">Description</label>
+                            <textarea class="form-control" id="ruleDescription" name="description" rows="2"></textarea>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="ruleCondition" class="form-label">Condition <span class="text-danger">*</span></label>
+                            <select class="form-select" id="ruleCondition" name="condition" required>
+                                <option value="">Select condition...</option>
+                                <option value="query_rate">Query Rate</option>
+                                <option value="error_rate">Error Rate</option>
+                                <option value="response_time">Response Time</option>
+                                <option value="cache_hit_ratio">Cache Hit Ratio</option>
+                                <option value="memory_usage">Memory Usage</option>
+                                <option value="disk_usage">Disk Usage</option>
+                                <option value="zone_transfer_failed">Zone Transfer Failed</option>
+                                <option value="dnssec_validation_failed">DNSSEC Validation Failed</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="ruleThreshold" class="form-label">Threshold <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="ruleThreshold" name="threshold" required>
+                                <span class="input-group-text" id="thresholdUnit">%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="ruleSeverity" class="form-label">Severity <span class="text-danger">*</span></label>
+                            <select class="form-select" id="ruleSeverity" name="severity" required>
+                                <option value="">Select severity...</option>
+                                <option value="info">Info</option>
+                                <option value="warning">Warning</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="ruleInterval" class="form-label">Check Interval</label>
+                            <select class="form-select" id="ruleInterval" name="interval">
+                                <option value="60">1 minute</option>
+                                <option value="300" selected>5 minutes</option>
+                                <option value="900">15 minutes</option>
+                                <option value="3600">1 hour</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-12">
+                            <label class="form-label">Notification Methods</label>
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="notifyEmail" name="email">
+                                        <label class="form-check-label" for="notifyEmail">
+                                            <i class="bi bi-envelope me-1"></i> Email
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="notifyWebhook" name="webhook">
+                                        <label class="form-check-label" for="notifyWebhook">
+                                            <i class="bi bi-arrow-left-right me-1"></i> Webhook
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="notifySms" name="sms">
+                                        <label class="form-check-label" for="notifySms">
+                                            <i class="bi bi-phone me-1"></i> SMS
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-12" id="emailSettings" style="display: none;">
+                            <label for="emailRecipients" class="form-label">Email Recipients</label>
+                            <input type="email" class="form-control" id="emailRecipients" name="emailRecipients" 
+                                placeholder="admin@example.com, ops@example.com" multiple>
+                        </div>
+                        
+                        <div class="col-12" id="webhookSettings" style="display: none;">
+                            <label for="webhookUrl" class="form-label">Webhook URL</label>
+                            <input type="url" class="form-control" id="webhookUrl" name="webhookUrl" 
+                                placeholder="https://hooks.slack.com/services/...">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Create Rule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Update threshold unit based on condition
+document.getElementById('ruleCondition')?.addEventListener('change', function() {
+    const unit = document.getElementById('thresholdUnit');
+    const conditions = {
+        'query_rate': 'qps',
+        'error_rate': '%',
+        'response_time': 'ms',
+        'cache_hit_ratio': '%',
+        'memory_usage': '%',
+        'disk_usage': '%',
+        'zone_transfer_failed': 'count',
+        'dnssec_validation_failed': 'count'
+    };
+    unit.textContent = conditions[this.value] || '%';
+});
+
+// Toggle notification method settings
+document.getElementById('notifyEmail')?.addEventListener('change', function() {
+    document.getElementById('emailSettings').style.display = this.checked ? 'block' : 'none';
+});
+
+document.getElementById('notifyWebhook')?.addEventListener('change', function() {
+    document.getElementById('webhookSettings').style.display = this.checked ? 'block' : 'none';
+});
+
+// Alert management functions
+function refreshAlerts() {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+    
+    setTimeout(() => {
+        btn.innerHTML = originalContent;
+        btn.disabled = false;
+        showToast('Alerts refreshed', 'success');
+        // In real implementation, this would fetch new alerts
+    }, 1000);
+}
+
+function clearAllAlerts() {
+    if (confirm('Are you sure you want to clear all active alerts?')) {
+        const alertsContainer = document.getElementById('activeAlerts');
+        alertsContainer.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
+                No active alerts
+            </div>
+        `;
+        showToast('All alerts cleared', 'success');
+    }
+}
+
+function dismissAlert(alertId) {
+    const alertElement = document.querySelector(`[data-alert-id="${alertId}"]`);
+    if (alertElement) {
+        alertElement.style.transition = 'opacity 0.3s, transform 0.3s';
+        alertElement.style.opacity = '0';
+        alertElement.style.transform = 'translateX(20px)';
+        setTimeout(() => {
+            alertElement.remove();
+            // Check if no alerts remain
+            const remainingAlerts = document.querySelectorAll('#activeAlerts .alert');
+            if (remainingAlerts.length === 0) {
+                document.getElementById('activeAlerts').innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
+                        No active alerts
+                    </div>
+                `;
+            }
+        }, 300);
+    }
+}
+
+function toggleRule(ruleId, enabled) {
+    showToast(`Alert rule ${enabled ? 'enabled' : 'disabled'}`, 'info');
+    // In real implementation, this would update the rule status
+}
+
+function editRule(ruleId) {
+    showToast('Edit rule functionality would be implemented here', 'info');
+    // In real implementation, this would open the edit modal with rule data
+}
+
+function deleteRule(ruleId) {
+    if (confirm('Are you sure you want to delete this alert rule?')) {
+        const row = event.target.closest('tr');
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            row.remove();
+            showToast('Alert rule deleted', 'success');
+        }, 300);
+    }
+}
+
+// Form submission
+document.getElementById('alertRuleForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating Rule...';
+    submitBtn.disabled = true;
+    
+    setTimeout(() => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('newAlertRule'));
+        modal.hide();
+        this.reset();
+        showToast('Alert rule created successfully', 'success');
+        
+        // Reset button
+        submitBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Create Rule';
+        submitBtn.disabled = false;
+    }, 1500);
+});
+
+// Real-time alert simulation (for demo)
+let alertCount = 0;
+setInterval(() => {
+    if (Math.random() < 0.1) { // 10% chance every 30 seconds
+        alertCount++;
+        const severities = ['info', 'warning', 'danger'];
+        const severity = severities[Math.floor(Math.random() * severities.length)];
+        const messages = [
+            'High query rate detected',
+            'DNS resolution timeout',
+            'Zone transfer failed',
+            'Cache memory usage high'
+        ];
+        const message = messages[Math.floor(Math.random() * messages.length)];
+        
+        simulateNewAlert({
+            id: `alert-${alertCount}`,
+            severity: severity,
+            title: 'System Alert',
+            message: message,
+            timestamp: new Date().toLocaleString(),
+            source: 'Atlas DNS Monitor'
+        });
+    }
+}, 30000);
+
+function simulateNewAlert(alert) {
+    const activeAlertsContainer = document.getElementById('activeAlerts');
+    
+    // Remove "no alerts" message if present
+    const noAlertsMsg = activeAlertsContainer.querySelector('.text-center.text-muted');
+    if (noAlertsMsg) {
+        noAlertsMsg.remove();
+    }
+    
+    const alertHtml = `
+        <div class="alert alert-${alert.severity} alert-dismissible fade show" role="alert" data-alert-id="${alert.id}">
+            <div class="d-flex align-items-start">
+                <div class="flex-shrink-0 me-3">
+                    <i class="bi bi-${alert.severity === 'danger' ? 'exclamation-triangle' : alert.severity === 'warning' ? 'exclamation-circle' : 'info-circle'} fs-4"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h6 class="alert-heading mb-1">${alert.title}</h6>
+                    <p class="mb-2">${alert.message}</p>
+                    <small class="text-muted">${alert.timestamp} | Source: ${alert.source}</small>
+                </div>
+                <button type="button" class="btn-close" onclick="dismissAlert('${alert.id}')" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    activeAlertsContainer.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Show toast notification
+    showToast(`New ${alert.severity} alert: ${alert.message}`, alert.severity === 'danger' ? 'error' : alert.severity);
+}
+</script>
+
+{{/inline}}
+
+{{> layout}}

@@ -1,0 +1,961 @@
+{{#*inline "title"}}DNS Templates{{/inline}}
+{{#*inline "current_page"}}templates{{/inline}}
+
+{{#*inline "content"}}
+<div class="page-header">
+    <h1 class="page-title">DNS Zone Templates</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Zone Templates</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Total Templates</h6>
+                        <h3 class="mb-0">{{#if total_templates}}{{total_templates}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-file-earmark-code fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Active Templates</h6>
+                        <h3 class="mb-0">{{#if active_templates}}{{active_templates}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-check-circle fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Zones Created</h6>
+                        <h3 class="mb-0">{{#if zones_created}}{{zones_created}}{{else}}0{{/if}}</h3>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-diagram-3 fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-1">Last Used</h6>
+                        <h6 class="mb-0">{{#if last_used}}{{last_used}}{{else}}Never{{/if}}</h6>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-clock-history fs-1"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Template Categories -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-primary active" onclick="filterTemplates('all')" data-category="all">
+                <i class="bi bi-grid me-1"></i>All Templates
+            </button>
+            <button class="btn btn-outline-primary" onclick="filterTemplates('web')" data-category="web">
+                <i class="bi bi-globe me-1"></i>Web Services
+            </button>
+            <button class="btn btn-outline-primary" onclick="filterTemplates('mail')" data-category="mail">
+                <i class="bi bi-envelope me-1"></i>Email Services
+            </button>
+            <button class="btn btn-outline-primary" onclick="filterTemplates('cloud')" data-category="cloud">
+                <i class="bi bi-cloud me-1"></i>Cloud Providers
+            </button>
+            <button class="btn btn-outline-primary" onclick="filterTemplates('cdn')" data-category="cdn">
+                <i class="bi bi-distribute-horizontal me-1"></i>CDN
+            </button>
+            <button class="btn btn-outline-primary" onclick="filterTemplates('custom')" data-category="custom">
+                <i class="bi bi-person-gear me-1"></i>Custom
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Template Grid -->
+<div class="row g-4 mb-4" id="templateGrid">
+    <!-- Web Services Templates -->
+    <div class="col-md-6 col-lg-4 template-item" data-category="web">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-globe text-primary me-2"></i>
+                            Standard Web
+                        </h5>
+                        <small class="text-muted">Basic web hosting setup</small>
+                    </div>
+                    <span class="badge bg-success">Popular</span>
+                </div>
+                <p class="card-text">Complete DNS setup for web hosting with www subdomain, mail records, and common services.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">A</span>
+                        <span class="badge bg-secondary">AAAA</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                        <span class="badge bg-secondary">MX</span>
+                        <span class="badge bg-secondary">TXT</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('web-standard')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('web-standard')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 col-lg-4 template-item" data-category="web">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-server text-info me-2"></i>
+                            Static Site
+                        </h5>
+                        <small class="text-muted">For static site hosting</small>
+                    </div>
+                </div>
+                <p class="card-text">Optimized for static sites with CDN integration and minimal records for fast loading.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">A</span>
+                        <span class="badge bg-secondary">AAAA</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('web-static')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('web-static')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Mail Services Templates -->
+    <div class="col-md-6 col-lg-4 template-item" data-category="mail">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-envelope text-warning me-2"></i>
+                            Google Workspace
+                        </h5>
+                        <small class="text-muted">Google email & office</small>
+                    </div>
+                    <span class="badge bg-info">Popular</span>
+                </div>
+                <p class="card-text">Complete setup for Google Workspace with MX records, SPF, DKIM, and DMARC.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">MX</span>
+                        <span class="badge bg-secondary">TXT</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('mail-google')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('mail-google')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 col-lg-4 template-item" data-category="mail">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-microsoft text-primary me-2"></i>
+                            Microsoft 365
+                        </h5>
+                        <small class="text-muted">Office 365 email setup</small>
+                    </div>
+                </div>
+                <p class="card-text">Microsoft 365 email configuration with Exchange Online and security records.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">MX</span>
+                        <span class="badge bg-secondary">TXT</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('mail-microsoft')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('mail-microsoft')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Cloud Provider Templates -->
+    <div class="col-md-6 col-lg-4 template-item" data-category="cloud">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-cloud text-warning me-2"></i>
+                            AWS Services
+                        </h5>
+                        <small class="text-muted">Amazon Web Services</small>
+                    </div>
+                </div>
+                <p class="card-text">DNS setup for AWS services including CloudFront, ELB, and S3 website hosting.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">A</span>
+                        <span class="badge bg-secondary">ALIAS</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('cloud-aws')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('cloud-aws')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- CDN Templates -->
+    <div class="col-md-6 col-lg-4 template-item" data-category="cdn">
+        <div class="card h-100 template-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="bi bi-distribute-horizontal text-success me-2"></i>
+                            Cloudflare
+                        </h5>
+                        <small class="text-muted">CDN & Security</small>
+                    </div>
+                    <span class="badge bg-success">Popular</span>
+                </div>
+                <p class="card-text">Cloudflare integration with proxy records and security features enabled.</p>
+                <div class="mb-3">
+                    <small class="text-muted">Includes:</small>
+                    <div class="d-flex gap-1 flex-wrap mt-1">
+                        <span class="badge bg-secondary">A</span>
+                        <span class="badge bg-secondary">AAAA</span>
+                        <span class="badge bg-secondary">CNAME</span>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="useTemplate('cdn-cloudflare')">
+                        <i class="bi bi-play me-1"></i>Use Template
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="previewTemplate('cdn-cloudflare')">
+                        <i class="bi bi-eye me-1"></i>Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom Templates Management -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="bi bi-person-gear me-2"></i>
+            Custom Templates
+        </h5>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newTemplateModal">
+            <i class="bi bi-plus-circle me-1"></i>
+            Create Template
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Records</th>
+                        <th>Category</th>
+                        <th>Created</th>
+                        <th>Usage Count</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#if custom_templates}}
+                        {{#each custom_templates}}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{name}}</div>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{description}}</small>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    {{#each record_types}}
+                                    <span class="badge bg-secondary">{{this}}</span>
+                                    {{/each}}
+                                </div>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{category}}</span>
+                            </td>
+                            <td>
+                                <small class="text-muted">{{created_date}}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-primary">{{usage_count}}</span>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-primary" onclick="useTemplate('{{id}}')" title="Use Template">
+                                        <i class="bi bi-play"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="previewTemplate('{{id}}')" title="Preview">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="editTemplate('{{id}}')" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info" onclick="duplicateTemplate('{{id}}')" title="Duplicate">
+                                        <i class="bi bi-files"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate('{{id}}')" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    {{else}}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                <i class="bi bi-file-earmark-code fs-1 d-block mb-2"></i>
+                                No custom templates created yet
+                            </td>
+                        </tr>
+                    {{/if}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- New Template Modal -->
+<div class="modal fade" id="newTemplateModal" tabindex="-1" aria-labelledby="newTemplateModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="newTemplateModalLabel">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Create DNS Template
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="templateForm">
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <h6>Template Information</h6>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label for="templateName" class="form-label">Template Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="templateName" name="name" required>
+                                </div>
+                                
+                                <div class="col-12">
+                                    <label for="templateDescription" class="form-label">Description</label>
+                                    <textarea class="form-control" id="templateDescription" name="description" rows="2"></textarea>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label for="templateCategory" class="form-label">Category</label>
+                                    <select class="form-select" id="templateCategory" name="category">
+                                        <option value="custom">Custom</option>
+                                        <option value="web">Web Services</option>
+                                        <option value="mail">Email Services</option>
+                                        <option value="cloud">Cloud Providers</option>
+                                        <option value="cdn">CDN</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label for="templateTags" class="form-label">Tags</label>
+                                    <input type="text" class="form-control" id="templateTags" name="tags" placeholder="hosting, ssl, email">
+                                    <small class="text-muted">Comma-separated tags</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <h6>DNS Records</h6>
+                            <div id="recordsList">
+                                <div class="record-entry mb-3">
+                                    <div class="row g-2">
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control" name="record_name[]" placeholder="Name" value="@">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <select class="form-select" name="record_type[]">
+                                                <option value="A">A</option>
+                                                <option value="AAAA">AAAA</option>
+                                                <option value="CNAME">CNAME</option>
+                                                <option value="MX">MX</option>
+                                                <option value="TXT">TXT</option>
+                                                <option value="NS">NS</option>
+                                                <option value="SRV">SRV</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input type="text" class="form-control" name="record_value[]" placeholder="Value">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" class="form-control" name="record_ttl[]" placeholder="TTL" value="3600">
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRecord(this)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="addRecord()">
+                                <i class="bi bi-plus me-1"></i>Add Record
+                            </button>
+                        </div>
+                        
+                        <div class="col-12">
+                            <h6>Template Variables</h6>
+                            <p class="text-muted small">Use variables in record values that will be replaced when the template is used. Example: {{domain}}, {{ip_address}}, {{mx_server}}</p>
+                            <div id="variablesList">
+                                <div class="variable-entry mb-2">
+                                    <div class="row g-2">
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control" name="variable_name[]" placeholder="Variable name" value="ip_address">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="text" class="form-control" name="variable_default[]" placeholder="Default value" value="192.168.1.1">
+                                        </div>
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="variable_description[]" placeholder="Description" value="Server IP address">
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeVariable(this)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addVariable()">
+                                <i class="bi bi-plus me-1"></i>Add Variable
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-outline-info me-2" onclick="previewNewTemplate()">
+                        <i class="bi bi-eye me-1"></i>
+                        Preview
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Create Template
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Template filtering
+function filterTemplates(category) {
+    const templateItems = document.querySelectorAll('.template-item');
+    const buttons = document.querySelectorAll('[data-category]');
+    
+    // Update active button
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-category="${category}"]`).classList.add('active');
+    
+    // Show/hide templates
+    templateItems.forEach(item => {
+        if (category === 'all' || item.dataset.category === category) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// Template actions
+function useTemplate(templateId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-play me-2"></i>
+                        Use Template
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="useTemplateForm">
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label for="zoneDomain" class="form-label">Domain Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="zoneDomain" name="domain" required placeholder="example.com">
+                            </div>
+                            
+                            <div class="col-12" id="templateVariables">
+                                <h6>Template Variables</h6>
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <label class="form-label">IP Address</label>
+                                        <input type="text" class="form-control" name="ip_address" value="192.168.1.1">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Mail Server</label>
+                                        <input type="text" class="form-control" name="mx_server" value="mail.example.com">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="previewBeforeCreate" checked>
+                                    <label class="form-check-label" for="previewBeforeCreate">
+                                        Preview records before creating zone
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-0">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-diagram-3 me-1"></i>
+                            Create Zone
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    // Handle form submission
+    modal.querySelector('#useTemplateForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const submitBtn = this.querySelector('button[type="submit"]');
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+        submitBtn.disabled = true;
+        
+        setTimeout(() => {
+            bsModal.hide();
+            showToast('DNS zone created successfully from template', 'success');
+        }, 2000);
+    });
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+function previewTemplate(templateId) {
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye me-2"></i>
+                        Template Preview
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>DNS Records</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Value</th>
+                                    <th>TTL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>@</code></td>
+                                    <td><span class="badge bg-primary">A</span></td>
+                                    <td><code>{{ip_address}}</code></td>
+                                    <td>3600</td>
+                                </tr>
+                                <tr>
+                                    <td><code>www</code></td>
+                                    <td><span class="badge bg-info">CNAME</span></td>
+                                    <td><code>{{domain}}</code></td>
+                                    <td>3600</td>
+                                </tr>
+                                <tr>
+                                    <td><code>@</code></td>
+                                    <td><span class="badge bg-warning">MX</span></td>
+                                    <td><code>10 {{mx_server}}</code></td>
+                                    <td>3600</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <h6 class="mt-4">Variables</h6>
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <small class="text-muted">ip_address</small>
+                            <div class="fw-semibold">Server IP address</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted">domain</small>
+                            <div class="fw-semibold">Domain name</div>
+                        </div>
+                        <div class="col-md-4">
+                            <small class="text-muted">mx_server</small>
+                            <div class="fw-semibold">Mail server hostname</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" onclick="useTemplate('${templateId}')">
+                        <i class="bi bi-play me-1"></i>Use This Template
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+function editTemplate(templateId) {
+    showToast('Edit template functionality would be implemented here', 'info');
+    // In real implementation, this would populate the new template modal with existing data
+}
+
+function duplicateTemplate(templateId) {
+    showToast('Template duplicated successfully', 'success');
+    // In real implementation, this would create a copy of the template
+}
+
+function deleteTemplate(templateId) {
+    if (confirm('Are you sure you want to delete this template? This action cannot be undone.')) {
+        const row = event.target.closest('tr');
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            row.remove();
+            showToast('Template deleted successfully', 'success');
+        }, 300);
+    }
+}
+
+// Template creation functions
+function addRecord() {
+    const recordsList = document.getElementById('recordsList');
+    const newRecord = document.createElement('div');
+    newRecord.className = 'record-entry mb-3';
+    newRecord.innerHTML = `
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="record_name[]" placeholder="Name">
+            </div>
+            <div class="col-md-2">
+                <select class="form-select" name="record_type[]">
+                    <option value="A">A</option>
+                    <option value="AAAA">AAAA</option>
+                    <option value="CNAME">CNAME</option>
+                    <option value="MX">MX</option>
+                    <option value="TXT">TXT</option>
+                    <option value="NS">NS</option>
+                    <option value="SRV">SRV</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control" name="record_value[]" placeholder="Value">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" name="record_ttl[]" placeholder="TTL" value="3600">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRecord(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    recordsList.appendChild(newRecord);
+}
+
+function removeRecord(button) {
+    button.closest('.record-entry').remove();
+}
+
+function addVariable() {
+    const variablesList = document.getElementById('variablesList');
+    const newVariable = document.createElement('div');
+    newVariable.className = 'variable-entry mb-2';
+    newVariable.innerHTML = `
+        <div class="row g-2">
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="variable_name[]" placeholder="Variable name">
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="variable_default[]" placeholder="Default value">
+            </div>
+            <div class="col-md-5">
+                <input type="text" class="form-control" name="variable_description[]" placeholder="Description">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeVariable(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    variablesList.appendChild(newVariable);
+}
+
+function removeVariable(button) {
+    button.closest('.variable-entry').remove();
+}
+
+function previewNewTemplate() {
+    const formData = new FormData(document.getElementById('templateForm'));
+    const records = [];
+    const recordNames = formData.getAll('record_name[]');
+    const recordTypes = formData.getAll('record_type[]');
+    const recordValues = formData.getAll('record_value[]');
+    const recordTtls = formData.getAll('record_ttl[]');
+    
+    for (let i = 0; i < recordNames.length; i++) {
+        if (recordNames[i] && recordTypes[i] && recordValues[i]) {
+            records.push({
+                name: recordNames[i],
+                type: recordTypes[i],
+                value: recordValues[i],
+                ttl: recordTtls[i] || 3600
+            });
+        }
+    }
+    
+    if (records.length === 0) {
+        showToast('Please add at least one DNS record', 'warning');
+        return;
+    }
+    
+    // Show preview modal
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-eye me-2"></i>
+                        Template Preview
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Template: ${formData.get('name') || 'Untitled'}</h6>
+                    <p class="text-muted">${formData.get('description') || 'No description'}</p>
+                    
+                    <h6 class="mt-3">DNS Records</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Value</th>
+                                    <th>TTL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${records.map(record => `
+                                    <tr>
+                                        <td><code>${record.name}</code></td>
+                                        <td><span class="badge bg-primary">${record.type}</span></td>
+                                        <td><code>${record.value}</code></td>
+                                        <td>${record.ttl}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+// Form submission
+document.getElementById('templateForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+    submitBtn.disabled = true;
+    
+    setTimeout(() => {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('newTemplateModal'));
+        modal.hide();
+        this.reset();
+        
+        // Reset dynamic fields
+        document.getElementById('recordsList').innerHTML = `
+            <div class="record-entry mb-3">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <input type="text" class="form-control" name="record_name[]" placeholder="Name" value="@">
+                    </div>
+                    <div class="col-md-2">
+                        <select class="form-select" name="record_type[]">
+                            <option value="A">A</option>
+                            <option value="AAAA">AAAA</option>
+                            <option value="CNAME">CNAME</option>
+                            <option value="MX">MX</option>
+                            <option value="TXT">TXT</option>
+                            <option value="NS">NS</option>
+                            <option value="SRV">SRV</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" name="record_value[]" placeholder="Value">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="number" class="form-control" name="record_ttl[]" placeholder="TTL" value="3600">
+                    </div>
+                    <div class="col-md-1">
+                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeRecord(this)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        showToast('DNS template created successfully', 'success');
+        
+        // Reset button
+        submitBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Create Template';
+        submitBtn.disabled = false;
+    }, 2000);
+});
+
+// Add hover effects to template cards
+document.addEventListener('DOMContentLoaded', function() {
+    const templateCards = document.querySelectorAll('.template-card');
+    templateCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-2px)';
+            this.style.boxShadow = '0 4px 20px rgba(0,0,0,0.1)';
+        });
+        
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0)';
+            this.style.boxShadow = '';
+        });
+    });
+});
+</script>
+
+{{/inline}}
+
+{{> layout}}
