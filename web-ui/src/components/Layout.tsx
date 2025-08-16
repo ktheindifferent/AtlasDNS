@@ -42,6 +42,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import MobileLayout from './MobileLayout';
+import { GestureShortcuts } from './gestures/GestureShortcuts';
 
 const drawerWidth = 240;
 
@@ -68,6 +70,9 @@ const Layout: React.FC = () => {
   const unreadCount = useSelector((state: RootState) => state.notifications.unreadCount);
   
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const useMobileLayout = isMobile || isTablet;
+  
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
   const [anchorElNotif, setAnchorElNotif] = useState<null | HTMLElement>(null);
@@ -132,6 +137,18 @@ const Layout: React.FC = () => {
       </List>
     </Box>
   );
+
+  // Use mobile layout for mobile and tablet devices
+  if (useMobileLayout) {
+    return (
+      <>
+        <MobileLayout>
+          <Outlet />
+        </MobileLayout>
+        <GestureShortcuts />
+      </>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex' }}>

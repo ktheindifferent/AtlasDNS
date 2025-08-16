@@ -35,6 +35,7 @@ const Logs = lazy(() => import('./pages/Logs'));
 const GeoDNS = lazy(() => import('./pages/GeoDNS'));
 const DNSSec = lazy(() => import('./pages/DNSSec'));
 const Monitoring = lazy(() => import('./pages/Monitoring'));
+const GestureDemo = lazy(() => import('./pages/GestureDemo'));
 
 // Create a client
 const queryClient = new QueryClient({
@@ -91,6 +92,7 @@ function App() {
                           <Route path="dashboard" element={<Dashboard />} />
                           <Route path="dashboard-demo" element={<DashboardDemo />} />
                           <Route path="advanced-dashboard" element={<AdvancedDashboard />} />
+                          <Route path="gesture-demo" element={<GestureDemo />} />
                           <Route path="zones" element={<Zones />} />
                           <Route path="zones/:zoneId/records" element={<Records />} />
                           <Route path="health-checks" element={<HealthChecks />} />
