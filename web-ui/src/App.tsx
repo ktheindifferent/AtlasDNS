@@ -12,12 +12,14 @@ import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { CollaborationProvider } from './contexts/CollaborationContext';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { UpdateNotification } from './components/UpdateNotification';
+import RealTimeNotifications from './components/collaboration/RealTimeNotifications';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -73,10 +75,12 @@ function App() {
               <Router>
                 <AuthProvider>
                   <WebSocketProvider>
-                    <OfflineIndicator />
-                    <PWAInstallPrompt />
-                    <UpdateNotification />
-                    <Suspense fallback={<LoadingScreen />}>
+                    <CollaborationProvider>
+                      <OfflineIndicator />
+                      <PWAInstallPrompt />
+                      <UpdateNotification />
+                      <RealTimeNotifications />
+                      <Suspense fallback={<LoadingScreen />}>
                       <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route
@@ -105,6 +109,7 @@ function App() {
                         </Route>
                       </Routes>
                     </Suspense>
+                    </CollaborationProvider>
                   </WebSocketProvider>
                 </AuthProvider>
               </Router>
