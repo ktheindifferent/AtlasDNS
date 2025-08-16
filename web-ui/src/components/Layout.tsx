@@ -34,7 +34,6 @@ import {
   Map,
   Security,
   Monitor,
-  Notifications,
   AccountCircle,
   Logout,
   ChevronLeft,
@@ -42,6 +41,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import NotificationBell from './NotificationCenter/NotificationBell';
 
 const drawerWidth = 240;
 
@@ -158,13 +158,7 @@ const Layout: React.FC = () => {
           </Typography>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Tooltip title="Notifications">
-              <IconButton color="inherit" onClick={handleNotificationOpen}>
-                <Badge badgeContent={unreadCount} color="error">
-                  <Notifications />
-                </Badge>
-              </IconButton>
-            </Tooltip>
+            <NotificationBell color="inherit" />
 
             <Tooltip title="Account">
               <IconButton onClick={handleUserMenuOpen} sx={{ p: 0 }}>

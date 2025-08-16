@@ -11,7 +11,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
-import { WebSocketProvider } from './contexts/WebSocketContext';
+import { EnhancedWebSocketProvider } from './contexts/EnhancedWebSocketContext';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
@@ -72,7 +72,7 @@ function App() {
               <CssBaseline />
               <Router>
                 <AuthProvider>
-                  <WebSocketProvider>
+                  <EnhancedWebSocketProvider>
                     <OfflineIndicator />
                     <PWAInstallPrompt />
                     <UpdateNotification />
@@ -105,7 +105,7 @@ function App() {
                         </Route>
                       </Routes>
                     </Suspense>
-                  </WebSocketProvider>
+                  </EnhancedWebSocketProvider>
                 </AuthProvider>
               </Router>
               <ReactQueryDevtools initialIsOpen={false} />
