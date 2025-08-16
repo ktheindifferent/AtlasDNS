@@ -19,6 +19,7 @@ import LoadingScreen from './components/LoadingScreen';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { UpdateNotification } from './components/UpdateNotification';
+import HelpSystem from './components/HelpSystem';
 import RealTimeNotifications from './components/collaboration/RealTimeNotifications';
 
 // Lazy load pages for code splitting
@@ -79,12 +80,13 @@ function App() {
                 <AuthProvider>
                   <WebSocketProvider>
                     <CollaborationProvider>
-                      <OfflineIndicator />
-                      <PWAInstallPrompt />
-                      <UpdateNotification />
-                      <RealTimeNotifications />
-                      <Suspense fallback={<LoadingScreen />}>
-                      <Routes>
+                      <HelpSystem>
+                        <OfflineIndicator />
+                        <PWAInstallPrompt />
+                        <UpdateNotification />
+                        <RealTimeNotifications />
+                        <Suspense fallback={<LoadingScreen />}>
+                          <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route
                           path="/"
@@ -114,8 +116,9 @@ function App() {
                           <Route path="users" element={<Users />} />
                           <Route path="settings" element={<Settings />} />
                         </Route>
-                      </Routes>
-                    </Suspense>
+                          </Routes>
+                        </Suspense>
+                      </HelpSystem>
                     </CollaborationProvider>
                   </WebSocketProvider>
                 </AuthProvider>
