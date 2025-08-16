@@ -1,203 +1,157 @@
-# Interactive Dashboard Widget System
+# Atlas DNS - Advanced Data Visualization Dashboard
 
-A customizable, drag-and-drop dashboard system built with React, TypeScript, and Material-UI, featuring real-time data streaming and custom widget creation.
+## Overview
 
-## Features
+This is the web UI for Atlas DNS Server, featuring sophisticated data visualization components for comprehensive DNS analytics.
 
-### Core Dashboard Functionality
-- **Drag & Drop Layout**: Rearrange widgets by dragging them to new positions
-- **Resizable Widgets**: Adjust widget sizes by dragging corners
-- **Responsive Grid**: Automatic layout adjustments for different screen sizes
-- **Edit/View Modes**: Toggle between editing and viewing modes
-- **Layout Persistence**: Saves dashboard configurations to localStorage
+## Advanced Visualization Components
 
-### Widget Management
-- **Add/Remove Widgets**: Dynamic widget creation and deletion
-- **Widget Types**:
-  - Metric Cards: Display KPIs with trends
-  - Charts: Line, Bar, Pie, Doughnut visualizations
-  - Data Tables: Sortable, paginated data grids
-  - Gauges: Visual performance indicators
-  - Text/Notes: Editable text widgets
-  - Alerts: System notifications and warnings
-  - Real-time Data: WebSocket-connected live data streams
-  - Custom Widgets: Build your own with HTML/CSS/JS
+### 1. Geographic Heat Map
+- **Location**: `src/components/visualizations/GeographicHeatMap.tsx`
+- **Features**:
+  - Interactive map showing DNS query origins using Leaflet
+  - Heat intensity visualization based on query volume or response time
+  - Zoom and pan capabilities
+  - Click handlers for detailed location information
+  - Adjustable intensity slider
 
-### Data & Configuration
-- **Export/Import**: Save and load dashboard configurations as JSON
-- **WebSocket Support**: Real-time data streaming for live updates
-- **API Integration**: Connect widgets to external data sources
-- **Custom Widget Builder**: Create widgets with custom HTML, CSS, and JavaScript
+### 2. Real-time Query Rate Graph
+- **Location**: `src/components/visualizations/RealTimeQueryGraph.tsx`
+- **Features**:
+  - Live updating query metrics with D3.js
+  - Zoom and pan functionality
+  - Multiple time range selections (1m, 5m, 15m, 1h)
+  - Anomaly detection and highlighting
+  - Pause/resume capabilities
+  - Shows queries, cached, blocked, and response time metrics
 
-## Getting Started
+### 3. DNS Response Time Distribution Histogram
+- **Location**: `src/components/visualizations/ResponseTimeHistogram.tsx`
+- **Features**:
+  - Response time distribution visualization
+  - Adjustable bin sizes (5ms, 10ms, 20ms, 50ms)
+  - Percentile markers (P25, P50, P75, P90, P95, P99)
+  - Cumulative distribution overlay
+  - Statistical metrics display (mean, median, P95, P99)
 
-### Prerequisites
-- Node.js 16+ 
-- npm or yarn
+### 4. Top Queried Domains Treemap
+- **Location**: `src/components/visualizations/DomainsTreemap.tsx`
+- **Features**:
+  - Hierarchical visualization of domain queries
+  - Color coding by category, query volume, response time, or cache hit rate
+  - Interactive drill-down capabilities
+  - Hover tooltips with detailed metrics
+  - Responsive sizing based on query volume
 
-### Installation
+### 5. Network Topology Diagram
+- **Location**: `src/components/visualizations/NetworkTopology.tsx`
+- **Features**:
+  - Force-directed graph visualization of DNS infrastructure
+  - Multiple layout modes (Force, Hierarchy, Radial)
+  - Node types: Client, Resolver, Authoritative, Root, Cache
+  - Health status indicators
+  - Interactive drag and zoom
+  - Link visualization with latency and traffic volume
 
-1. Install dependencies:
+### 6. Query Type Breakdown
+- **Location**: `src/components/visualizations/QueryTypeBreakdown.tsx`
+- **Features**:
+  - Interactive pie/donut/sunburst charts
+  - Query type distribution (A, AAAA, CNAME, MX, TXT, etc.)
+  - Trend indicators for each query type
+  - Animated transitions
+  - Top query types summary
+
+### 7. Time Series Analysis with Anomaly Detection
+- **Location**: `src/components/visualizations/TimeSeriesAnalysis.tsx`
+- **Features**:
+  - Advanced time series visualization
+  - Statistical and ML-based anomaly detection
+  - Confidence bands visualization
+  - Brush selection for time range zooming
+  - Anomaly period identification
+  - Predictive analytics overlay
+
+## Installation
+
 ```bash
-npm install
+cd web-ui
+npm install --legacy-peer-deps
 ```
 
-2. Start the development server:
+## Development
+
 ```bash
 npm start
 ```
 
-3. Open http://localhost:3000 in your browser
+The development server will start at http://localhost:3000
 
-## Usage
+## Build
 
-### Basic Operations
-
-1. **Adding Widgets**
-   - Click the floating action button (FAB) in the bottom-right corner
-   - Select "Add Widget" from the speed dial menu
-   - Choose widget type and enter a title
-   - Widget appears at the top-left of the dashboard
-
-2. **Arranging Widgets**
-   - Enter edit mode (toggle with lock icon in bottom-left)
-   - Drag widgets by their headers to new positions
-   - Resize by dragging the bottom-right corner
-
-3. **Configuring Widgets**
-   - Click the menu icon (⋮) on any widget
-   - Select settings to configure widget properties
-   - Some widgets (like charts) have type selectors
-
-4. **Saving Layouts**
-   - Layouts auto-save to localStorage
-   - Export configuration via speed dial menu
-   - Import saved configurations to restore layouts
-
-### Custom Widget Development
-
-The Custom Widget builder allows you to create widgets with:
-
-1. **HTML Template**
-   - Use `{{variable}}` syntax for data binding
-   - Full HTML5 support
-
-2. **CSS Styling**
-   - Scoped styles for your widget
-   - Access to Material-UI theme variables
-
-3. **JavaScript Logic**
-   - Access widget data via `data` object
-   - Update widget with `widget.update()`
-   - Handle events and interactions
-
-Example custom widget:
-```html
-<div class="custom-widget">
-  <h2>{{title}}</h2>
-  <p class="value">{{value}}</p>
-</div>
+```bash
+npm run build
 ```
 
-```css
-.custom-widget {
-  text-align: center;
-  padding: 16px;
-}
-.value {
-  font-size: 2em;
-  color: #1976d2;
-}
-```
+## Dependencies
 
-```javascript
-// Update widget every 5 seconds
-setInterval(() => {
-  widget.update({
-    data: { value: Math.random() * 100 }
-  });
-}, 5000);
-```
+### Core Libraries
+- **React 18.2** - UI Framework
+- **TypeScript 5.1** - Type safety
+- **Material-UI 5.14** - Component library
+- **React Router 6.14** - Routing
 
-### WebSocket Integration
+### Visualization Libraries
+- **D3.js 7.9** - Advanced data visualization
+- **Leaflet 1.9.4** - Geographic mapping
+- **React-Leaflet 4.2.1** - React wrapper for Leaflet
+- **Recharts 2.7.2** - React charts library
 
-Real-time widgets connect to WebSocket servers for live data:
+### State Management
+- **Redux Toolkit 1.9.5** - State management
+- **React Query 4.32** - Server state management
 
-```javascript
-// Configure in widget settings
-{
-  websocketUrl: 'ws://localhost:3001',
-  channel: 'metrics',
-  maxDataPoints: 20
-}
-```
+### Real-time Communication
+- **Socket.io-client 4.7.1** - WebSocket connections
 
-## Project Structure
+## Features
 
-```
-src/
-├── components/
-│   └── Dashboard/
-│       ├── Dashboard.tsx       # Main dashboard component
-│       ├── Widget.tsx          # Base widget wrapper
-│       ├── types.ts           # TypeScript definitions
-│       ├── utils.ts           # Helper functions
-│       ├── Dashboard.css      # Dashboard styles
-│       └── widgets/           # Individual widget components
-│           ├── MetricWidget.tsx
-│           ├── ChartWidget.tsx
-│           ├── TableWidget.tsx
-│           ├── GaugeWidget.tsx
-│           ├── TextWidget.tsx
-│           ├── AlertWidget.tsx
-│           ├── RealtimeWidget.tsx
-│           └── CustomWidget.tsx
-└── pages/
-    └── DashboardDemo.tsx      # Demo page with examples
-```
+### Dashboard Views
+1. **Overview Tab** - Real-time metrics and key visualizations
+2. **Geographic Analysis** - Location-based query analysis
+3. **Performance Metrics** - Response time and performance analysis
+4. **Network Topology** - Infrastructure visualization
+5. **Time Series Analysis** - Historical trends and anomaly detection
 
-## API Reference
+### Key Capabilities
+- **Real-time Updates** - Live data streaming via WebSocket
+- **Interactive Visualizations** - All charts support interaction
+- **Responsive Design** - Adapts to different screen sizes
+- **Performance Optimized** - Efficient rendering for large datasets
+- **Anomaly Detection** - Automatic identification of unusual patterns
 
-### Dashboard Component Props
+## API Integration
 
-```typescript
-interface DashboardProps {
-  dashboardId?: string;           // Unique dashboard identifier
-  initialConfig?: DashboardConfig; // Initial configuration
-  onSave?: (config: DashboardConfig) => void; // Save callback
-  readOnly?: boolean;             // Disable editing
-}
-```
+The dashboard integrates with the Atlas DNS Server API endpoints:
+- `/api/v2/analytics/geography` - Geographic query data
+- `/api/v2/analytics/queries` - Query metrics
+- `/api/v2/analytics/performance` - Performance metrics
+- `/api/v2/analytics/top-domains` - Domain statistics
+- `/api/v2/analytics/response-codes` - Response code distribution
 
-### Widget Configuration
+## Configuration
 
-```typescript
-interface WidgetConfig {
-  id: string;                    // Unique widget ID
-  type: string;                  // Widget type
-  title: string;                 // Display title
-  data?: any;                    // Widget data
-  refreshInterval?: number;      // Auto-refresh (seconds)
-  customSettings?: Record<string, any>; // Custom settings
-}
-```
+Environment variables:
+- `REACT_APP_API_URL` - API base URL (default: http://localhost:5380/api/v2)
+- `REACT_APP_WS_URL` - WebSocket URL (default: ws://localhost:5380)
 
-### Dashboard Layout
+## Performance Considerations
 
-```typescript
-interface DashboardLayout {
-  i: string;    // Widget ID
-  x: number;    // X position (grid units)
-  y: number;    // Y position (grid units)
-  w: number;    // Width (grid units)
-  h: number;    // Height (grid units)
-  minW?: number; // Minimum width
-  maxW?: number; // Maximum width
-  minH?: number; // Minimum height
-  maxH?: number; // Maximum height
-  static?: boolean; // Lock position
-}
-```
+- **Virtualization** - Large lists use virtualization for performance
+- **Debouncing** - User interactions are debounced to prevent excessive updates
+- **Memoization** - Complex calculations are memoized
+- **Lazy Loading** - Components are lazy loaded for faster initial load
+- **Data Sampling** - Large datasets are sampled for visualization
 
 ## Browser Support
 
@@ -206,30 +160,6 @@ interface DashboardLayout {
 - Safari 14+
 - Edge 90+
 
-## Performance Considerations
-
-- Widgets render independently to prevent cascading updates
-- WebSocket connections are managed per-widget with auto-reconnect
-- LocalStorage used for persistence (consider IndexedDB for larger datasets)
-- Virtual scrolling in data tables for large datasets
-
-## Future Enhancements
-
-- [ ] Backend persistence API
-- [ ] User authentication & multi-user support
-- [ ] Widget marketplace/sharing
-- [ ] Advanced data transformations
-- [ ] Dashboard templates
-- [ ] Mobile-optimized layouts
-- [ ] Collaborative editing
-- [ ] Widget permissions & access control
-- [ ] Export to PDF/Image
-- [ ] Scheduled reports
-
 ## License
 
-MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+See LICENSE file in the root directory.
