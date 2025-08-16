@@ -18,6 +18,7 @@ import LoadingScreen from './components/LoadingScreen';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { UpdateNotification } from './components/UpdateNotification';
+import HelpSystem from './components/HelpSystem';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -73,11 +74,12 @@ function App() {
               <Router>
                 <AuthProvider>
                   <WebSocketProvider>
-                    <OfflineIndicator />
-                    <PWAInstallPrompt />
-                    <UpdateNotification />
-                    <Suspense fallback={<LoadingScreen />}>
-                      <Routes>
+                    <HelpSystem>
+                      <OfflineIndicator />
+                      <PWAInstallPrompt />
+                      <UpdateNotification />
+                      <Suspense fallback={<LoadingScreen />}>
+                        <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route
                           path="/"
@@ -105,6 +107,7 @@ function App() {
                         </Route>
                       </Routes>
                     </Suspense>
+                    </HelpSystem>
                   </WebSocketProvider>
                 </AuthProvider>
               </Router>

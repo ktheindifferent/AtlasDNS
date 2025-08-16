@@ -3,6 +3,7 @@ import authReducer from './slices/authSlice';
 import uiReducer from './slices/uiSlice';
 import zonesReducer from './slices/zonesSlice';
 import notificationsReducer from './slices/notificationsSlice';
+import helpReducer from './slices/helpSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     ui: uiReducer,
     zones: zonesReducer,
     notifications: notificationsReducer,
+    help: helpReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
