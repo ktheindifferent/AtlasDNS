@@ -11,6 +11,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
+import { EnhancedWebSocketProvider } from './contexts/EnhancedWebSocketContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { CollaborationProvider } from './contexts/CollaborationContext';
 import PrivateRoute from './components/PrivateRoute';
@@ -79,15 +80,16 @@ function App() {
               <CssBaseline />
               <Router>
                 <AuthProvider>
-                  <WebSocketProvider>
-                    <CollaborationProvider>
-                      <HelpSystem>
-                        <OfflineIndicator />
-                        <PWAInstallPrompt />
-                        <UpdateNotification />
-                        <RealTimeNotifications />
-                        <Suspense fallback={<LoadingScreen />}>
-                          <Routes>
+                  <EnhancedWebSocketProvider>
+                    <WebSocketProvider>
+                      <CollaborationProvider>
+                        <HelpSystem>
+                          <OfflineIndicator />
+                          <PWAInstallPrompt />
+                          <UpdateNotification />
+                          <RealTimeNotifications />
+                          <Suspense fallback={<LoadingScreen />}>
+                            <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route
                           path="/"
@@ -118,11 +120,12 @@ function App() {
                           <Route path="users" element={<Users />} />
                           <Route path="settings" element={<Settings />} />
                         </Route>
-                          </Routes>
-                        </Suspense>
-                      </HelpSystem>
-                    </CollaborationProvider>
-                  </WebSocketProvider>
+                            </Routes>
+                          </Suspense>
+                        </HelpSystem>
+                      </CollaborationProvider>
+                    </WebSocketProvider>
+                  </EnhancedWebSocketProvider>
                 </AuthProvider>
               </Router>
               <ReactQueryDevtools initialIsOpen={false} />

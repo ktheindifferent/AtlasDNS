@@ -45,6 +45,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import NotificationBell from './NotificationCenter/NotificationBell';
 import MobileLayout from './MobileLayout';
 import { GestureShortcuts } from './gestures/GestureShortcuts';
 import UserPresence from './collaboration/UserPresence';
@@ -184,6 +185,7 @@ const Layout: React.FC = () => {
           <UserPresence maxDisplay={3} />
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
+            <NotificationBell color="inherit" />
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={handleNotificationOpen}>
                 <Badge badgeContent={unreadCount} color="error">
