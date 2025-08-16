@@ -35,6 +35,7 @@ const Logs = lazy(() => import('./pages/Logs'));
 const GeoDNS = lazy(() => import('./pages/GeoDNS'));
 const DNSSec = lazy(() => import('./pages/DNSSec'));
 const Monitoring = lazy(() => import('./pages/Monitoring'));
+const DNSFlowAnalyzer = lazy(() => import('./components/DNSFlowAnalyzer'));
 
 // Create a client
 const queryClient = new QueryClient({
@@ -99,6 +100,7 @@ function App() {
                           <Route path="geodns" element={<GeoDNS />} />
                           <Route path="dnssec" element={<DNSSec />} />
                           <Route path="monitoring" element={<Monitoring />} />
+                          <Route path="dns-flow-analyzer" element={<DNSFlowAnalyzer />} />
                           <Route path="logs" element={<Logs />} />
                           <Route path="users" element={<Users />} />
                           <Route path="settings" element={<Settings />} />
