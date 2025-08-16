@@ -38,6 +38,7 @@ import {
   AccountCircle,
   Logout,
   ChevronLeft,
+  Science,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
@@ -53,6 +54,7 @@ const navigationItems = [
   { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
   { text: 'GeoDNS', icon: <Map />, path: '/geodns' },
   { text: 'DNSSEC', icon: <Security />, path: '/dnssec' },
+  { text: 'DNS Playground', icon: <Science />, path: '/dns-playground' },
   { text: 'Monitoring', icon: <Monitor />, path: '/monitoring' },
   { text: 'Logs', icon: <Description />, path: '/logs' },
   { text: 'Users', icon: <People />, path: '/users' },
