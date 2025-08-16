@@ -21,6 +21,7 @@ import { UpdateNotification } from './components/UpdateNotification';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const DashboardDemo = lazy(() => import('./pages/DashboardDemo'));
 const Zones = lazy(() => import('./pages/Zones'));
 const Records = lazy(() => import('./pages/Records'));
 const HealthChecks = lazy(() => import('./pages/HealthChecks'));
@@ -87,6 +88,7 @@ function App() {
                         >
                           <Route index element={<Navigate to="/dashboard" replace />} />
                           <Route path="dashboard" element={<Dashboard />} />
+                          <Route path="dashboard-demo" element={<DashboardDemo />} />
                           <Route path="zones" element={<Zones />} />
                           <Route path="zones/:zoneId/records" element={<Records />} />
                           <Route path="health-checks" element={<HealthChecks />} />
