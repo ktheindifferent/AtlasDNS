@@ -39,6 +39,7 @@ import {
   AccountCircle,
   Logout,
   ChevronLeft,
+  Science,
   Timeline,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -59,6 +60,7 @@ const navigationItems = [
   { text: 'DNS Flow Analyzer', icon: <Timeline />, path: '/dns-flow-analyzer' },
   { text: 'GeoDNS', icon: <Map />, path: '/geodns' },
   { text: 'DNSSEC', icon: <Security />, path: '/dnssec' },
+  { text: 'DNS Playground', icon: <Science />, path: '/dns-playground' },
   { text: 'Monitoring', icon: <Monitor />, path: '/monitoring' },
   { text: 'Performance', icon: <Speed />, path: '/performance' },
   { text: 'Logs', icon: <Description />, path: '/logs' },
