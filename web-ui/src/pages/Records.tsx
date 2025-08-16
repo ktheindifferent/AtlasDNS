@@ -36,6 +36,7 @@ import { recordApi, zoneApi } from '../services/api';
 import RecordFormDialog from '../components/records/RecordFormDialog';
 import BulkImportDialog from '../components/records/BulkImportDialog';
 import { useSnackbar } from 'notistack';
+import { InlineHelpBubble, SmartFAQ, NaturalLanguageSearch } from '../components/HelpSystem';
 
 interface DNSRecord {
   id: string;
@@ -312,33 +313,76 @@ const Records: React.FC = () => {
           >
             Export
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setCreateDialogOpen(true)}
+          <InlineHelpBubble
+            content={{
+              title: 'Add DNS Record',
+              description: 'Create a new DNS record for this zone. Choose the appropriate record type based on your needs.',
+              tips: [
+                'A records map domains to IPv4 addresses',
+                'AAAA records map domains to IPv6 addresses',
+                'CNAME records create aliases to other domains',
+                'MX records define mail servers',
+                'TXT records store text data for verification'
+              ],
+              checklist: [
+                { label: 'Choose the correct record type' },
+                { label: 'Enter valid hostname (@ for root)' },
+                { label: 'Set appropriate TTL value' },
+                { label: 'Test after creating' }
+              ],
+              videoUrl: '#',
+              docsUrl: '#',
+            }}
+            position="left"
+            interactive={true}
+            pulseAnimation={true}
           >
-            Add Record
-          </Button>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              Add Record
+            </Button>
+          </InlineHelpBubble>
         </Box>
       </Box>
 
       <Paper sx={{ p: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <TextField
-            placeholder="Search records..."
-            variant="outlined"
-            size="small"
-            fullWidth
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
+          <InlineHelpBubble
+            content={{
+              title: 'Search DNS Records',
+              description: 'Search by record name, value, or type. Use wildcards (*) for partial matches.',
+              tips: [
+                'Search by subdomain: "api" or "www"',
+                'Search by IP address: "192.168"',
+                'Use * for wildcard: "*.example.com"'
+              ],
+              examples: [
+                { label: 'Find all A records', value: 'type:A', copyable: true },
+                { label: 'Find MX records', value: 'type:MX', copyable: true },
+              ],
             }}
-          />
+            position="bottom"
+            interactive={true}
+          >
+            <TextField
+              placeholder="Search records..."
+              variant="outlined"
+              size="small"
+              fullWidth
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </InlineHelpBubble>
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <InputLabel>Type</InputLabel>
             <Select
