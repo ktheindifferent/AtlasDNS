@@ -16,6 +16,10 @@ code {
   box-sizing: border-box;
 }
 
+#root {
+  min-height: 100vh;
+}
+
 .layout {
   width: 100%;
   min-height: 100vh;
