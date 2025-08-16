@@ -1,0 +1,86 @@
+{
+  "appName": "Gestor DNS Atlas",
+  "navigation": {
+    "dashboard": "Panel de Control",
+    "zones": "Zonas DNS",
+    "records": "Registros DNS",
+    "healthChecks": "Verificaciones de Salud",
+    "trafficPolicies": "Políticas de Tráfico",
+    "analytics": "Análisis",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "Monitoreo",
+    "logs": "Registros",
+    "users": "Usuarios",
+    "settings": "Configuración"
+  },
+  "actions": {
+    "add": "Agregar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "refresh": "Actualizar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "export": "Exportar",
+    "import": "Importar",
+    "view": "Ver",
+    "close": "Cerrar",
+    "submit": "Enviar",
+    "reset": "Restablecer",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "more": "Más"
+  },
+  "status": {
+    "active": "Activo",
+    "inactive": "Inactivo",
+    "pending": "Pendiente",
+    "success": "Éxito",
+    "error": "Error",
+    "warning": "Advertencia",
+    "loading": "Cargando...",
+    "online": "En línea",
+    "offline": "Fuera de línea",
+    "healthy": "Saludable",
+    "unhealthy": "No saludable"
+  },
+  "time": {
+    "seconds": "{{count}} segundo",
+    "seconds_plural": "{{count}} segundos",
+    "minutes": "{{count}} minuto",
+    "minutes_plural": "{{count}} minutos",
+    "hours": "{{count}} hora",
+    "hours_plural": "{{count}} horas",
+    "days": "{{count}} día",
+    "days_plural": "{{count}} días",
+    "ago": "hace {{time}}",
+    "in": "en {{time}}"
+  },
+  "table": {
+    "noData": "No hay datos disponibles",
+    "rowsPerPage": "Filas por página:",
+    "page": "Página {{current}} de {{total}}",
+    "selected": "{{count}} seleccionado(s)",
+    "sortAsc": "Ordenar ascendente",
+    "sortDesc": "Ordenar descendente"
+  },
+  "language": {
+    "select": "Seleccionar Idioma",
+    "current": "Idioma Actual"
+  },
+  "theme": {
+    "light": "Claro",
+    "dark": "Oscuro",
+    "system": "Sistema"
+  },
+  "user": {
+    "profile": "Perfil",
+    "logout": "Cerrar Sesión",
+    "login": "Iniciar Sesión",
+    "settings": "Configuración de Usuario"
+  }
+}

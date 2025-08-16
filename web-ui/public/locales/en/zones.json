@@ -1,0 +1,56 @@
+{
+  "title": "DNS Zones",
+  "subtitle": "Manage your DNS zones",
+  "addZone": "Add Zone",
+  "importZone": "Import Zone",
+  "exportZone": "Export Zone",
+  "searchPlaceholder": "Search zones...",
+  "table": {
+    "name": "Zone Name",
+    "records": "Records",
+    "status": "Status",
+    "dnssec": "DNSSEC",
+    "lastModified": "Last Modified",
+    "actions": "Actions"
+  },
+  "form": {
+    "title": "Zone Configuration",
+    "name": "Zone Name",
+    "nameHelper": "Enter the domain name (e.g., example.com)",
+    "type": "Zone Type",
+    "primary": "Primary",
+    "secondary": "Secondary",
+    "ttl": "Default TTL",
+    "ttlHelper": "Time to live in seconds",
+    "soaEmail": "SOA Email",
+    "soaEmailHelper": "Administrator email address",
+    "refresh": "Refresh Interval",
+    "retry": "Retry Interval",
+    "expire": "Expire Time",
+    "minimum": "Minimum TTL",
+    "dnssecEnabled": "Enable DNSSEC",
+    "autoSign": "Auto-sign Zone"
+  },
+  "actions": {
+    "edit": "Edit Zone",
+    "delete": "Delete Zone",
+    "clone": "Clone Zone",
+    "viewRecords": "View Records",
+    "checkHealth": "Check Health"
+  },
+  "messages": {
+    "createSuccess": "Zone created successfully",
+    "updateSuccess": "Zone updated successfully",
+    "deleteSuccess": "Zone deleted successfully",
+    "deleteConfirm": "Are you sure you want to delete zone {{name}}?",
+    "deleteWarning": "This action cannot be undone. All records will be deleted."
+  },
+  "filters": {
+    "all": "All Zones",
+    "active": "Active",
+    "inactive": "Inactive",
+    "dnssecEnabled": "DNSSEC Enabled",
+    "primary": "Primary Zones",
+    "secondary": "Secondary Zones"
+  }
+}

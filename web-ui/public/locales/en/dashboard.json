@@ -1,0 +1,42 @@
+{
+  "title": "Dashboard",
+  "subtitle": "DNS Management Overview",
+  "stats": {
+    "totalQueries": "Total Queries",
+    "avgResponseTime": "Avg Response Time",
+    "activeZones": "Active Zones",
+    "cacheHitRate": "Cache Hit Rate",
+    "threats": "Threats Blocked",
+    "uptime": "System Uptime"
+  },
+  "charts": {
+    "queryVolume": "Query Volume",
+    "responseTime": "Response Time Trend",
+    "queryTypes": "Query Types Distribution",
+    "topZones": "Top Zones by Queries",
+    "geoDistribution": "Geographic Distribution"
+  },
+  "alerts": {
+    "title": "System Alerts",
+    "noAlerts": "No active alerts",
+    "viewAll": "View All Alerts"
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "noActivity": "No recent activity",
+    "viewAll": "View All Activity"
+  },
+  "quickActions": {
+    "title": "Quick Actions",
+    "addZone": "Add New Zone",
+    "addRecord": "Add DNS Record",
+    "runHealthCheck": "Run Health Check",
+    "viewAnalytics": "View Analytics"
+  },
+  "performance": {
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "poor": "Poor"
+  }
+}

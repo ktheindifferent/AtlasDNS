@@ -1,0 +1,86 @@
+{
+  "appName": "Gestionnaire DNS Atlas",
+  "navigation": {
+    "dashboard": "Tableau de Bord",
+    "zones": "Zones DNS",
+    "records": "Enregistrements DNS",
+    "healthChecks": "Vérifications de Santé",
+    "trafficPolicies": "Politiques de Trafic",
+    "analytics": "Analyses",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "Surveillance",
+    "logs": "Journaux",
+    "users": "Utilisateurs",
+    "settings": "Paramètres"
+  },
+  "actions": {
+    "add": "Ajouter",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "refresh": "Actualiser",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "export": "Exporter",
+    "import": "Importer",
+    "view": "Voir",
+    "close": "Fermer",
+    "submit": "Soumettre",
+    "reset": "Réinitialiser",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "more": "Plus"
+  },
+  "status": {
+    "active": "Actif",
+    "inactive": "Inactif",
+    "pending": "En attente",
+    "success": "Succès",
+    "error": "Erreur",
+    "warning": "Avertissement",
+    "loading": "Chargement...",
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "healthy": "Sain",
+    "unhealthy": "Malsain"
+  },
+  "time": {
+    "seconds": "{{count}} seconde",
+    "seconds_plural": "{{count}} secondes",
+    "minutes": "{{count}} minute",
+    "minutes_plural": "{{count}} minutes",
+    "hours": "{{count}} heure",
+    "hours_plural": "{{count}} heures",
+    "days": "{{count}} jour",
+    "days_plural": "{{count}} jours",
+    "ago": "il y a {{time}}",
+    "in": "dans {{time}}"
+  },
+  "table": {
+    "noData": "Aucune donnée disponible",
+    "rowsPerPage": "Lignes par page:",
+    "page": "Page {{current}} sur {{total}}",
+    "selected": "{{count}} sélectionné(s)",
+    "sortAsc": "Tri croissant",
+    "sortDesc": "Tri décroissant"
+  },
+  "language": {
+    "select": "Sélectionner la Langue",
+    "current": "Langue Actuelle"
+  },
+  "theme": {
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système"
+  },
+  "user": {
+    "profile": "Profil",
+    "logout": "Déconnexion",
+    "login": "Connexion",
+    "settings": "Paramètres Utilisateur"
+  }
+}

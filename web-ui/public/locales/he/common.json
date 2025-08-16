@@ -1,0 +1,86 @@
+{
+  "appName": "מנהל DNS Atlas",
+  "navigation": {
+    "dashboard": "לוח בקרה",
+    "zones": "אזורי DNS",
+    "records": "רשומות DNS",
+    "healthChecks": "בדיקות תקינות",
+    "trafficPolicies": "מדיניות תעבורה",
+    "analytics": "אנליטיקה",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "ניטור",
+    "logs": "יומנים",
+    "users": "משתמשים",
+    "settings": "הגדרות"
+  },
+  "actions": {
+    "add": "הוסף",
+    "edit": "ערוך",
+    "delete": "מחק",
+    "save": "שמור",
+    "cancel": "ביטול",
+    "confirm": "אישור",
+    "refresh": "רענן",
+    "search": "חיפוש",
+    "filter": "סינון",
+    "export": "ייצוא",
+    "import": "ייבוא",
+    "view": "צפייה",
+    "close": "סגור",
+    "submit": "שלח",
+    "reset": "איפוס",
+    "back": "חזור",
+    "next": "הבא",
+    "previous": "הקודם",
+    "more": "עוד"
+  },
+  "status": {
+    "active": "פעיל",
+    "inactive": "לא פעיל",
+    "pending": "ממתין",
+    "success": "הצלחה",
+    "error": "שגיאה",
+    "warning": "אזהרה",
+    "loading": "טוען...",
+    "online": "מחובר",
+    "offline": "מנותק",
+    "healthy": "תקין",
+    "unhealthy": "לא תקין"
+  },
+  "time": {
+    "seconds": "{{count}} שנייה",
+    "seconds_plural": "{{count}} שניות",
+    "minutes": "{{count}} דקה",
+    "minutes_plural": "{{count}} דקות",
+    "hours": "{{count}} שעה",
+    "hours_plural": "{{count}} שעות",
+    "days": "{{count}} יום",
+    "days_plural": "{{count}} ימים",
+    "ago": "לפני {{time}}",
+    "in": "בעוד {{time}}"
+  },
+  "table": {
+    "noData": "אין נתונים זמינים",
+    "rowsPerPage": "שורות בעמוד:",
+    "page": "עמוד {{current}} מתוך {{total}}",
+    "selected": "{{count}} נבחרו",
+    "sortAsc": "מיון עולה",
+    "sortDesc": "מיון יורד"
+  },
+  "language": {
+    "select": "בחר שפה",
+    "current": "שפה נוכחית"
+  },
+  "theme": {
+    "light": "בהיר",
+    "dark": "כהה",
+    "system": "מערכת"
+  },
+  "user": {
+    "profile": "פרופיל",
+    "logout": "התנתקות",
+    "login": "התחברות",
+    "settings": "הגדרות משתמש"
+  }
+}
