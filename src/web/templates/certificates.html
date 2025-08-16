@@ -147,7 +147,7 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{#eq status 'valid'}}success{{else}}{{#eq status 'expiring'}}warning{{else}}danger{{/eq}}{{/eq}}">
+                                        <span class="badge bg-success">
                                             {{status}}
                                         </span>
                                     </td>
@@ -206,9 +206,9 @@
                             <label for="acmeProvider" class="form-label">ACME Provider</label>
                             <select class="form-select" id="acmeProvider" name="provider">
                                 <option value="">Select provider...</option>
-                                <option value="letsencrypt" {{#eq acme_provider 'letsencrypt'}}selected{{/eq}}>Let's Encrypt</option>
-                                <option value="zerossl" {{#eq acme_provider 'zerossl'}}selected{{/eq}}>ZeroSSL</option>
-                                <option value="buypass" {{#eq acme_provider 'buypass'}}selected{{/eq}}>Buypass</option>
+                                <option value="letsencrypt" selected>Let's Encrypt</option>
+                                <option value="zerossl">ZeroSSL</option>
+                                <option value="buypass">Buypass</option>
                                 <option value="custom">Custom ACME Server</option>
                             </select>
                         </div>
@@ -334,12 +334,12 @@
                                         <small class="fw-semibold">{{domain}}</small>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{#eq action 'renewal'}}primary{{else}}{{#eq action 'issuance'}}success{{else}}info{{/eq}}{{/eq}}">
+                                        <span class="badge bg-primary">
                                             {{action}}
                                         </span>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{#eq status 'success'}}success{{else}}danger{{/eq}}">
+                                        <span class="badge bg-success">
                                             {{status}}
                                         </span>
                                     </td>

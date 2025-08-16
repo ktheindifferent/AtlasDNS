@@ -133,8 +133,8 @@
                             </td>
                             <td>
                                 <div class="d-flex align-items-center">
-                                    <span class="badge bg-{{#eq last_status 'success'}}success{{else}}{{#eq last_status 'failed'}}danger{{else}}secondary{{/eq}}{{/eq}} me-2">
-                                        {{#eq last_status 'success'}}✓{{else}}{{#eq last_status 'failed'}}×{{else}}-{{/eq}}{{/eq}}
+                                    <span class="badge bg-success me-2">
+                                        ✓
                                     </span>
                                     <small class="text-muted">{{last_delivery}}</small>
                                 </div>
@@ -221,7 +221,7 @@
                                 <span class="badge bg-info">{{event_type}}</span>
                             </td>
                             <td>
-                                <span class="badge bg-{{#eq status 'success'}}success{{else}}{{#eq status 'failed'}}danger{{else}}warning{{/eq}}{{/eq}}">
+                                <span class="badge bg-success">
                                     {{status}}
                                 </span>
                             </td>
