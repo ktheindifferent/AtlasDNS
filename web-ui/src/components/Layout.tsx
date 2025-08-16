@@ -39,6 +39,7 @@ import {
   AccountCircle,
   Logout,
   ChevronLeft,
+  Timeline,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
@@ -53,6 +54,7 @@ const navigationItems = [
   { text: 'Health Checks', icon: <HealthAndSafety />, path: '/health-checks' },
   { text: 'Traffic Policies', icon: <Traffic />, path: '/traffic-policies' },
   { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
+  { text: 'DNS Flow Analyzer', icon: <Timeline />, path: '/dns-flow-analyzer' },
   { text: 'GeoDNS', icon: <Map />, path: '/geodns' },
   { text: 'DNSSEC', icon: <Security />, path: '/dnssec' },
   { text: 'Monitoring', icon: <Monitor />, path: '/monitoring' },
