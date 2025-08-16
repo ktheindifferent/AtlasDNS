@@ -35,12 +35,19 @@ import ZoneFormDialog from '../components/zones/ZoneFormDialog';
 import ZoneImportDialog from '../components/zones/ZoneImportDialog';
 import { useSnackbar } from 'notistack';
 import { format } from 'date-fns';
+import LiveCursors from '../components/collaboration/LiveCursors';
+import ActivityFeed from '../components/collaboration/ActivityFeed';
+import CommentSystem from '../components/collaboration/CommentSystem';
+import { useCollaboration } from '../contexts/CollaborationContext';
 
 const Zones: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const { enqueueSnackbar } = useSnackbar();
   const { zones, loading, totalCount } = useSelector((state: RootState) => state.zones);
+  const { trackActivity, trackChange } = useCollaboration();
+  const { user: currentUser } = useSelector((state: RootState) => state.auth);
+  const containerRef = React.useRef<HTMLDivElement>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
@@ -50,6 +57,8 @@ const Zones: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [paginationModel, setPaginationModel] = useState({
     page: 0,
     pageSize: 10,
@@ -82,6 +91,41 @@ const Zones: React.FC = () => {
       try {
         await dispatch(deleteZone(selectedZone.id)).unwrap();
         enqueueSnackbar('Zone deleted successfully', { variant: 'success' });
+        
+        // Track the deletion in collaboration system
+        trackActivity({
+          userId: currentUser?.id || '',
+          user: {
+            id: currentUser?.id || '',
+            name: currentUser?.name || currentUser?.email || '',
+            email: currentUser?.email || '',
+            color: '#2196F3',
+          },
+          action: 'delete',
+          entityType: 'zone',
+          entityId: selectedZone.id,
+          entityName: selectedZone.name,
+          details: `Deleted DNS zone ${selectedZone.name}`,
+        });
+        
+        trackChange({
+          userId: currentUser?.id || '',
+          user: {
+            id: currentUser?.id || '',
+            name: currentUser?.name || currentUser?.email || '',
+            email: currentUser?.email || '',
+            color: '#2196F3',
+          },
+          action: 'delete',
+          entityType: 'zone',
+          entityId: selectedZone.id,
+          changes: [{
+            field: 'zone',
+            oldValue: selectedZone,
+            newValue: null,
+          }],
+          description: `Deleted zone ${selectedZone.name}`,
+        });
       } catch (error) {
         enqueueSnackbar('Failed to delete zone', { variant: 'error' });
       }
