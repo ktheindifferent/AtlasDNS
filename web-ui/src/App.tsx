@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -15,6 +15,9 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { UpdateNotification } from './components/UpdateNotification';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -44,6 +47,14 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  useEffect(() => {
+    // Hide app shell loader when app is ready
+    const loader = document.getElementById('app-shell-loader');
+    if (loader) {
+      loader.style.display = 'none';
+    }
+  }, []);
+
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
@@ -60,6 +71,9 @@ function App() {
               <Router>
                 <AuthProvider>
                   <WebSocketProvider>
+                    <OfflineIndicator />
+                    <PWAInstallPrompt />
+                    <UpdateNotification />
                     <Suspense fallback={<LoadingScreen />}>
                       <Routes>
                         <Route path="/login" element={<Login />} />
