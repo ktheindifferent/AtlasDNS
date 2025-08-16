@@ -423,7 +423,7 @@ const Dashboard: React.FC = () => {
                   variant="determinate"
                   value={stats?.uptime || 0}
                   sx={{ mt: 1 }}
-                  color={stats?.uptime >= 99.9 ? 'success' : 'warning'}
+                  color={(stats?.uptime || 0) >= 99.9 ? 'success' : 'warning'}
                 />
               </Box>
             </CardContent>
