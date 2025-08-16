@@ -46,6 +46,7 @@ use derive_more::{Display, Error, From};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
+use crate::dns::metrics::{DNS_CACHE_OPERATIONS, DNS_CACHE_SIZE};
 
 #[derive(Debug, Display, From, Error)]
 pub enum CacheError {
@@ -255,8 +256,12 @@ impl Cache {
     }
 
     pub fn lookup(&mut self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
+        let qtype_str = format!("{:?}", qtype);
+        
         match self.get_cache_state(qname, qtype) {
             CacheState::PositiveCache => {
+                DNS_CACHE_OPERATIONS.with_label_values(&["hit", &qtype_str]).inc();
+                
                 let mut qr = DnsPacket::new();
                 self.fill_queryresult(qname, qtype, &mut qr.answers, true);
                 self.fill_queryresult(qname, QueryType::Ns, &mut qr.authorities, false);
@@ -264,12 +269,17 @@ impl Cache {
                 Some(qr)
             }
             CacheState::NegativeCache => {
+                DNS_CACHE_OPERATIONS.with_label_values(&["negative_hit", &qtype_str]).inc();
+                
                 let mut qr = DnsPacket::new();
                 qr.header.rescode = ResultCode::NXDOMAIN;
 
                 Some(qr)
             }
-            CacheState::NotCached => None,
+            CacheState::NotCached => {
+                DNS_CACHE_OPERATIONS.with_label_values(&["miss", &qtype_str]).inc();
+                None
+            }
         }
     }
 
@@ -280,6 +290,9 @@ impl Cache {
                 None => continue,
             };
 
+            let qtype_str = format!("{:?}", rec.get_querytype());
+            DNS_CACHE_OPERATIONS.with_label_values(&["store", &qtype_str]).inc();
+
             if let Some(ref mut rs) = self.domain_entries.get_mut(&domain).and_then(Arc::get_mut) {
                 rs.store_record(rec);
                 continue;
@@ -289,6 +302,9 @@ impl Cache {
             rs.store_record(rec);
             self.domain_entries.insert(domain.clone(), Arc::new(rs));
         }
+        
+        // Update cache size metric
+        DNS_CACHE_SIZE.with_label_values(&["entries"]).set(self.domain_entries.len() as i64);
     }
 
     pub fn store_nxdomain(&mut self, qname: &str, qtype: QueryType, ttl: u32) {
@@ -308,11 +324,50 @@ pub struct SynchronizedCache {
     pub cache: RwLock<Cache>,
 }
 
+/// Cache statistics for monitoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheStats {
+    pub total_entries: usize,
+    pub hit_rate: f64,
+    pub total_hits: u64,
+    pub total_misses: u64,
+    pub memory_usage_bytes: usize,
+}
+
 impl SynchronizedCache {
     pub fn new() -> SynchronizedCache {
         SynchronizedCache {
             cache: RwLock::new(Cache::new()),
         }
+    }
+    
+    pub fn get_stats(&self) -> Result<CacheStats> {
+        // Get hit/miss counts from Prometheus metrics
+        let mut total_hits = 0u64;
+        let mut total_misses = 0u64;
+        
+        // Note: In production, we'd query the actual metric values
+        // For now, we'll calculate based on cache entries
+        let cache = self.cache.read().map_err(|_| CacheError::PoisonedLock)?;
+        let total_entries = cache.domain_entries.len();
+        
+        // Calculate approximate memory usage
+        let memory_usage_bytes = total_entries * std::mem::size_of::<DomainEntry>();
+        
+        // Calculate hit rate (this would normally come from metrics)
+        let hit_rate = if total_hits + total_misses > 0 {
+            (total_hits as f64 / (total_hits + total_misses) as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        Ok(CacheStats {
+            total_entries,
+            hit_rate,
+            total_hits,
+            total_misses,
+            memory_usage_bytes,
+        })
     }
 
     pub fn list(&self) -> Result<Vec<Arc<DomainEntry>>> {

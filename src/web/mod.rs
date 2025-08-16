@@ -1,5 +1,6 @@
 use derive_more::Display;
 
+pub mod activity;
 pub mod authority;
 pub mod cache;
 pub mod index;

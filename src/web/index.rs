@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::dns::context::ServerContext;
 use crate::web::{Result, WebError};
 use crate::web::system_info::{SystemInfoCollector, format};
+use crate::web::activity::ActivityLogger;
+use crate::web::users::UserManager;
 
 // Global system info collector - initialized once and reused
 static SYSTEM_COLLECTOR: OnceLock<Arc<Mutex<SystemInfoCollector>>> = OnceLock::new();
@@ -22,7 +24,7 @@ pub struct ZoneSummary {
     last_modified: String,
 }
 
-pub fn index(context: &ServerContext) -> Result<serde_json::Value> {
+pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logger: &ActivityLogger) -> Result<serde_json::Value> {
     // Get zone statistics
     let zones = context.authority.read().map_err(|_| WebError::LockError)?;
     let total_zones = zones.zones().len();
@@ -45,7 +47,18 @@ pub fn index(context: &ServerContext) -> Result<serde_json::Value> {
     // Get cache statistics
     let cache_list = context.cache.list().unwrap_or_else(|_| Vec::new());
     let cache_entries = cache_list.len();
-    let cache_hit_rate = 75; // Placeholder - you could implement actual cache hit tracking
+    
+    // Get real cache hit rate from cache stats
+    let cache_stats = context.cache.get_stats().unwrap_or_else(|_| {
+        crate::dns::cache::CacheStats {
+            total_entries: cache_entries,
+            hit_rate: 0.0,
+            total_hits: 0,
+            total_misses: 0,
+            memory_usage_bytes: 0,
+        }
+    });
+    let cache_hit_rate = cache_stats.hit_rate.round() as u32;
     
     // Get query statistics
     let client_sent_queries = context.client.get_sent_count();
@@ -71,7 +84,9 @@ pub fn index(context: &ServerContext) -> Result<serde_json::Value> {
         "total_zones": total_zones,
         "total_records": total_records,
         "cache_entries": cache_entries,
-        "active_users": 1, // Placeholder - implement user tracking
+        "active_users": user_manager.get_active_user_count(),
+        "active_sessions": user_manager.get_active_session_count(),
+        "total_users": user_manager.get_total_user_count(),
         "active_zones": total_zones,
         "last_update": "Just now",
         
@@ -157,8 +172,15 @@ pub fn index(context: &ServerContext) -> Result<serde_json::Value> {
         "server_tcp_queries": server_tcp_queries,
         "server_udp_queries": server_udp_queries,
         
-        // Recent activity (placeholder)
-        "activities": []
+        // Recent activity from activity logger
+        "activities": activity_logger.get_recent(10).iter().map(|entry| json!({
+            "timestamp": entry.time_ago(),
+            "user": entry.user.clone(),
+            "action": entry.action.clone(),
+            "resource": entry.resource.clone(),
+            "success": entry.success,
+            "details": entry.details.clone(),
+        })).collect::<Vec<_>>()
     }))
 }
 

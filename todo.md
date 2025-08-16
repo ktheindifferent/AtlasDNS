@@ -112,6 +112,96 @@
 - [x] **Global Network** - 100+ edge locations worldwide
 - [x] **Enterprise Support** - 24/7 support with SLA guarantees
 
+## 🛠️ UIX Implementation Tasks (Immediate Priority)
+
+### Core Functionality - Replace Placeholders with Real Implementation
+
+#### Dashboard & Monitoring
+- [ ] **Recent Activity Tracking** - Implement actual activity logging (currently empty placeholder)
+- [ ] **Cache Hit Rate Calculation** - Replace hardcoded 75% with real metrics
+- [ ] **Active Users Tracking** - Replace placeholder "1" with actual session counting
+- [ ] **Real-time Dashboard Updates** - Implement WebSocket/SSE for live data instead of simulated refresh
+
+#### DNS Security Features (Currently UI-only)
+- [ ] **DNSSEC Implementation** - Backend currently returns "Not implemented" 
+- [ ] **DNS Firewall Rules** - Create actual rule engine (UI exists but no backend)
+- [ ] **DDoS Protection** - Implement real protection logic (currently just UI)
+- [ ] **Response Policy Zones** - Build RPZ engine to match UI capabilities
+
+#### Advanced DNS Features (UI Present, Backend Missing)
+- [ ] **GeoDNS Manager** - Implement geographic routing backend
+- [ ] **Load Balancing Pools** - Create actual health check and failover system
+- [ ] **Traffic Steering Policies** - Build percentage-based routing engine
+- [ ] **Endpoint Health Monitoring** - Implement real health check probes
+
+#### Protocol Support (Partial Implementation)
+- [ ] **DoH (DNS-over-HTTPS)** - Complete RFC 8484 implementation
+- [ ] **DoT (DNS-over-TLS)** - Finish RFC 7858 support
+- [ ] **DoQ (DNS-over-QUIC)** - Implement QUIC protocol support
+
+#### Analytics & Logging
+- [ ] **Query Logging Storage** - Implement persistent query log (currently empty array)
+- [ ] **GraphQL Metrics** - Connect to real data sources (currently returns mock data)
+- [ ] **Log File Management** - Calculate actual log sizes (currently "N/A")
+- [ ] **Alert System** - Build actual alert manager (UI exists, no backend)
+
+#### API & Integration
+- [ ] **API Key Management** - Implement key generation and validation
+- [ ] **Webhook System** - Build event dispatch system (UI complete, backend missing)
+- [ ] **API Request Metrics** - Track actual API usage statistics
+- [ ] **Rate Limiting API** - Implement per-client rate limits
+
+#### Certificate Management
+- [ ] **ACME Integration** - Replace self-signed cert placeholder with real ACME
+- [ ] **Certificate Status Checking** - Implement expiry monitoring
+- [ ] **Multiple ACME Providers** - Support beyond placeholder implementation
+
+#### Web Server Metrics
+- [ ] **Request/Response Size Calculation** - Currently returns None
+- [ ] **Referer Header Extraction** - Not implemented in logging
+- [ ] **Response Code Tracking** - Build actual metrics collection
+- [ ] **Latency Percentile Tracking** - Implement P50/P95/P99 calculations
+
+### UI Components - Connect to Backend
+
+#### Settings Page
+- [ ] **Upstream DNS Server Management** - Make add/remove functional
+- [ ] **Configuration Persistence** - Save settings changes to disk
+
+#### Templates System
+- [ ] **Zone Template Engine** - Implement template application logic
+- [ ] **Variable Substitution** - Build template variable system
+
+#### Search & Filtering
+- [ ] **Global Search** - Implement cross-resource search (layout.html:941)
+- [ ] **Zone Search** - Make search functional in DNSSEC page
+- [ ] **Log Search** - Implement log filtering and search
+
+### Code Cleanup Tasks
+
+#### Remove Unimplemented Panics
+- [ ] **BytePacketBuffer Methods** - Replace `unimplemented!()` calls in buffer.rs:279,316,320
+- [ ] **Complete Test Coverage** - Implement placeholder tests in record_parsers.rs
+
+#### Fix TODO Comments
+- [ ] **Wildcard Support** - authority.rs:258 - Add @ and wildcard record support
+- [ ] **Zone File Parsing** - authority.rs:560 - Implement proper parser
+- [ ] **Cache Methods** - Implement cache clearing in GraphQL mutations
+- [ ] **Real-time Subscriptions** - graphql.rs:700,719,737 - Add streaming support
+
+### Performance & Optimization
+
+#### Metrics Collection
+- [ ] **Cache Hit/Miss Tracking** - Build real cache statistics
+- [ ] **Query Type Distribution** - Track actual query types
+- [ ] **Geographic Analytics** - Implement GeoIP lookup
+- [ ] **Uptime Calculation** - Calculate from actual start time
+
+#### Resource Monitoring
+- [ ] **Memory Pool Statistics** - Track actual buffer usage
+- [ ] **Connection Pool Metrics** - Monitor TCP/TLS connections
+- [ ] **Thread Pool Status** - Show worker thread utilization
+
 ## 🚀 Phase 4 - Next Generation Features (2025 Q2)
 
 ### Advanced Security & Privacy

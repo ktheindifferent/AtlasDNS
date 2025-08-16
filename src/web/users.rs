@@ -290,4 +290,38 @@ impl UserManager {
         
         Ok(initial_count - sessions.len())
     }
+    
+    /// Get the count of active sessions (not expired)
+    pub fn get_active_session_count(&self) -> usize {
+        if let Ok(sessions) = self.sessions.read() {
+            let now = Utc::now();
+            sessions.values().filter(|s| s.expires_at > now).count()
+        } else {
+            0
+        }
+    }
+    
+    /// Get the count of unique active users (users with at least one active session)
+    pub fn get_active_user_count(&self) -> usize {
+        if let Ok(sessions) = self.sessions.read() {
+            let now = Utc::now();
+            let active_user_ids: std::collections::HashSet<_> = sessions
+                .values()
+                .filter(|s| s.expires_at > now)
+                .map(|s| s.user_id.clone())
+                .collect();
+            active_user_ids.len()
+        } else {
+            0
+        }
+    }
+    
+    /// Get total user count
+    pub fn get_total_user_count(&self) -> usize {
+        if let Ok(users) = self.users.read() {
+            users.len()
+        } else {
+            0
+        }
+    }
 }

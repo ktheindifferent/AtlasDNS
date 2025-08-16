@@ -15,6 +15,7 @@ use crate::dns::logging::{CorrelationContext, HttpRequestLog};
 use crate::dns::doh::{DohServer, DohConfig};
 use crate::web::graphql::{create_schema, graphql_playground};
 use crate::web::{
+    activity::ActivityLogger,
     authority, cache, index,
     users::{UserManager, LoginRequest, CreateUserRequest, UpdateUserRequest, UserRole},
     sessions::{SessionMiddleware, create_session_cookie, clear_session_cookie},
@@ -58,6 +59,7 @@ pub struct WebServer<'a> {
     pub user_manager: Arc<UserManager>,
     pub session_middleware: Arc<SessionMiddleware>,
     pub metrics_collector: Arc<MetricsCollector>,
+    pub activity_logger: Arc<ActivityLogger>,
     pub graphql_schema: async_graphql::Schema<crate::web::graphql::QueryRoot, crate::web::graphql::MutationRoot, crate::web::graphql::SubscriptionRoot>,
     pub doh_server: Arc<DohServer>,
 }
@@ -67,6 +69,7 @@ impl<'a> WebServer<'a> {
         let user_manager = Arc::new(UserManager::new());
         let session_middleware = Arc::new(SessionMiddleware::new(user_manager.clone()));
         let metrics_collector = Arc::new(MetricsCollector::new());
+        let activity_logger = Arc::new(ActivityLogger::new(1000)); // Keep last 1000 activities
         
         let mut handlebars = Handlebars::new();
         
@@ -150,6 +153,7 @@ impl<'a> WebServer<'a> {
             user_manager,
             session_middleware,
             metrics_collector,
+            activity_logger,
             graphql_schema,
             doh_server,
         };
@@ -558,7 +562,7 @@ impl<'a> WebServer<'a> {
     }
 
     fn index(&self, request: &Request) -> Result<ResponseBox> {
-        let mut index_result = index::index(&self.context)?;
+        let mut index_result = index::index(&self.context, &self.user_manager, &self.activity_logger)?;
         self.add_user_context(request, &mut index_result)?;
         self.response_from_media_type(request, "index", index_result)
     }
@@ -709,11 +713,32 @@ impl<'a> WebServer<'a> {
                 .and_then(LoginRequest::from_formdata)?
         };
         
-        let user = self.user_manager
-            .authenticate(&login_request.username, &login_request.password)
-            .map_err(|e| WebError::AuthenticationError(e))?;
-        
         let ip_address = self.session_middleware.get_ip_address(request);
+        
+        let user = match self.user_manager
+            .authenticate(&login_request.username, &login_request.password) {
+            Ok(u) => {
+                // Log successful login
+                self.activity_logger.log_login(
+                    login_request.username.clone(),
+                    u.id.clone(),
+                    ip_address.clone(),
+                    true
+                );
+                u
+            },
+            Err(e) => {
+                // Log failed login
+                self.activity_logger.log_login(
+                    login_request.username.clone(),
+                    String::new(),
+                    ip_address.clone(),
+                    false
+                );
+                return Err(WebError::AuthenticationError(e));
+            }
+        };
+        
         let user_agent = self.session_middleware.get_user_agent(request);
         
         let session = self.user_manager
