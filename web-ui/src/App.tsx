@@ -37,6 +37,7 @@ const Logs = lazy(() => import('./pages/Logs'));
 const GeoDNS = lazy(() => import('./pages/GeoDNS'));
 const DNSSec = lazy(() => import('./pages/DNSSec'));
 const Monitoring = lazy(() => import('./pages/Monitoring'));
+const GestureDemo = lazy(() => import('./pages/GestureDemo'));
 const DNSFlowAnalyzer = lazy(() => import('./components/DNSFlowAnalyzer'));
 const Performance = lazy(() => import('./pages/Performance'));
 
@@ -97,6 +98,7 @@ function App() {
                           <Route path="dashboard" element={<Dashboard />} />
                           <Route path="dashboard-demo" element={<DashboardDemo />} />
                           <Route path="advanced-dashboard" element={<AdvancedDashboard />} />
+                          <Route path="gesture-demo" element={<GestureDemo />} />
                           <Route path="zones" element={<Zones />} />
                           <Route path="zones/:zoneId/records" element={<Records />} />
                           <Route path="health-checks" element={<HealthChecks />} />
@@ -105,6 +107,7 @@ function App() {
                           <Route path="geodns" element={<GeoDNS />} />
                           <Route path="dnssec" element={<DNSSec />} />
                           <Route path="monitoring" element={<Monitoring />} />
+                          <Route path="gesture-demo" element={<GestureDemo />} />
                           <Route path="dns-flow-analyzer" element={<DNSFlowAnalyzer />} />
                           <Route path="performance" element={<Performance />} />
                           <Route path="logs" element={<Logs />} />
