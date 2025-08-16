@@ -43,6 +43,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import UserPresence from './collaboration/UserPresence';
 
 const drawerWidth = 240;
 
@@ -159,7 +160,9 @@ const Layout: React.FC = () => {
             {navigationItems.find(item => item.path === location.pathname)?.text || 'Atlas DNS'}
           </Typography>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <UserPresence maxDisplay={3} />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={handleNotificationOpen}>
                 <Badge badgeContent={unreadCount} color="error">
