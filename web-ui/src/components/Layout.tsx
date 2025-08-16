@@ -34,14 +34,19 @@ import {
   Map,
   Security,
   Monitor,
+  Speed,
   Notifications,
   AccountCircle,
   Logout,
   ChevronLeft,
+  Timeline,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import MobileLayout from './MobileLayout';
+import { GestureShortcuts } from './gestures/GestureShortcuts';
+import UserPresence from './collaboration/UserPresence';
 
 const drawerWidth = 240;
 
@@ -51,9 +56,11 @@ const navigationItems = [
   { text: 'Health Checks', icon: <HealthAndSafety />, path: '/health-checks' },
   { text: 'Traffic Policies', icon: <Traffic />, path: '/traffic-policies' },
   { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
+  { text: 'DNS Flow Analyzer', icon: <Timeline />, path: '/dns-flow-analyzer' },
   { text: 'GeoDNS', icon: <Map />, path: '/geodns' },
   { text: 'DNSSEC', icon: <Security />, path: '/dnssec' },
   { text: 'Monitoring', icon: <Monitor />, path: '/monitoring' },
+  { text: 'Performance', icon: <Speed />, path: '/performance' },
   { text: 'Logs', icon: <Description />, path: '/logs' },
   { text: 'Users', icon: <People />, path: '/users' },
   { text: 'Settings', icon: <Settings />, path: '/settings' },
@@ -68,6 +75,9 @@ const Layout: React.FC = () => {
   const unreadCount = useSelector((state: RootState) => state.notifications.unreadCount);
   
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const useMobileLayout = isMobile || isTablet;
+  
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
   const [anchorElNotif, setAnchorElNotif] = useState<null | HTMLElement>(null);
@@ -133,6 +143,18 @@ const Layout: React.FC = () => {
     </Box>
   );
 
+  // Use mobile layout for mobile and tablet devices
+  if (useMobileLayout) {
+    return (
+      <>
+        <MobileLayout>
+          <Outlet />
+        </MobileLayout>
+        <GestureShortcuts />
+      </>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex' }}>
       <AppBar
@@ -157,7 +179,9 @@ const Layout: React.FC = () => {
             {navigationItems.find(item => item.path === location.pathname)?.text || 'Atlas DNS'}
           </Typography>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <UserPresence maxDisplay={3} />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={handleNotificationOpen}>
                 <Badge badgeContent={unreadCount} color="error">
