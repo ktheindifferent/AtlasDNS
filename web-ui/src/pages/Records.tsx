@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -36,6 +36,9 @@ import { recordApi, zoneApi } from '../services/api';
 import RecordFormDialog from '../components/records/RecordFormDialog';
 import BulkImportDialog from '../components/records/BulkImportDialog';
 import { useSnackbar } from 'notistack';
+import { AdvancedFilter } from '../components/filtering';
+import { useAdvancedFiltering } from '../hooks/useAdvancedFiltering';
+import { QueryBuilderField, Facet } from '../types/filtering';
 import { InlineHelpBubble, SmartFAQ, NaturalLanguageSearch } from '../components/HelpSystem';
 
 interface DNSRecord {
@@ -69,6 +72,137 @@ const Records: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Advanced filtering
+  const {
+    filterState,
+    updateFilter,
+    clearFilters,
+    savedFilters,
+    saveFilter,
+    deleteFilter,
+    searchHistory,
+    addToHistory,
+    exportData,
+  } = useAdvancedFiltering({
+    persistToUrl: true,
+    storageKey: 'recordsFilter',
+  });
+
+  // Query builder fields
+  const queryBuilderFields: QueryBuilderField[] = [
+    {
+      name: 'name',
+      label: 'Name',
+      type: 'text',
+      operators: ['=', '!=', 'contains', 'beginsWith', 'endsWith'],
+    },
+    {
+      name: 'type',
+      label: 'Type',
+      type: 'select',
+      values: [
+        { name: 'A', label: 'A' },
+        { name: 'AAAA', label: 'AAAA' },
+        { name: 'CNAME', label: 'CNAME' },
+        { name: 'MX', label: 'MX' },
+        { name: 'TXT', label: 'TXT' },
+        { name: 'NS', label: 'NS' },
+        { name: 'SOA', label: 'SOA' },
+        { name: 'PTR', label: 'PTR' },
+        { name: 'SRV', label: 'SRV' },
+        { name: 'CAA', label: 'CAA' },
+      ],
+      operators: ['=', '!=', 'in', 'notIn'],
+    },
+    {
+      name: 'value',
+      label: 'Value',
+      type: 'text',
+      operators: ['=', '!=', 'contains', 'doesNotContain'],
+    },
+    {
+      name: 'ttl',
+      label: 'TTL',
+      type: 'number',
+      operators: ['=', '!=', '>', '>=', '<', '<='],
+    },
+    {
+      name: 'priority',
+      label: 'Priority',
+      type: 'number',
+      operators: ['=', '!=', '>', '>=', '<', '<='],
+    },
+    {
+      name: 'enabled',
+      label: 'Status',
+      type: 'boolean',
+      operators: ['='],
+    },
+    {
+      name: 'createdAt',
+      label: 'Created Date',
+      type: 'date',
+      operators: ['=', '!=', '>', '>=', '<', '<='],
+    },
+    {
+      name: 'modifiedAt',
+      label: 'Modified Date',
+      type: 'date',
+      operators: ['=', '!=', '>', '>=', '<', '<='],
+    },
+  ];
+
+  // Generate facets from records data
+  const facets: Facet[] = useMemo(() => {
+    if (!records || records.length === 0) return [];
+    
+    // Count occurrences for each facet
+    const typeCounts: Record<string, number> = {};
+    const statusCounts: Record<string, number> = {};
+    
+    records.forEach((record: DNSRecord) => {
+      typeCounts[record.type] = (typeCounts[record.type] || 0) + 1;
+      statusCounts[record.enabled ? 'Active' : 'Inactive'] = 
+        (statusCounts[record.enabled ? 'Active' : 'Inactive'] || 0) + 1;
+    });
+
+    return [
+      {
+        field: 'type',
+        label: 'Record Type',
+        type: 'checkbox',
+        values: Object.entries(typeCounts).map(([value, count]) => ({
+          value,
+          count,
+          selected: false,
+        })),
+      },
+      {
+        field: 'status',
+        label: 'Status',
+        type: 'checkbox',
+        values: Object.entries(statusCounts).map(([value, count]) => ({
+          value,
+          count,
+          selected: false,
+        })),
+      },
+      {
+        field: 'ttl',
+        label: 'TTL Range',
+        type: 'range',
+        values: [],
+      },
+      {
+        field: 'dateRange',
+        label: 'Date Created',
+        type: 'date',
+        values: [],
+      },
+    ];
+  }, [records]);
 
   // Fetch zone details
   const { data: zone } = useQuery({
@@ -81,17 +215,48 @@ const Records: React.FC = () => {
     enabled: !!zoneId,
   });
 
-  // Fetch records
+  // Fetch records with advanced filtering
   const { data: records, isLoading, refetch } = useQuery({
-    queryKey: ['records', zoneId, searchTerm, recordTypeFilter],
+    queryKey: ['records', zoneId, filterState],
     queryFn: async () => {
       if (!zoneId) return [];
       const params: any = {};
-      if (searchTerm) params.search = searchTerm;
-      if (recordTypeFilter !== 'ALL') params.type = recordTypeFilter;
+      
+      // Apply advanced filters
+      if (filterState.searchTerm) {
+        params.search = filterState.searchTerm;
+      }
+      
+      if (filterState.query && filterState.query.rules.length > 0) {
+        params.filter = JSON.stringify(filterState.query);
+      }
+      
+      if (filterState.quickFilters.length > 0) {
+        params.quickFilters = filterState.quickFilters;
+      }
+      
+      if (filterState.timeRange.start && filterState.timeRange.end) {
+        params.startDate = filterState.timeRange.start;
+        params.endDate = filterState.timeRange.end;
+      }
+      
+      if (filterState.regex) {
+        params.regex = filterState.regex;
+      }
+      
+      if (Object.keys(filterState.columnFilters).length > 0) {
+        params.facets = filterState.columnFilters;
+      }
       
       const response = await recordApi.list(zoneId, params);
-      return response.data.records || [];
+      const data = response.data.records || [];
+      
+      // Add to search history if we have results
+      if (filterState.searchTerm && data.length > 0) {
+        addToHistory(filterState.searchTerm, data.length);
+      }
+      
+      return data;
     },
     enabled: !!zoneId,
   });
@@ -157,9 +322,13 @@ const Records: React.FC = () => {
     handleMenuClose();
   };
 
-  const handleExport = () => {
-    // TODO: Implement export functionality
-    enqueueSnackbar('Export functionality coming soon', { variant: 'info' });
+  const handleExport = async (format: string, options: any) => {
+    if (records && records.length > 0) {
+      await exportData(records, format, options);
+      enqueueSnackbar(`Exported ${records.length} records to ${format.toUpperCase()}`, { variant: 'success' });
+    } else {
+      enqueueSnackbar('No records to export', { variant: 'warning' });
+    }
   };
 
   const getRecordTypeColor = (type: string) => {
@@ -348,7 +517,24 @@ const Records: React.FC = () => {
         </Box>
       </Box>
 
+      <AdvancedFilter
+        fields={queryBuilderFields}
+        onFilterChange={updateFilter}
+        onExport={handleExport}
+        showTimeRange={true}
+        showNaturalLanguage={true}
+        showRegex={true}
+        showFacets={true}
+        facets={facets}
+        savedFilters={savedFilters}
+        onSaveFilter={saveFilter}
+        onDeleteFilter={deleteFilter}
+        searchHistory={searchHistory}
+      />
+
       <Paper sx={{ p: 2, mb: 2 }}>
+<<<<<<< HEAD
+=======
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <InlineHelpBubble
             content={{
@@ -401,6 +587,7 @@ const Records: React.FC = () => {
             </IconButton>
           </Tooltip>
         </Box>
+>>>>>>> origin/master
 
         {selectedRecords.length > 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
