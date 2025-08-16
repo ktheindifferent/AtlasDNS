@@ -3,10 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Provider } from 'react-redux';
-import { ThemeProvider, CssBaseline } from '@mui/material';
+import { CssBaseline } from '@mui/material';
 import { SnackbarProvider } from 'notistack';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import './i18n/config';
 
 import { store } from './store';
 import { theme } from './theme';
@@ -15,6 +16,7 @@ import { WebSocketProvider } from './contexts/WebSocketContext';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
+import RTLProvider from './providers/RTLProvider';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -47,7 +49,7 @@ function App() {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider theme={theme}>
+        <RTLProvider baseTheme={theme}>
           <LocalizationProvider dateAdapter={AdapterDateFns}>
             <SnackbarProvider 
               maxSnack={3}
@@ -93,7 +95,7 @@ function App() {
               <ReactQueryDevtools initialIsOpen={false} />
             </SnackbarProvider>
           </LocalizationProvider>
-        </ThemeProvider>
+        </RTLProvider>
       </QueryClientProvider>
     </Provider>
   );

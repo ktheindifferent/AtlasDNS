@@ -1,0 +1,86 @@
+{
+  "appName": "Atlas DNS Manager",
+  "navigation": {
+    "dashboard": "Dashboard",
+    "zones": "DNS Zones",
+    "records": "DNS Records",
+    "healthChecks": "Health Checks",
+    "trafficPolicies": "Traffic Policies",
+    "analytics": "Analytics",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "Monitoring",
+    "logs": "Logs",
+    "users": "Users",
+    "settings": "Settings"
+  },
+  "actions": {
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "refresh": "Refresh",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "view": "View",
+    "close": "Close",
+    "submit": "Submit",
+    "reset": "Reset",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "more": "More"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "loading": "Loading...",
+    "online": "Online",
+    "offline": "Offline",
+    "healthy": "Healthy",
+    "unhealthy": "Unhealthy"
+  },
+  "time": {
+    "seconds": "{{count}} second",
+    "seconds_plural": "{{count}} seconds",
+    "minutes": "{{count}} minute",
+    "minutes_plural": "{{count}} minutes",
+    "hours": "{{count}} hour",
+    "hours_plural": "{{count}} hours",
+    "days": "{{count}} day",
+    "days_plural": "{{count}} days",
+    "ago": "{{time}} ago",
+    "in": "in {{time}}"
+  },
+  "table": {
+    "noData": "No data available",
+    "rowsPerPage": "Rows per page:",
+    "page": "Page {{current}} of {{total}}",
+    "selected": "{{count}} selected",
+    "sortAsc": "Sort ascending",
+    "sortDesc": "Sort descending"
+  },
+  "language": {
+    "select": "Select Language",
+    "current": "Current Language"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "user": {
+    "profile": "Profile",
+    "logout": "Logout",
+    "login": "Login",
+    "settings": "User Settings"
+  }
+}

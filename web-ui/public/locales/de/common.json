@@ -1,0 +1,86 @@
+{
+  "appName": "Atlas DNS-Manager",
+  "navigation": {
+    "dashboard": "Dashboard",
+    "zones": "DNS-Zonen",
+    "records": "DNS-Einträge",
+    "healthChecks": "Gesundheitsprüfungen",
+    "trafficPolicies": "Verkehrsrichtlinien",
+    "analytics": "Analysen",
+    "geoDNS": "GeoDNS",
+    "dnssec": "DNSSEC",
+    "monitoring": "Überwachung",
+    "logs": "Protokolle",
+    "users": "Benutzer",
+    "settings": "Einstellungen"
+  },
+  "actions": {
+    "add": "Hinzufügen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "confirm": "Bestätigen",
+    "refresh": "Aktualisieren",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "view": "Ansehen",
+    "close": "Schließen",
+    "submit": "Absenden",
+    "reset": "Zurücksetzen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Vorherige",
+    "more": "Mehr"
+  },
+  "status": {
+    "active": "Aktiv",
+    "inactive": "Inaktiv",
+    "pending": "Ausstehend",
+    "success": "Erfolg",
+    "error": "Fehler",
+    "warning": "Warnung",
+    "loading": "Laden...",
+    "online": "Online",
+    "offline": "Offline",
+    "healthy": "Gesund",
+    "unhealthy": "Ungesund"
+  },
+  "time": {
+    "seconds": "{{count}} Sekunde",
+    "seconds_plural": "{{count}} Sekunden",
+    "minutes": "{{count}} Minute",
+    "minutes_plural": "{{count}} Minuten",
+    "hours": "{{count}} Stunde",
+    "hours_plural": "{{count}} Stunden",
+    "days": "{{count}} Tag",
+    "days_plural": "{{count}} Tage",
+    "ago": "vor {{time}}",
+    "in": "in {{time}}"
+  },
+  "table": {
+    "noData": "Keine Daten verfügbar",
+    "rowsPerPage": "Zeilen pro Seite:",
+    "page": "Seite {{current}} von {{total}}",
+    "selected": "{{count}} ausgewählt",
+    "sortAsc": "Aufsteigend sortieren",
+    "sortDesc": "Absteigend sortieren"
+  },
+  "language": {
+    "select": "Sprache auswählen",
+    "current": "Aktuelle Sprache"
+  },
+  "theme": {
+    "light": "Hell",
+    "dark": "Dunkel",
+    "system": "System"
+  },
+  "user": {
+    "profile": "Profil",
+    "logout": "Abmelden",
+    "login": "Anmelden",
+    "settings": "Benutzereinstellungen"
+  }
+}
