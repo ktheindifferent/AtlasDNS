@@ -1,11 +1,18 @@
 import React from 'react';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 
 const Monitoring: React.FC = () => {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Monitoring</h1>
-      <p>System monitoring and alerts</p>
-    </div>
+    <Box>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        System Monitoring
+      </Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Real-time system monitoring and metrics will be implemented here.
+        </Alert>
+      </Paper>
+    </Box>
   );
 };
 

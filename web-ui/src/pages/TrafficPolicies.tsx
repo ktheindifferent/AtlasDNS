@@ -1,11 +1,18 @@
 import React from 'react';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 
 const TrafficPolicies: React.FC = () => {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Traffic Policies</h1>
-      <p>Manage traffic routing policies</p>
-    </div>
+    <Box>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        Traffic Policies
+      </Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          Traffic policy management functionality will be implemented here.
+        </Alert>
+      </Paper>
+    </Box>
   );
 };
 

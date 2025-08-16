@@ -1,11 +1,18 @@
 import React from 'react';
+import { Box, Typography, Paper, Alert } from '@mui/material';
 
 const Settings: React.FC = () => {
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Settings</h1>
-      <p>System configuration and preferences</p>
-    </div>
+    <Box>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        Settings
+      </Typography>
+      <Paper sx={{ p: 3 }}>
+        <Alert severity="info">
+          System settings and configuration will be implemented here.
+        </Alert>
+      </Paper>
+    </Box>
   );
 };
 

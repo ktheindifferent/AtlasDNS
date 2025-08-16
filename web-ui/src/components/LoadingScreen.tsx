@@ -1,17 +1,27 @@
 import React from 'react';
+import { Box, CircularProgress, Typography } from '@mui/material';
 
-const LoadingScreen: React.FC = () => {
+interface LoadingScreenProps {
+  message?: string;
+}
+
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ message = 'Loading...' }) => {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      fontSize: '18px',
-      color: '#6b7280'
-    }}>
-      Loading...
-    </div>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        gap: 2,
+      }}
+    >
+      <CircularProgress size={48} />
+      <Typography variant="body1" color="text.secondary">
+        {message}
+      </Typography>
+    </Box>
   );
 };
 
