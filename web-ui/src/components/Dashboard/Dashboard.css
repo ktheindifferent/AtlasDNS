@@ -1,0 +1,70 @@
+.dashboard-grid {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.react-grid-item {
+  transition: all 0.2s ease;
+  cursor: move;
+}
+
+.react-grid-item.static {
+  cursor: default;
+}
+
+.react-grid-item.resizing {
+  opacity: 0.9;
+  z-index: 100;
+}
+
+.react-grid-item.react-draggable-dragging {
+  opacity: 0.8;
+  z-index: 100;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-right: 2px solid rgba(0, 0, 0, 0.4);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.4);
+}
+
+.react-grid-placeholder {
+  background: #2196f3;
+  opacity: 0.2;
+  transition-duration: 100ms;
+  z-index: 2;
+  border-radius: 4px;
+}
+
+.widget-content {
+  padding: 16px;
+  height: 100%;
+  overflow: auto;
+}
+
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  background-color: #fafafa;
+}
+
+.widget-actions {
+  display: flex;
+  gap: 4px;
+}
