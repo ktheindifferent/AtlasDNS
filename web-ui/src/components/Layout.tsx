@@ -34,6 +34,7 @@ import {
   Map,
   Security,
   Monitor,
+  Speed,
   Notifications,
   AccountCircle,
   Logout,
@@ -43,6 +44,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import UserPresence from './collaboration/UserPresence';
 
 const drawerWidth = 240;
 
@@ -56,6 +58,7 @@ const navigationItems = [
   { text: 'GeoDNS', icon: <Map />, path: '/geodns' },
   { text: 'DNSSEC', icon: <Security />, path: '/dnssec' },
   { text: 'Monitoring', icon: <Monitor />, path: '/monitoring' },
+  { text: 'Performance', icon: <Speed />, path: '/performance' },
   { text: 'Logs', icon: <Description />, path: '/logs' },
   { text: 'Users', icon: <People />, path: '/users' },
   { text: 'Settings', icon: <Settings />, path: '/settings' },
@@ -159,7 +162,9 @@ const Layout: React.FC = () => {
             {navigationItems.find(item => item.path === location.pathname)?.text || 'Atlas DNS'}
           </Typography>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <UserPresence maxDisplay={3} />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>
             <Tooltip title="Notifications">
               <IconButton color="inherit" onClick={handleNotificationOpen}>
                 <Badge badgeContent={unreadCount} color="error">
