@@ -18,6 +18,7 @@ import LoadingScreen from './components/LoadingScreen';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AdvancedDashboard = lazy(() => import('./pages/AdvancedDashboard'));
 const Zones = lazy(() => import('./pages/Zones'));
 const Records = lazy(() => import('./pages/Records'));
 const HealthChecks = lazy(() => import('./pages/HealthChecks'));
@@ -73,6 +74,7 @@ function App() {
                         >
                           <Route index element={<Navigate to="/dashboard" replace />} />
                           <Route path="dashboard" element={<Dashboard />} />
+                          <Route path="advanced-dashboard" element={<AdvancedDashboard />} />
                           <Route path="zones" element={<Zones />} />
                           <Route path="zones/:zoneId/records" element={<Records />} />
                           <Route path="health-checks" element={<HealthChecks />} />
