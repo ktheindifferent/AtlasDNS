@@ -12,12 +12,14 @@ import { store } from './store';
 import { theme } from './theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { CollaborationProvider } from './contexts/CollaborationContext';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
 import LoadingScreen from './components/LoadingScreen';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { UpdateNotification } from './components/UpdateNotification';
+import RealTimeNotifications from './components/collaboration/RealTimeNotifications';
 
 // Lazy load pages for code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -36,6 +38,8 @@ const GeoDNS = lazy(() => import('./pages/GeoDNS'));
 const DNSSec = lazy(() => import('./pages/DNSSec'));
 const Monitoring = lazy(() => import('./pages/Monitoring'));
 const GestureDemo = lazy(() => import('./pages/GestureDemo'));
+const DNSFlowAnalyzer = lazy(() => import('./components/DNSFlowAnalyzer'));
+const Performance = lazy(() => import('./pages/Performance'));
 
 // Create a client
 const queryClient = new QueryClient({
@@ -74,10 +78,12 @@ function App() {
               <Router>
                 <AuthProvider>
                   <WebSocketProvider>
-                    <OfflineIndicator />
-                    <PWAInstallPrompt />
-                    <UpdateNotification />
-                    <Suspense fallback={<LoadingScreen />}>
+                    <CollaborationProvider>
+                      <OfflineIndicator />
+                      <PWAInstallPrompt />
+                      <UpdateNotification />
+                      <RealTimeNotifications />
+                      <Suspense fallback={<LoadingScreen />}>
                       <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route
@@ -101,12 +107,16 @@ function App() {
                           <Route path="geodns" element={<GeoDNS />} />
                           <Route path="dnssec" element={<DNSSec />} />
                           <Route path="monitoring" element={<Monitoring />} />
+                          <Route path="gesture-demo" element={<GestureDemo />} />
+                          <Route path="dns-flow-analyzer" element={<DNSFlowAnalyzer />} />
+                          <Route path="performance" element={<Performance />} />
                           <Route path="logs" element={<Logs />} />
                           <Route path="users" element={<Users />} />
                           <Route path="settings" element={<Settings />} />
                         </Route>
                       </Routes>
                     </Suspense>
+                    </CollaborationProvider>
                   </WebSocketProvider>
                 </AuthProvider>
               </Router>
