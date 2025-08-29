@@ -79,6 +79,34 @@ export const deleteZone = createAsyncThunk(
   }
 );
 
+export const cloneZone = createAsyncThunk(
+  'zones/cloneZone',
+  async ({ zoneId, newName }: { zoneId: string; newName: string }) => {
+    // First, get the zone to clone
+    const zoneResponse = await zoneApi.get(zoneId);
+    const originalZone = zoneResponse.data;
+    
+    // Create a new zone with cloned data
+    const clonedZoneData = {
+      ...originalZone,
+      id: undefined, // Remove ID so backend generates a new one
+      name: newName,
+      status: 'inactive' as const, // Start as inactive until DNS propagates
+    };
+    
+    const response = await zoneApi.create(clonedZoneData);
+    return response.data;
+  }
+);
+
+export const exportZone = createAsyncThunk(
+  'zones/exportZone',
+  async (zoneId: string) => {
+    const response = await zoneApi.export(zoneId);
+    return response.data;
+  }
+);
+
 const zonesSlice = createSlice({
   name: 'zones',
   initialState,
@@ -130,6 +158,28 @@ const zonesSlice = createSlice({
         if (state.selectedZone?.id === action.payload) {
           state.selectedZone = null;
         }
+      })
+      .addCase(cloneZone.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(cloneZone.fulfilled, (state, action) => {
+        state.loading = false;
+        state.zones.unshift(action.payload);
+        state.totalCount++;
+      })
+      .addCase(cloneZone.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to clone zone';
+      })
+      .addCase(exportZone.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(exportZone.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(exportZone.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to export zone';
       });
   },
 });
