@@ -150,7 +150,7 @@ pub fn zone_create(context: &ServerContext, request: ZoneCreateRequest) -> Resul
     zone.minimum = request.minimum.unwrap_or(3600);
     zones.add_zone(zone.clone());
 
-    zones.save()?;
+    zones.save(&context.zones_dir)?;
 
     Ok(zone)
 }
@@ -184,7 +184,7 @@ pub fn record_create(context: &ServerContext, zone: &str, request: RecordRequest
         .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
     zone.add_record(&rr);
 
-    zones.save()?;
+    zones.save(&context.zones_dir)?;
 
     Ok(())
 }
@@ -198,7 +198,7 @@ pub fn record_delete(context: &ServerContext, zone: &str, request: RecordRequest
         .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
     zone.delete_record(&rr);
 
-    zones.save()?;
+    zones.save(&context.zones_dir)?;
 
     Ok(())
 }

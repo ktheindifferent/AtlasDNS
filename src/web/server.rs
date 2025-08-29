@@ -1365,7 +1365,7 @@ impl<'a> WebServer<'a> {
             "api_enabled": self.context.enable_api,
             "ssl_enabled": self.context.ssl_config.enabled,
             "recursive_enabled": self.context.allow_recursive,
-            "zones_directory": self.context.zones_dir,
+            "zones_directory": &*self.context.zones_dir,
             "resolve_strategy": match self.context.resolve_strategy {
                 crate::dns::context::ResolveStrategy::Recursive => "Recursive",
                 crate::dns::context::ResolveStrategy::Forward { .. } => "Forward",

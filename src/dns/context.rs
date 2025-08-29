@@ -52,6 +52,30 @@ pub enum ResolveStrategy {
 /// 
 /// This struct holds all the configuration and runtime state needed by the DNS server,
 /// including the authority zones, cache, resolution strategy, and server settings.
+///
+/// # Configuration String Management
+/// 
+/// For configuration strings that may be updated at runtime (like `zones_dir`), 
+/// this codebase uses `Arc<str>` instead of `&'static str`. This provides:
+/// 
+/// - **Shared ownership**: Multiple components can hold references to the same string
+/// - **Automatic memory management**: Memory is freed when the last reference is dropped
+/// - **No memory leaks**: Unlike `Box::leak`, Arc properly deallocates memory
+/// - **Thread safety**: Arc is thread-safe and can be shared across threads
+/// 
+/// Example:
+/// ```ignore
+/// // DO: Use Arc<str> for runtime-configurable strings
+/// pub struct Config {
+///     pub path: Arc<str>,
+/// }
+/// 
+/// // DON'T: Use Box::leak (causes memory leaks)
+/// config.path = Box::leak(path.into_boxed_str());
+/// 
+/// // DO: Convert to Arc<str>
+/// config.path = Arc::from(path.as_str());
+/// ```
 pub struct ServerContext {
     pub authority: Authority,
     pub cache: SynchronizedCache,
@@ -65,7 +89,7 @@ pub struct ServerContext {
     pub enable_tcp: bool,
     pub enable_api: bool,
     pub statistics: ServerStatistics,
-    pub zones_dir: &'static str,
+    pub zones_dir: Arc<str>,
     pub ssl_config: SslConfig,
     pub metrics: Arc<MetricsCollector>,
     pub logger: Arc<StructuredLogger>,
@@ -106,7 +130,7 @@ impl ServerContext {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
             },
-            zones_dir: "/opt/atlas/zones",
+            zones_dir: Arc::from("/opt/atlas/zones"),
             ssl_config: SslConfig::default(),
             metrics: metrics.clone(),
             logger,
@@ -116,7 +140,7 @@ impl ServerContext {
 
     pub fn initialize(&mut self) -> Result<()> {
         // Create zones directory if it doesn't exist
-        fs::create_dir_all(self.zones_dir)?;
+        fs::create_dir_all(&*self.zones_dir)?;
 
         // Initialize Prometheus metrics
         crate::dns::metrics::initialize_metrics();
@@ -137,7 +161,7 @@ impl ServerContext {
         self.client.run()?;
 
         // Load authority data
-        self.authority.load()?;
+        self.authority.load(&self.zones_dir)?;
 
         Ok(())
     }
@@ -160,6 +184,7 @@ pub mod tests {
 
     use crate::dns::authority::Authority;
     use crate::dns::cache::SynchronizedCache;
+    use crate::dns::protocol::DnsPacket;
 
     use crate::dns::client::tests::{DnsStubClient, StubCallback};
 
@@ -189,11 +214,49 @@ pub mod tests {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
             },
-            zones_dir: "/opt/atlas/zones",
+            zones_dir: Arc::from("/opt/atlas/zones"),
             ssl_config: SslConfig::default(),
             metrics: Arc::new(MetricsCollector::new()),
             logger,
             connection_pool: None,
         })
+    }
+
+    #[test]
+    fn test_zones_dir_memory_management() {
+        use std::sync::Arc;
+        
+        // Test that zones_dir uses Arc for shared ownership
+        let ctx1 = create_test_context(Box::new(|_, _, _, _| Ok(DnsPacket::new())));
+        let zones_dir1 = ctx1.zones_dir.clone();
+        
+        // Create another reference to the same Arc
+        let zones_dir2 = zones_dir1.clone();
+        
+        // Both should point to the same memory
+        assert!(Arc::ptr_eq(&zones_dir1, &zones_dir2));
+        
+        // Test that we can update zones_dir without leaking memory
+        let mut ctx2 = ServerContext::new().unwrap();
+        let original_dir = ctx2.zones_dir.clone();
+        ctx2.zones_dir = Arc::from("/tmp/new_zones");
+        
+        // The original Arc will be dropped when no longer referenced
+        assert_eq!(&*ctx2.zones_dir, "/tmp/new_zones");
+        assert_eq!(&*original_dir, "/opt/atlas/zones");
+    }
+
+    #[test]
+    fn test_zones_dir_update_from_cmdline() {
+        // Test that zones_dir can be updated from command line args
+        let mut ctx = ServerContext::new().unwrap();
+        assert_eq!(&*ctx.zones_dir, "/opt/atlas/zones");
+        
+        // Simulate command line update
+        let new_dir = String::from("/custom/zones/path");
+        ctx.zones_dir = Arc::from(new_dir.as_str());
+        assert_eq!(&*ctx.zones_dir, "/custom/zones/path");
+        
+        // Memory for the old Arc will be automatically freed
     }
 }
