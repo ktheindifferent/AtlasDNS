@@ -1,4 +1,54 @@
-//! contains the data store for local zones
+//! Contains the data store for local zones
+//! 
+//! ## Wildcard DNS Record Support
+//! 
+//! The Authority supports wildcard DNS records using the `*` character:
+//! - `*.example.com` - Matches any single-level subdomain (e.g., `foo.example.com`, `bar.example.com`)
+//! - `*.sub.example.com` - Matches any subdomain under `sub.example.com`
+//! - Wildcards only match one level of subdomain (not multiple levels)
+//! - Exact matches always take precedence over wildcard matches
+//! 
+//! ## Root/Apex Record Support
+//! 
+//! The Authority supports the `@` symbol to reference the zone apex (root domain):
+//! - `@` - Refers to the zone root (e.g., `example.com` for the `example.com` zone)
+//! - `@.example.com` - Alternative notation for the zone apex
+//! - Useful for setting records directly on the domain itself (A, MX, TXT records)
+//! 
+//! ## Query Resolution Precedence
+//! 
+//! When resolving DNS queries, the following precedence is used:
+//! 1. Exact domain match (highest priority)
+//! 2. Wildcard match (if no exact match found)
+//! 3. NXDOMAIN response (if no matches found)
+//! 
+//! ## Examples
+//! 
+//! ```ignore
+//! // Create zone with wildcard and root records
+//! let mut zone = Zone::new("example.com", "ns1.example.com", "admin.example.com");
+//! 
+//! // Root domain A record
+//! zone.add_record(&DnsRecord::A {
+//!     domain: "@".to_string(),
+//!     addr: "192.168.1.1".parse().unwrap(),
+//!     ttl: TransientTtl(3600),
+//! });
+//! 
+//! // Wildcard A record for all subdomains
+//! zone.add_record(&DnsRecord::A {
+//!     domain: "*.example.com".to_string(),
+//!     addr: "192.168.1.100".parse().unwrap(),
+//!     ttl: TransientTtl(3600),
+//! });
+//! 
+//! // Specific subdomain (overrides wildcard)
+//! zone.add_record(&DnsRecord::A {
+//!     domain: "www.example.com".to_string(),
+//!     addr: "192.168.1.10".parse().unwrap(),
+//!     ttl: TransientTtl(3600),
+//! });
+//! ```
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
@@ -107,8 +157,8 @@ impl<'a> Zones {
         }
     }
 
-    pub fn load(&mut self) -> Result<()> {
-        let zones_dir = Path::new("/opt/atlas/zones").read_dir()?;
+    pub fn load(&mut self, zones_dir: &str) -> Result<()> {
+        let zones_dir = Path::new(zones_dir).read_dir()?;
 
         for wrapped_filename in zones_dir {
             let filename = match wrapped_filename {
@@ -148,8 +198,8 @@ impl<'a> Zones {
         Ok(())
     }
 
-    pub fn save(&mut self) -> Result<()> {
-        let zones_dir = Path::new("/opt/atlas/zones");
+    pub fn save(&mut self, zones_dir: &str) -> Result<()> {
+        let zones_dir = Path::new(zones_dir);
         for zone in self.zones.values() {
             let filename = zones_dir.join(Path::new(&zone.domain));
             let mut zone_file = match File::create(&filename) {
@@ -210,12 +260,12 @@ impl Authority {
         }
     }
 
-    pub fn load(&self) -> Result<()> {
+    pub fn load(&self, zones_dir: &str) -> Result<()> {
         let mut zones = self
             .zones
             .write()
             .map_err(|_| AuthorityError::PoisonedLock)?;
-        zones.load()?;
+        zones.load(zones_dir)?;
 
         Ok(())
     }
@@ -245,9 +295,12 @@ impl Authority {
 
         log::info!("zone: {:?}", zone);
 
-
         let mut packet = DnsPacket::new();
         packet.header.authoritative_answer = true;
+
+        // Collect exact matches and wildcard matches separately
+        let mut exact_matches = Vec::new();
+        let mut wildcard_matches = Vec::new();
 
         for rec in &zone.records {
             let domain = match rec.get_domain() {
@@ -255,25 +308,70 @@ impl Authority {
                 None => continue,
             };
 
-            // TODO - Wildcard and @ support
-
             log::info!("qname: {:?}", qname);
             log::info!("domain: {:?}", domain);
 
-            // if &domain != qname {
-            //     continue;
-            // }
+            // Handle @ symbol (zone apex)
+            let normalized_domain = if domain == "@" || domain == format!("@.{}", zone.domain) {
+                zone.domain.clone()
+            } else {
+                domain.clone()
+            };
 
-            let rtype = rec.get_querytype();
-
-            log::info!("qtype: {:?}", qtype);
-            log::info!("rtype: {:?}", rtype);
-
-
-            
-            if qtype == rtype || (qtype == QueryType::A && rtype == QueryType::Cname) {
-                packet.answers.push(rec.clone());
+            // Check for exact match
+            if &normalized_domain == qname {
+                let rtype = rec.get_querytype();
+                log::info!("qtype: {:?}", qtype);
+                log::info!("rtype: {:?}", rtype);
+                
+                if qtype == rtype || (qtype == QueryType::A && rtype == QueryType::Cname) {
+                    exact_matches.push(rec.clone());
+                }
+            } 
+            // Check for wildcard match
+            else if normalized_domain.starts_with("*.") {
+                // Extract the wildcard suffix (everything after "*.")
+                let wildcard_suffix = &normalized_domain[2..];
+                
+                // Check if the query name matches the wildcard pattern
+                if qname.ends_with(wildcard_suffix) {
+                    // Ensure it's not an exact match with the wildcard domain itself
+                    if qname != &normalized_domain {
+                        // Verify there's at least one label before the wildcard suffix
+                        let prefix_len = qname.len() - wildcard_suffix.len();
+                        if prefix_len > 0 && qname.chars().nth(prefix_len - 1) == Some('.') {
+                            let rtype = rec.get_querytype();
+                            
+                            if qtype == rtype || (qtype == QueryType::A && rtype == QueryType::Cname) {
+                                // Clone the record and update the domain to match the query
+                                let mut matched_rec = rec.clone();
+                                // Update the domain field in the cloned record
+                                match &mut matched_rec {
+                                    DnsRecord::A { ref mut domain, .. } |
+                                    DnsRecord::Aaaa { ref mut domain, .. } |
+                                    DnsRecord::Ns { ref mut domain, .. } |
+                                    DnsRecord::Cname { ref mut domain, .. } |
+                                    DnsRecord::Srv { ref mut domain, .. } |
+                                    DnsRecord::Mx { ref mut domain, .. } |
+                                    DnsRecord::Txt { ref mut domain, .. } |
+                                    DnsRecord::Soa { ref mut domain, .. } |
+                                    DnsRecord::Unknown { ref mut domain, .. } => {
+                                        *domain = qname.to_string();
+                                    }
+                                }
+                                wildcard_matches.push(matched_rec);
+                            }
+                        }
+                    }
+                }
             }
+        }
+
+        // Prioritize exact matches over wildcard matches
+        if !exact_matches.is_empty() {
+            packet.answers = exact_matches;
+        } else if !wildcard_matches.is_empty() {
+            packet.answers = wildcard_matches;
         }
 
         if packet.answers.is_empty() {
@@ -561,3 +659,6 @@ impl Authority {
         self.create_zone(zone_name, &format!("ns1.{}", zone_name), &format!("admin.{}", zone_name))
     }
 }
+
+#[cfg(test)]
+mod authority_test;

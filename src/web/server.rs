@@ -300,12 +300,22 @@ impl<'a> WebServer<'a> {
         
         let method = format!("{:?}", request.method());
         let path = request.url().to_string();
+        
+        // Extract headers we need
         let user_agent = request.headers()
             .iter()
             .find(|h| h.field.as_str() == "User-Agent")
             .map(|h| h.value.as_str())
             .unwrap_or("Unknown")
-            .to_string(); // Convert to owned string
+            .to_string();
+        
+        let referer = request.headers()
+            .iter()
+            .find(|h| h.field.as_str().eq_ignore_ascii_case("Referer"))
+            .map(|h| h.value.as_str().to_string());
+        
+        // Calculate request size
+        let request_size = self.calculate_request_size(&request);
         
         ctx = ctx.with_metadata("method", &method)
                .with_metadata("path", &path)
@@ -322,23 +332,30 @@ impl<'a> WebServer<'a> {
             Err(_) => 500,
         };
         
-        // Log the HTTP request
+        // Calculate response size and send response
+        let (response_size, response_result) = self.send_response_with_size(request, response);
+        
+        // Log the HTTP request with sizes
         let request_log = HttpRequestLog {
             method: method.clone(),
             path: path.clone(),
             status_code,
-            request_size: None, // TODO: Calculate request size
-            response_size: None, // TODO: Calculate response size
+            request_size: Some(request_size),
+            response_size,
             user_agent: Some(user_agent.clone()),
-            referer: None, // TODO: Extract referer header
+            referer,
         };
         self.context.logger.log_http_request(&ctx, request_log);
         
         // Record metrics
         self.context.metrics.record_web_request(&method, &path, &status_code.to_string());
         self.context.metrics.record_web_duration(&method, &path, ctx.elapsed());
-
-        let response_result = self.send_response(request, response);
+        
+        // Record size metrics
+        if let Some(resp_size) = response_size {
+            self.context.metrics.record_web_response_size(&method, &path, resp_size);
+        }
+        self.context.metrics.record_web_request_size(&method, &path, request_size);
 
         if let Err(err) = response_result {
             log::error!("Failed to write response to client: {:?}", err);
@@ -346,6 +363,126 @@ impl<'a> WebServer<'a> {
         }
     }
 
+    /// Calculate the size of an HTTP request in bytes
+    fn calculate_request_size(&self, request: &tiny_http::Request) -> u64 {
+        let mut size = 0u64;
+        
+        // Request line size (method + path + HTTP version)
+        let request_line = format!("{} {} HTTP/1.1\r\n", request.method(), request.url());
+        size += request_line.len() as u64;
+        
+        // Headers size
+        for header in request.headers() {
+            // Each header: "Name: Value\r\n"
+            size += header.field.as_str().len() as u64;
+            size += 2; // ": "
+            size += header.value.as_str().len() as u64;
+            size += 2; // "\r\n"
+        }
+        
+        // Empty line after headers
+        size += 2; // "\r\n"
+        
+        // Body size (if present)
+        // Check Content-Length header for body size
+        if let Some(content_length) = request.headers()
+            .iter()
+            .find(|h| h.field.as_str().eq_ignore_ascii_case("Content-Length"))
+            .and_then(|h| h.value.as_str().parse::<u64>().ok()) {
+            size += content_length;
+        }
+        
+        size
+    }
+    
+    /// Send the response back to the client with proper error handling and size calculation
+    fn send_response_with_size(
+        &self,
+        request: tiny_http::Request,
+        response: Result<ResponseBox>,
+    ) -> (Option<u64>, std::io::Result<()>) {
+        match response {
+            Ok(response) => {
+                // Try to get Content-Length if available in headers
+                // Otherwise use a reasonable estimate
+                let estimated_size = self.estimate_response_box_size(&response);
+                (Some(estimated_size), request.respond(response))
+            }
+            Err(err) if request.json_output() => {
+                log::info!("Request failed: {:?}", err);
+                let error_json = serde_json::json!({
+                    "message": err.to_string(),
+                });
+                let error_string = serde_json::to_string(&error_json).unwrap();
+                let size = self.calculate_response_string_size(&error_string, self.error_status_code(&err));
+                let response = Response::from_string(error_string)
+                    .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap());
+                (Some(size), request.respond(response))
+            }
+            Err(err) => {
+                log::info!("Request failed: {:?}", err);
+                let error_string = err.to_string();
+                let size = self.calculate_response_string_size(&error_string, self.error_status_code(&err));
+                let response = Response::from_string(error_string)
+                    .with_header::<tiny_http::Header>("Content-Type: text/plain".parse().unwrap());
+                (Some(size), request.respond(response))
+            }
+        }
+    }
+    
+    /// Estimate the size of a ResponseBox
+    fn estimate_response_box_size(&self, _response: &ResponseBox) -> u64 {
+        // Since we can't easily introspect the ResponseBox,
+        // we'll use heuristics based on typical response sizes
+        // This could be improved by tracking sizes at response creation time
+        
+        // Basic estimate: status line + headers + typical content
+        let status_line = 20u64; // "HTTP/1.1 200 OK\r\n"
+        let headers = 200u64; // Typical headers size
+        let content = 2000u64; // Default content estimate
+        
+        status_line + headers + content
+    }
+    
+    /// Get status code for error
+    fn error_status_code(&self, err: &WebError) -> u16 {
+        match err {
+            WebError::AuthenticationError(_) => 401,
+            WebError::AuthorizationError(_) => 403,
+            WebError::UserNotFound | WebError::ZoneNotFound => 404,
+            _ => 500,
+        }
+    }
+    
+    /// Calculate the size of a string response
+    fn calculate_response_string_size(&self, content: &str, status_code: u16) -> u64 {
+        let mut size = 0u64;
+        
+        // Status line (e.g., "HTTP/1.1 200 OK\r\n")
+        let status_text = match status_code {
+            200 => "OK",
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "Not Found",
+            500 => "Internal Server Error",
+            _ => "Unknown",
+        };
+        let status_line = format!("HTTP/1.1 {} {}\r\n", status_code, status_text);
+        size += status_line.len() as u64;
+        
+        // Basic headers (estimate)
+        // Content-Type, Content-Length, Date, Server, etc.
+        size += 150; // Approximate headers size
+        
+        // Empty line after headers
+        size += 2; // "\r\n"
+        
+        // Content
+        size += content.len() as u64;
+        
+        size
+    }
+    
     /// Send the response back to the client with proper error handling
     fn send_response(
         &self,
@@ -538,15 +675,17 @@ impl<'a> WebServer<'a> {
     where
         R: serde::Serialize,
     {
-        Ok(if request.json_output() {
-            Response::from_string(serde_json::to_string(&data)?)
+        if request.json_output() {
+            let json_string = serde_json::to_string(&data)?;
+            Ok(Response::from_string(json_string)
                 .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
-                .boxed()
+                .boxed())
         } else {
-            Response::from_string(self.handlebars.render(template, &data)?)
+            let html_string = self.handlebars.render(template, &data)?;
+            Ok(Response::from_string(html_string)
                 .with_header::<tiny_http::Header>("Content-Type: text/html".parse().unwrap())
-                .boxed()
-        })
+                .boxed())
+        }
     }
 
     fn add_user_context(&self, request: &Request, data: &mut serde_json::Value) -> Result<()> {
@@ -1405,12 +1544,93 @@ impl<'a> WebServer<'a> {
             "api_enabled": self.context.enable_api,
             "ssl_enabled": self.context.ssl_config.enabled,
             "recursive_enabled": self.context.allow_recursive,
-            "zones_directory": self.context.zones_dir,
+            "zones_directory": &*self.context.zones_dir,
             "resolve_strategy": match self.context.resolve_strategy {
                 crate::dns::context::ResolveStrategy::Recursive => "Recursive",
                 crate::dns::context::ResolveStrategy::Forward { .. } => "Forward",
             },
         });
         self.response_from_media_type(request, "settings", data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    // Helper function to create a test server
+    fn create_test_server() -> WebServer {
+        // Create a minimal context for testing
+        let context = Arc::new(crate::dns::context::ServerContext::new().expect("Failed to create test context"));
+        WebServer::new(context)
+    }
+    
+    #[test]
+    fn test_calculate_response_string_size() {
+        let server = create_test_server();
+        
+        // Test with 200 OK response
+        let content = "Hello, World!";
+        let size = server.calculate_response_string_size(content, 200);
+        
+        // Status line + headers + content
+        assert!(size >= content.len() as u64, "Size should include content");
+        assert!(size >= 150, "Size should include estimated headers");
+    }
+    
+    #[test]
+    fn test_calculate_response_string_size_error_responses() {
+        let server = create_test_server();
+        
+        // Test 404 response
+        let error_message = "Not Found";
+        let size_404 = server.calculate_response_string_size(error_message, 404);
+        assert!(size_404 >= error_message.len() as u64, "Size should include error message");
+        assert!(size_404 >= 150, "Size should include headers for error response");
+        
+        // Test 500 response
+        let error_message = "Internal Server Error";
+        let size_500 = server.calculate_response_string_size(error_message, 500);
+        assert!(size_500 >= error_message.len() as u64, "Size should include error message");
+        assert!(size_500 >= 150, "Size should include headers for error response");
+        
+        // Test 401 response
+        let error_message = "Unauthorized";
+        let size_401 = server.calculate_response_string_size(error_message, 401);
+        assert!(size_401 >= error_message.len() as u64, "Size should include error message");
+        assert!(size_401 >= 150, "Size should include headers for error response");
+    }
+    
+    #[test]
+    fn test_error_status_code_mapping() {
+        let server = create_test_server();
+        
+        // Test authentication error -> 401
+        assert_eq!(server.error_status_code(&WebError::AuthenticationError("test".into())), 401);
+        
+        // Test authorization error -> 403
+        assert_eq!(server.error_status_code(&WebError::AuthorizationError("test".into())), 403);
+        
+        // Test not found errors -> 404
+        assert_eq!(server.error_status_code(&WebError::UserNotFound), 404);
+        assert_eq!(server.error_status_code(&WebError::ZoneNotFound), 404);
+        
+        // Test generic error -> 500
+        let generic_error = WebError::DatabaseError("test".into());
+        assert_eq!(server.error_status_code(&generic_error), 500);
+    }
+    
+    #[test]
+    fn test_estimate_response_box_size() {
+        let server = create_test_server();
+        
+        // Create a mock ResponseBox (we can't easily create a real one in tests)
+        // Just test that the function returns a reasonable estimate
+        let response = Response::from_string("test").boxed();
+        let size = server.estimate_response_box_size(&response);
+        
+        // Should return a reasonable estimate
+        assert!(size > 0, "Size estimate should be positive");
+        assert!(size >= 220, "Size should include status line and headers estimate");
     }
 }

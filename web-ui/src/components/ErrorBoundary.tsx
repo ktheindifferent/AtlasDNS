@@ -8,6 +8,8 @@ import {
   AlertTitle,
 } from '@mui/material';
 import { Refresh, BugReport } from '@mui/icons-material';
+import errorMonitoring from '../services/errorMonitoring';
+import { enqueueSnackbar } from 'notistack';
 
 interface Props {
   children: ReactNode;
@@ -49,18 +51,35 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   logErrorToService = (error: Error, errorInfo: ErrorInfo) => {
-    // TODO: Implement error logging to monitoring service
-    // Example: Sentry, LogRocket, etc.
-    const errorData = {
-      message: error.message,
-      stack: error.stack,
-      componentStack: errorInfo.componentStack,
-      timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent,
-      url: window.location.href,
-    };
-    
-    console.log('Error logged to service:', errorData);
+    // Log error to monitoring service
+    errorMonitoring.logError(error, errorInfo, {
+      errorCount: this.state.errorCount + 1,
+      component: 'ErrorBoundary',
+    });
+
+    // Add breadcrumb for debugging
+    errorMonitoring.addBreadcrumb({
+      message: `Error caught by boundary: ${error.message}`,
+      category: 'error-boundary',
+      level: 'error',
+      data: {
+        errorCount: this.state.errorCount + 1,
+      },
+    });
+
+    // Show toast notification for user feedback
+    if (this.state.errorCount === 0) {
+      // Only show toast for first error to avoid spam
+      enqueueSnackbar('An unexpected error occurred. Our team has been notified.', { 
+        variant: 'error',
+        autoHideDuration: 5000,
+      });
+    }
+
+    // Log to console in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('ErrorBoundary caught:', error, errorInfo);
+    }
   };
 
   handleReset = () => {

@@ -164,7 +164,6 @@ lazy_static! {
         "Active user sessions",
         &["role"]
     ).unwrap();
-
     /// Unique clients gauge
     pub static ref UNIQUE_CLIENTS: IntGauge = register_int_gauge!(
         "atlas_unique_clients_total",
@@ -190,6 +189,22 @@ lazy_static! {
         "atlas_cache_hit_rate",
         "Cache hit rate percentage",
         &["window"]
+    ).unwrap();
+    
+    /// Web request size in bytes
+    pub static ref WEB_REQUEST_SIZE: HistogramVec = register_histogram_vec!(
+        "atlas_web_request_size_bytes",
+        "Web request size in bytes",
+        &["method", "endpoint"],
+        vec![100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
+    ).unwrap();
+    
+    /// Web response size in bytes
+    pub static ref WEB_RESPONSE_SIZE: HistogramVec = register_histogram_vec!(
+        "atlas_web_response_size_bytes",
+        "Web response size in bytes",
+        &["method", "endpoint"],
+        vec![100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
     ).unwrap();
 }
 
@@ -606,6 +621,20 @@ impl MetricsCollector {
         USER_SESSIONS
             .with_label_values(&[role])
             .set(count);
+    }
+    
+    /// Record web request size
+    pub fn record_web_request_size(&self, method: &str, endpoint: &str, size: u64) {
+        WEB_REQUEST_SIZE
+            .with_label_values(&[method, endpoint])
+            .observe(size as f64);
+    }
+    
+    /// Record web response size
+    pub fn record_web_response_size(&self, method: &str, endpoint: &str, size: u64) {
+        WEB_RESPONSE_SIZE
+            .with_label_values(&[method, endpoint])
+            .observe(size as f64);
     }
 
     /// Record upstream query duration
