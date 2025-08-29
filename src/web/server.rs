@@ -1022,6 +1022,53 @@ impl<'a> WebServer<'a> {
             (0, 0)
         };
         
+        // Get comprehensive metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        
+        // Extract query type distribution
+        let query_types = metrics_summary.query_type_distribution;
+        let a_stats = query_types.get("A").cloned().unwrap_or((0, 0.0));
+        let aaaa_stats = query_types.get("AAAA").cloned().unwrap_or((0, 0.0));
+        let cname_stats = query_types.get("CNAME").cloned().unwrap_or((0, 0.0));
+        let mx_stats = query_types.get("MX").cloned().unwrap_or((0, 0.0));
+        let txt_stats = query_types.get("TXT").cloned().unwrap_or((0, 0.0));
+        
+        // Extract response code distribution
+        let response_codes = metrics_summary.response_code_distribution;
+        let noerror_stats = response_codes.get("NOERROR").cloned().unwrap_or((0, 0.0));
+        let nxdomain_stats = response_codes.get("NXDOMAIN").cloned().unwrap_or((0, 0.0));
+        let servfail_stats = response_codes.get("SERVFAIL").cloned().unwrap_or((0, 0.0));
+        let other_count: u64 = response_codes.iter()
+            .filter(|(k, _)| !matches!(k.as_str(), "NOERROR" | "NXDOMAIN" | "SERVFAIL"))
+            .map(|(_, (count, _))| count)
+            .sum();
+        let total_responses: u64 = response_codes.values().map(|(count, _)| count).sum();
+        let other_percent = if total_responses > 0 {
+            (other_count as f64 / total_responses as f64) * 100.0
+        } else {
+            0.0
+        };
+        
+        // Extract percentiles
+        let percentiles = metrics_summary.percentiles;
+        let p50 = percentiles.get("p50").copied().unwrap_or(0.0) as i64;
+        let p90 = percentiles.get("p90").copied().unwrap_or(0.0) as i64;
+        let p95 = percentiles.get("p95").copied().unwrap_or(0.0) as i64;
+        let p99 = percentiles.get("p99").copied().unwrap_or(0.0) as i64;
+        
+        // Calculate average response time from percentiles (approximation)
+        let avg_response_time = if p50 > 0 {
+            (p50 as f64 + p90 as f64) / 2.0
+        } else {
+            0.0
+        };
+        
+        // Extract protocol distribution
+        let protocol_dist = metrics_summary.protocol_distribution;
+        let doh_stats = protocol_dist.get("DoH").cloned().unwrap_or((0, 0.0));
+        let dot_stats = protocol_dist.get("DoT").cloned().unwrap_or((0, 0.0));
+        let doq_stats = protocol_dist.get("DoQ").cloned().unwrap_or((0, 0.0));
+        
         let data = serde_json::json!({
             "title": "Analytics",
             "total_queries": total_queries,
@@ -1030,41 +1077,34 @@ impl<'a> WebServer<'a> {
             "cache_entries": cache_size,
             "tcp_percent": tcp_percent,
             "udp_percent": udp_percent,
-            // TODO: Add cache hit rate tracking to metrics
-            "cache_hit_rate": 0,
-            // TODO: Add response time tracking to metrics
-            "avg_response_time": 0.0,
-            // TODO: Add unique client tracking
-            "unique_clients": 0,
-            // TODO: Add response code tracking to metrics
-            "noerror_count": 0,
-            "noerror_percent": 0,
-            "nxdomain_count": 0,
-            "nxdomain_percent": 0,
-            "servfail_count": 0,
-            "servfail_percent": 0,
-            "other_count": 0,
-            "other_percent": 0,
-            // TODO: Add query type tracking to metrics
-            "a_count": 0,
-            "a_percent": 0,
-            "aaaa_count": 0,
-            "aaaa_percent": 0,
-            "cname_count": 0,
-            "cname_percent": 0,
-            "mx_count": 0,
-            "mx_percent": 0,
-            "txt_count": 0,
-            "txt_percent": 0,
-            // TODO: Add latency percentile tracking to metrics
-            "p50_latency": 0,
-            "p90_latency": 0,
-            "p95_latency": 0,
-            "p99_latency": 0,
-            // TODO: Add DoH/DoT/DoQ protocol tracking
-            "doh_percent": 0,
-            "dot_percent": 0,
-            "doq_percent": 0,
+            "cache_hit_rate": metrics_summary.cache_hit_rate as i64,
+            "avg_response_time": avg_response_time,
+            "unique_clients": metrics_summary.unique_clients,
+            "noerror_count": noerror_stats.0,
+            "noerror_percent": noerror_stats.1 as i64,
+            "nxdomain_count": nxdomain_stats.0,
+            "nxdomain_percent": nxdomain_stats.1 as i64,
+            "servfail_count": servfail_stats.0,
+            "servfail_percent": servfail_stats.1 as i64,
+            "other_count": other_count,
+            "other_percent": other_percent as i64,
+            "a_count": a_stats.0,
+            "a_percent": a_stats.1 as i64,
+            "aaaa_count": aaaa_stats.0,
+            "aaaa_percent": aaaa_stats.1 as i64,
+            "cname_count": cname_stats.0,
+            "cname_percent": cname_stats.1 as i64,
+            "mx_count": mx_stats.0,
+            "mx_percent": mx_stats.1 as i64,
+            "txt_count": txt_stats.0,
+            "txt_percent": txt_stats.1 as i64,
+            "p50_latency": p50,
+            "p90_latency": p90,
+            "p95_latency": p95,
+            "p99_latency": p99,
+            "doh_percent": doh_stats.1 as i64,
+            "dot_percent": dot_stats.1 as i64,
+            "doq_percent": doq_stats.1 as i64,
         });
         self.response_from_media_type(request, "analytics", data)
     }

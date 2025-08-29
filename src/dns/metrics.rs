@@ -16,8 +16,10 @@ use prometheus::{
     GaugeVec, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec,
     register_gauge_vec, register_histogram_vec,
     register_int_counter_vec, register_int_gauge, register_int_gauge_vec,
-    Encoder, TextEncoder, Registry,
+    Encoder, TextEncoder, Registry, Histogram,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 lazy_static! {
@@ -162,21 +164,281 @@ lazy_static! {
         "Active user sessions",
         &["role"]
     ).unwrap();
+
+    /// Unique clients gauge
+    pub static ref UNIQUE_CLIENTS: IntGauge = register_int_gauge!(
+        "atlas_unique_clients_total",
+        "Total number of unique clients"
+    ).unwrap();
+
+    /// Response time percentiles
+    pub static ref RESPONSE_TIME_PERCENTILES: GaugeVec = register_gauge_vec!(
+        "atlas_response_time_percentiles_ms",
+        "Response time percentiles in milliseconds",
+        &["percentile"]
+    ).unwrap();
+
+    /// Protocol usage counters
+    pub static ref PROTOCOL_USAGE: IntCounterVec = register_int_counter_vec!(
+        "atlas_protocol_usage_total",
+        "Total queries by protocol (DoH, DoT, DoQ, standard)",
+        &["protocol_type"]
+    ).unwrap();
+
+    /// Cache hit rate gauge
+    pub static ref CACHE_HIT_RATE: GaugeVec = register_gauge_vec!(
+        "atlas_cache_hit_rate",
+        "Cache hit rate percentage",
+        &["window"]
+    ).unwrap();
+}
+
+/// Comprehensive metrics summary structure
+#[derive(Debug, Clone)]
+pub struct MetricsSummary {
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_hit_rate: f64,
+    pub unique_clients: usize,
+    pub percentiles: HashMap<String, f64>,
+    pub query_type_distribution: HashMap<String, (u64, f64)>,
+    pub response_code_distribution: HashMap<String, (u64, f64)>,
+    pub protocol_distribution: HashMap<String, (u64, f64)>,
+}
+
+/// Enhanced statistics tracker for real-time metrics
+pub struct MetricsTracker {
+    /// Track unique clients
+    unique_clients: Arc<RwLock<HashSet<String>>>,
+    /// Response time samples for percentile calculation
+    response_times: Arc<RwLock<Vec<f64>>>,
+    /// Cache hit/miss counters for rate calculation
+    cache_hits: Arc<RwLock<u64>>,
+    cache_misses: Arc<RwLock<u64>>,
+    /// Query type distribution
+    query_types: Arc<RwLock<HashMap<String, u64>>>,
+    /// Response code distribution
+    response_codes: Arc<RwLock<HashMap<String, u64>>>,
+    /// Protocol usage tracking
+    protocol_usage: Arc<RwLock<HashMap<String, u64>>>,
+}
+
+impl MetricsTracker {
+    pub fn new() -> Self {
+        Self {
+            unique_clients: Arc::new(RwLock::new(HashSet::new())),
+            response_times: Arc::new(RwLock::new(Vec::new())),
+            cache_hits: Arc::new(RwLock::new(0)),
+            cache_misses: Arc::new(RwLock::new(0)),
+            query_types: Arc::new(RwLock::new(HashMap::new())),
+            response_codes: Arc::new(RwLock::new(HashMap::new())),
+            protocol_usage: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Track a unique client
+    pub fn track_client(&self, client_ip: String) {
+        if let Ok(mut clients) = self.unique_clients.write() {
+            clients.insert(client_ip);
+            UNIQUE_CLIENTS.set(clients.len() as i64);
+        }
+    }
+
+    /// Track response time
+    pub fn track_response_time(&self, duration_ms: f64) {
+        if let Ok(mut times) = self.response_times.write() {
+            times.push(duration_ms);
+            // Keep only last 10000 samples to prevent unbounded growth
+            if times.len() > 10000 {
+                times.drain(0..1000);
+            }
+        }
+    }
+
+    /// Track cache hit
+    pub fn track_cache_hit(&self, record_type: &str) {
+        if let Ok(mut hits) = self.cache_hits.write() {
+            *hits += 1;
+        }
+        DNS_CACHE_OPERATIONS.with_label_values(&["hit", record_type]).inc();
+        self.update_cache_hit_rate();
+    }
+
+    /// Track cache miss
+    pub fn track_cache_miss(&self, record_type: &str) {
+        if let Ok(mut misses) = self.cache_misses.write() {
+            *misses += 1;
+        }
+        DNS_CACHE_OPERATIONS.with_label_values(&["miss", record_type]).inc();
+        self.update_cache_hit_rate();
+    }
+
+    /// Update cache hit rate metric
+    fn update_cache_hit_rate(&self) {
+        if let (Ok(hits), Ok(misses)) = (self.cache_hits.read(), self.cache_misses.read()) {
+            let total = *hits + *misses;
+            if total > 0 {
+                let hit_rate = (*hits as f64 / total as f64) * 100.0;
+                CACHE_HIT_RATE.with_label_values(&["overall"]).set(hit_rate);
+            }
+        }
+    }
+
+    /// Track query type
+    pub fn track_query_type(&self, query_type: &str) {
+        if let Ok(mut types) = self.query_types.write() {
+            *types.entry(query_type.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    /// Track response code
+    pub fn track_response_code(&self, response_code: &str) {
+        if let Ok(mut codes) = self.response_codes.write() {
+            *codes.entry(response_code.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    /// Track protocol usage
+    pub fn track_protocol(&self, protocol: &str) {
+        if let Ok(mut usage) = self.protocol_usage.write() {
+            *usage.entry(protocol.to_string()).or_insert(0) += 1;
+        }
+        PROTOCOL_USAGE.with_label_values(&[protocol]).inc();
+    }
+
+    /// Calculate response time percentiles
+    pub fn calculate_percentiles(&self) -> HashMap<String, f64> {
+        let mut percentiles = HashMap::new();
+        
+        if let Ok(mut times) = self.response_times.write() {
+            if !times.is_empty() {
+                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                
+                let p50_idx = (times.len() as f64 * 0.50) as usize;
+                let p90_idx = (times.len() as f64 * 0.90) as usize;
+                let p95_idx = (times.len() as f64 * 0.95) as usize;
+                let p99_idx = (times.len() as f64 * 0.99) as usize;
+                
+                let p50 = times.get(p50_idx).copied().unwrap_or(0.0);
+                let p90 = times.get(p90_idx).copied().unwrap_or(0.0);
+                let p95 = times.get(p95_idx).copied().unwrap_or(0.0);
+                let p99 = times.get(p99_idx).copied().unwrap_or(0.0);
+                
+                percentiles.insert("p50".to_string(), p50);
+                percentiles.insert("p90".to_string(), p90);
+                percentiles.insert("p95".to_string(), p95);
+                percentiles.insert("p99".to_string(), p99);
+                
+                // Update Prometheus metrics
+                RESPONSE_TIME_PERCENTILES.with_label_values(&["p50"]).set(p50);
+                RESPONSE_TIME_PERCENTILES.with_label_values(&["p90"]).set(p90);
+                RESPONSE_TIME_PERCENTILES.with_label_values(&["p95"]).set(p95);
+                RESPONSE_TIME_PERCENTILES.with_label_values(&["p99"]).set(p99);
+            }
+        }
+        
+        percentiles
+    }
+
+    /// Get cache statistics
+    pub fn get_cache_stats(&self) -> (u64, u64, f64) {
+        let hits = self.cache_hits.read().unwrap_or_else(|e| e.into_inner());
+        let misses = self.cache_misses.read().unwrap_or_else(|e| e.into_inner());
+        let total = *hits + *misses;
+        let hit_rate = if total > 0 {
+            (*hits as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+        (*hits, *misses, hit_rate)
+    }
+
+    /// Get query type distribution
+    pub fn get_query_type_distribution(&self) -> HashMap<String, (u64, f64)> {
+        if let Ok(types) = self.query_types.read() {
+            let total: u64 = types.values().sum();
+            types.iter()
+                .map(|(k, v)| {
+                    let percentage = if total > 0 {
+                        (*v as f64 / total as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    (k.clone(), (*v, percentage))
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        }
+    }
+
+    /// Get response code distribution  
+    pub fn get_response_code_distribution(&self) -> HashMap<String, (u64, f64)> {
+        if let Ok(codes) = self.response_codes.read() {
+            let total: u64 = codes.values().sum();
+            codes.iter()
+                .map(|(k, v)| {
+                    let percentage = if total > 0 {
+                        (*v as f64 / total as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    (k.clone(), (*v, percentage))
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        }
+    }
+
+    /// Get protocol usage distribution
+    pub fn get_protocol_distribution(&self) -> HashMap<String, (u64, f64)> {
+        if let Ok(usage) = self.protocol_usage.read() {
+            let total: u64 = usage.values().sum();
+            usage.iter()
+                .map(|(k, v)| {
+                    let percentage = if total > 0 {
+                        (*v as f64 / total as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    (k.clone(), (*v, percentage))
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        }
+    }
+
+    /// Get unique client count
+    pub fn get_unique_client_count(&self) -> usize {
+        self.unique_clients.read()
+            .map(|clients| clients.len())
+            .unwrap_or(0)
+    }
 }
 
 /// Metrics collector for Atlas DNS server
 pub struct MetricsCollector {
     start_time: Instant,
     registry: Registry,
+    tracker: Arc<MetricsTracker>,
 }
 
 impl MetricsCollector {
     /// Create a new metrics collector
     pub fn new() -> Self {
+        initialize_metrics();
         Self {
             start_time: Instant::now(),
             registry: Registry::new(),
+            tracker: Arc::new(MetricsTracker::new()),
         }
+    }
+
+    /// Get the metrics tracker
+    pub fn tracker(&self) -> Arc<MetricsTracker> {
+        self.tracker.clone()
     }
 
     /// Update server uptime metric
@@ -190,6 +452,15 @@ impl MetricsCollector {
         DNS_QUERIES_TOTAL
             .with_label_values(&[protocol, query_type, zone])
             .inc();
+        
+        // Track query type distribution
+        self.tracker.track_query_type(query_type);
+    }
+
+    /// Record a DNS query with client tracking
+    pub fn record_dns_query_with_client(&self, protocol: &str, query_type: &str, zone: &str, client_ip: &str) {
+        self.record_dns_query(protocol, query_type, zone);
+        self.tracker.track_client(client_ip.to_string());
     }
 
     /// Record a DNS response
@@ -197,21 +468,39 @@ impl MetricsCollector {
         DNS_RESPONSES_TOTAL
             .with_label_values(&[response_code, protocol, query_type])
             .inc();
+        
+        // Track response code distribution
+        self.tracker.track_response_code(response_code);
+    }
+
+    /// Record protocol usage (DoH, DoT, DoQ, standard)
+    pub fn record_protocol_usage(&self, protocol_type: &str) {
+        self.tracker.track_protocol(protocol_type);
     }
 
     /// Record DNS query duration
     pub fn record_query_duration(&self, duration: Duration, protocol: &str, query_type: &str, cache_hit: bool) {
         let cache_hit_str = if cache_hit { "hit" } else { "miss" };
+        let duration_secs = duration.as_secs_f64();
         DNS_QUERY_DURATION
             .with_label_values(&[protocol, query_type, cache_hit_str])
-            .observe(duration.as_secs_f64());
+            .observe(duration_secs);
+        
+        // Track response time in milliseconds for percentile calculation
+        self.tracker.track_response_time(duration_secs * 1000.0);
     }
 
     /// Record cache operation
     pub fn record_cache_operation(&self, operation: &str, record_type: &str) {
-        DNS_CACHE_OPERATIONS
-            .with_label_values(&[operation, record_type])
-            .inc();
+        match operation {
+            "hit" => self.tracker.track_cache_hit(record_type),
+            "miss" => self.tracker.track_cache_miss(record_type),
+            _ => {
+                DNS_CACHE_OPERATIONS
+                    .with_label_values(&[operation, record_type])
+                    .inc();
+            }
+        }
     }
 
     /// Update cache size
@@ -344,12 +633,35 @@ impl MetricsCollector {
     pub fn export_metrics(&self) -> Result<String, Box<dyn std::error::Error>> {
         self.update_uptime();
         
+        // Update percentiles before export
+        self.tracker.calculate_percentiles();
+        
         let encoder = TextEncoder::new();
         let metric_families = prometheus::gather();
         let mut buffer = Vec::new();
         encoder.encode(&metric_families, &mut buffer)?;
         
         Ok(String::from_utf8(buffer)?)
+    }
+
+    /// Get comprehensive metrics summary
+    pub fn get_metrics_summary(&self) -> MetricsSummary {
+        let (cache_hits, cache_misses, cache_hit_rate) = self.tracker.get_cache_stats();
+        let percentiles = self.tracker.calculate_percentiles();
+        let query_types = self.tracker.get_query_type_distribution();
+        let response_codes = self.tracker.get_response_code_distribution();
+        let protocol_usage = self.tracker.get_protocol_distribution();
+        
+        MetricsSummary {
+            cache_hits,
+            cache_misses,
+            cache_hit_rate,
+            unique_clients: self.tracker.get_unique_client_count(),
+            percentiles,
+            query_type_distribution: query_types,
+            response_code_distribution: response_codes,
+            protocol_distribution: protocol_usage,
+        }
     }
 
     /// Get metrics registry
@@ -537,7 +849,6 @@ mod tests {
         assert!(exported.contains("atlas_server_uptime_seconds"));
     }
 
-
     #[test]
     fn test_initialize_metrics() {
         initialize_metrics();
@@ -554,5 +865,181 @@ mod tests {
         let exported = collector.export_metrics().unwrap();
         assert!(exported.contains("atlas_dns_cache_size"));
         assert!(exported.contains("atlas_zones"));
+    }
+
+    #[test]
+    fn test_metrics_tracker_client_tracking() {
+        let tracker = MetricsTracker::new();
+        
+        // Track unique clients
+        tracker.track_client("192.168.1.1".to_string());
+        tracker.track_client("192.168.1.2".to_string());
+        tracker.track_client("192.168.1.1".to_string()); // Duplicate, should not increase count
+        
+        assert_eq!(tracker.get_unique_client_count(), 2);
+    }
+
+    #[test]
+    fn test_metrics_tracker_cache_hit_rate() {
+        let tracker = MetricsTracker::new();
+        
+        // Track cache operations
+        tracker.track_cache_hit("A");
+        tracker.track_cache_hit("AAAA");
+        tracker.track_cache_miss("MX");
+        
+        let (hits, misses, hit_rate) = tracker.get_cache_stats();
+        assert_eq!(hits, 2);
+        assert_eq!(misses, 1);
+        assert!((hit_rate - 66.66).abs() < 1.0); // ~66.66% hit rate
+    }
+
+    #[test]
+    fn test_metrics_tracker_response_times() {
+        let tracker = MetricsTracker::new();
+        
+        // Track response times
+        tracker.track_response_time(10.0);
+        tracker.track_response_time(20.0);
+        tracker.track_response_time(30.0);
+        tracker.track_response_time(40.0);
+        tracker.track_response_time(50.0);
+        
+        let percentiles = tracker.calculate_percentiles();
+        
+        // Verify percentiles are calculated
+        assert!(percentiles.contains_key("p50"));
+        assert!(percentiles.contains_key("p90"));
+        assert!(percentiles.contains_key("p95"));
+        assert!(percentiles.contains_key("p99"));
+        
+        // P50 should be around 30.0 (middle value)
+        let p50 = percentiles.get("p50").unwrap();
+        assert!(*p50 >= 20.0 && *p50 <= 40.0);
+    }
+
+    #[test]
+    fn test_metrics_tracker_query_type_distribution() {
+        let tracker = MetricsTracker::new();
+        
+        // Track query types
+        tracker.track_query_type("A");
+        tracker.track_query_type("A");
+        tracker.track_query_type("AAAA");
+        tracker.track_query_type("MX");
+        
+        let distribution = tracker.get_query_type_distribution();
+        
+        let a_stats = distribution.get("A").unwrap();
+        assert_eq!(a_stats.0, 2); // 2 A queries
+        assert!((a_stats.1 - 50.0).abs() < 1.0); // ~50% of queries
+        
+        let aaaa_stats = distribution.get("AAAA").unwrap();
+        assert_eq!(aaaa_stats.0, 1); // 1 AAAA query
+        assert!((aaaa_stats.1 - 25.0).abs() < 1.0); // ~25% of queries
+    }
+
+    #[test]
+    fn test_metrics_tracker_response_code_distribution() {
+        let tracker = MetricsTracker::new();
+        
+        // Track response codes
+        tracker.track_response_code("NOERROR");
+        tracker.track_response_code("NOERROR");
+        tracker.track_response_code("NOERROR");
+        tracker.track_response_code("NXDOMAIN");
+        
+        let distribution = tracker.get_response_code_distribution();
+        
+        let noerror_stats = distribution.get("NOERROR").unwrap();
+        assert_eq!(noerror_stats.0, 3); // 3 NOERROR responses
+        assert!((noerror_stats.1 - 75.0).abs() < 1.0); // ~75% of responses
+        
+        let nxdomain_stats = distribution.get("NXDOMAIN").unwrap();
+        assert_eq!(nxdomain_stats.0, 1); // 1 NXDOMAIN response
+        assert!((nxdomain_stats.1 - 25.0).abs() < 1.0); // ~25% of responses
+    }
+
+    #[test]
+    fn test_metrics_tracker_protocol_distribution() {
+        let tracker = MetricsTracker::new();
+        
+        // Track protocol usage
+        tracker.track_protocol("standard");
+        tracker.track_protocol("standard");
+        tracker.track_protocol("DoH");
+        tracker.track_protocol("DoT");
+        
+        let distribution = tracker.get_protocol_distribution();
+        
+        let standard_stats = distribution.get("standard").unwrap();
+        assert_eq!(standard_stats.0, 2); // 2 standard queries
+        assert!((standard_stats.1 - 50.0).abs() < 1.0); // ~50% of queries
+        
+        let doh_stats = distribution.get("DoH").unwrap();
+        assert_eq!(doh_stats.0, 1); // 1 DoH query
+        assert!((doh_stats.1 - 25.0).abs() < 1.0); // ~25% of queries
+    }
+
+    #[test]
+    fn test_metrics_collector_with_client_tracking() {
+        let collector = MetricsCollector::new();
+        
+        // Record queries with client tracking
+        collector.record_dns_query_with_client("udp", "A", "example.com", "192.168.1.100");
+        collector.record_dns_query_with_client("tcp", "AAAA", "example.com", "192.168.1.101");
+        collector.record_dns_query_with_client("udp", "MX", "example.com", "192.168.1.100"); // Same client
+        
+        let summary = collector.get_metrics_summary();
+        assert_eq!(summary.unique_clients, 2); // Only 2 unique clients
+    }
+
+    #[test]
+    fn test_metrics_collector_protocol_usage() {
+        let collector = MetricsCollector::new();
+        
+        // Record protocol usage
+        collector.record_protocol_usage("DoH");
+        collector.record_protocol_usage("DoT");
+        collector.record_protocol_usage("DoH");
+        collector.record_protocol_usage("standard");
+        
+        let summary = collector.get_metrics_summary();
+        let protocol_dist = summary.protocol_distribution;
+        
+        assert_eq!(protocol_dist.get("DoH").unwrap().0, 2);
+        assert_eq!(protocol_dist.get("DoT").unwrap().0, 1);
+        assert_eq!(protocol_dist.get("standard").unwrap().0, 1);
+    }
+
+    #[test]
+    fn test_comprehensive_metrics_summary() {
+        let collector = MetricsCollector::new();
+        
+        // Simulate various DNS operations
+        collector.record_dns_query_with_client("udp", "A", "example.com", "192.168.1.1");
+        collector.record_dns_response("NOERROR", "udp", "A");
+        collector.record_cache_operation("hit", "A");
+        collector.record_query_duration(Duration::from_millis(10), "udp", "A", true);
+        
+        collector.record_dns_query_with_client("tcp", "AAAA", "example.org", "192.168.1.2");
+        collector.record_dns_response("NXDOMAIN", "tcp", "AAAA");
+        collector.record_cache_operation("miss", "AAAA");
+        collector.record_query_duration(Duration::from_millis(50), "tcp", "AAAA", false);
+        
+        collector.record_protocol_usage("DoH");
+        collector.record_protocol_usage("standard");
+        
+        let summary = collector.get_metrics_summary();
+        
+        // Verify comprehensive metrics
+        assert_eq!(summary.unique_clients, 2);
+        assert_eq!(summary.cache_hits, 1);
+        assert_eq!(summary.cache_misses, 1);
+        assert!((summary.cache_hit_rate - 50.0).abs() < 1.0);
+        assert!(!summary.percentiles.is_empty());
+        assert!(!summary.query_type_distribution.is_empty());
+        assert!(!summary.response_code_distribution.is_empty());
+        assert!(!summary.protocol_distribution.is_empty());
     }
 }
