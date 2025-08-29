@@ -107,8 +107,8 @@ impl<'a> Zones {
         }
     }
 
-    pub fn load(&mut self) -> Result<()> {
-        let zones_dir = Path::new("/opt/atlas/zones").read_dir()?;
+    pub fn load(&mut self, zones_dir: &str) -> Result<()> {
+        let zones_dir = Path::new(zones_dir).read_dir()?;
 
         for wrapped_filename in zones_dir {
             let filename = match wrapped_filename {
@@ -148,8 +148,8 @@ impl<'a> Zones {
         Ok(())
     }
 
-    pub fn save(&mut self) -> Result<()> {
-        let zones_dir = Path::new("/opt/atlas/zones");
+    pub fn save(&mut self, zones_dir: &str) -> Result<()> {
+        let zones_dir = Path::new(zones_dir);
         for zone in self.zones.values() {
             let filename = zones_dir.join(Path::new(&zone.domain));
             let mut zone_file = match File::create(&filename) {
@@ -210,12 +210,12 @@ impl Authority {
         }
     }
 
-    pub fn load(&self) -> Result<()> {
+    pub fn load(&self, zones_dir: &str) -> Result<()> {
         let mut zones = self
             .zones
             .write()
             .map_err(|_| AuthorityError::PoisonedLock)?;
-        zones.load()?;
+        zones.load(zones_dir)?;
 
         Ok(())
     }

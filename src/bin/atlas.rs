@@ -153,7 +153,7 @@ fn main() {
 
         match opt_matches.opt_str("j") {
             Some(zones_dir) => {
-                ctx.zones_dir = Box::leak(zones_dir.into_boxed_str());
+                ctx.zones_dir = Arc::from(zones_dir.as_str());
             }
             None => {
                 log::info!("Zones dir not specified, using default: {}", ctx.zones_dir);
