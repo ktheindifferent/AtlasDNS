@@ -24,6 +24,7 @@ pub enum WebError {
     ZoneNotFound,
     LockError,
     InvalidRequest,
+    InvalidInput(String),
     AuthenticationError(String),
     AuthorizationError(String),
     SessionExpired,

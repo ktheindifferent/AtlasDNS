@@ -70,7 +70,7 @@ pub enum MitigationMode {
 }
 
 /// Threat level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
 pub enum ThreatLevel {
     #[default]
     None,
@@ -540,7 +540,7 @@ impl DDoSProtection {
         // Check for query types commonly used in amplification attacks
         if let Some(question) = packet.questions.first() {
             match question.qtype {
-                QueryType::ANY | QueryType::TXT | QueryType::DNSKEY => {
+                QueryType::Txt | QueryType::Unknown(255) => { // 255 is ANY
                     // Calculate potential response size vs query size
                     let query_size = 50; // Approximate
                     let potential_response_size = 500; // Approximate
@@ -726,7 +726,7 @@ impl SecurityComponent for DDoSProtection {
 
     fn update_config(&self, config: serde_json::Value) -> Result<(), DnsError> {
         let new_config: DDoSConfig = serde_json::from_value(config)
-            .map_err(|e| DnsError::InvalidInput(e.to_string()))?;
+            .map_err(|_| DnsError::InvalidInput)?;
         *self.config.write() = new_config;
         Ok(())
     }

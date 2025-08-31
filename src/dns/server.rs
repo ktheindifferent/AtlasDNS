@@ -371,7 +371,7 @@ impl DnsUdpServer {
 
         log::info!("req: {:?}", request.clone());
 
-        let mut packet = execute_query_with_ip(context, request, Some(src));
+        let mut packet = execute_query_with_ip(context, request, Some(src.ip()));
         let _ = packet.write(&mut res_buffer, size_limit);
 
         // Fire off the response
@@ -565,7 +565,8 @@ impl DnsServer for DnsTcpServer {
                     let mut res_buffer = VectorPacketBuffer::new();
                     log::info!("req: {:?}", request.clone());
 
-                    let mut packet = execute_query_with_ip(context.clone(), &request, Some(src));
+                    let src_ip = stream.peer_addr().ok().map(|addr| addr.ip());
+                    let mut packet = execute_query_with_ip(context.clone(), &request, src_ip);
                     ignore_or_report!(
                         packet.write(&mut res_buffer, 0xFFFF),
                         "Failed to write packet to buffer"

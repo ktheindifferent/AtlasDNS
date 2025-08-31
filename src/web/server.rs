@@ -319,7 +319,7 @@ impl<'a> WebServer<'a> {
         
         let referer = request.headers()
             .iter()
-            .find(|h| h.field.as_str().eq_ignore_ascii_case("Referer"))
+            .find(|h| h.field.as_str() == "Referer" || h.field.as_str() == "referer")
             .map(|h| h.value.as_str().to_string());
         
         // Calculate request size
@@ -382,9 +382,11 @@ impl<'a> WebServer<'a> {
         // Headers size
         for header in request.headers() {
             // Each header: "Name: Value\r\n"
-            size += header.field.as_str().len() as u64;
+            let field = header.field.to_string();
+            let value = header.value.to_string();
+            size += field.len() as u64;
             size += 2; // ": "
-            size += header.value.as_str().len() as u64;
+            size += value.len() as u64;
             size += 2; // "\r\n"
         }
         
@@ -395,7 +397,7 @@ impl<'a> WebServer<'a> {
         // Check Content-Length header for body size
         if let Some(content_length) = request.headers()
             .iter()
-            .find(|h| h.field.as_str().eq_ignore_ascii_case("Content-Length"))
+            .find(|h| h.field.as_str() == "Content-Length" || h.field.as_str() == "content-length")
             .and_then(|h| h.value.as_str().parse::<u64>().ok()) {
             size += content_length;
         }

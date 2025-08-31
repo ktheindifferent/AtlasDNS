@@ -12,7 +12,7 @@ use crate::dns::protocol::DnsPacket;
 use crate::dns::errors::DnsError;
 use super::{
     SecurityCheckResult, SecurityAction, SecurityMetrics, SecurityAlert,
-    AlertSeverity, AlertType, ThreatLevel, SecurityComponent,
+    AlertSeverity, AlertType, ThreatLevel, SecurityComponent, SecurityEvent,
     DnsFirewall, FirewallConfig,
     EnhancedRateLimiter, RateLimitConfig,
     DDoSProtection, DDoSConfig,
@@ -27,7 +27,7 @@ pub struct SecurityManager {
     metrics: Arc<RwLock<SecurityMetrics>>,
     alerts: Arc<RwLock<Vec<SecurityAlert>>>,
     alert_sender: Option<mpsc::UnboundedSender<SecurityAlert>>,
-    event_log: Arc<RwLock<Vec<SecurityEvent>>>,
+    event_log: Arc<RwLock<Vec<SecurityEventRecord>>>,
     webhook_config: Arc<RwLock<WebhookConfig>>,
 }
 
@@ -61,9 +61,9 @@ impl Default for SecurityConfig {
     }
 }
 
-/// Security event
+/// Security event record
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecurityEvent {
+pub struct SecurityEventRecord {
     pub timestamp: u64, // Unix timestamp
     pub event_type: SecurityEventType,
     pub client_ip: Option<IpAddr>,
@@ -269,7 +269,7 @@ impl SecurityManager {
             top_blocked_ips: Vec::new(),
             top_blocked_domains: Vec::new(),
             alerts_generated: self.alerts.read().len() as u64,
-            last_reset: Instant::now(),
+            last_reset: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         }
     }
 
@@ -284,7 +284,7 @@ impl SecurityManager {
     }
 
     /// Get security events
-    pub fn get_events(&self, limit: usize) -> Vec<SecurityEvent> {
+    pub fn get_events(&self, limit: usize) -> Vec<SecurityEventRecord> {
         let events = self.event_log.read();
         events.iter()
             .rev()
@@ -296,9 +296,9 @@ impl SecurityManager {
     /// Update configuration
     pub fn update_config(&self, config: SecurityConfig) -> Result<(), DnsError> {
         // Update component configurations
-        self.firewall.update_config(serde_json::to_value(&config.firewall)?)?;
-        self.rate_limiter.update_config(serde_json::to_value(&config.rate_limiting)?)?;
-        self.ddos_protection.update_config(serde_json::to_value(&config.ddos_protection)?)?;
+        self.firewall.update_config(serde_json::to_value(&config.firewall).map_err(|_| DnsError::InvalidInput)?)?;
+        self.rate_limiter.update_config(serde_json::to_value(&config.rate_limiting).map_err(|_| DnsError::InvalidInput)?)?;
+        self.ddos_protection.update_config(serde_json::to_value(&config.ddos_protection).map_err(|_| DnsError::InvalidInput)?)?;
         
         *self.config.write() = config;
         self.log_configuration_change("Updated security configuration");
@@ -349,7 +349,7 @@ impl SecurityManager {
 
         let domain = packet.questions.first().map(|q| q.name.clone());
         
-        let event = SecurityEvent {
+        let event = SecurityEventRecord {
             timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
             event_type,
             client_ip: Some(client_ip),
@@ -414,7 +414,7 @@ impl SecurityManager {
     }
 
     fn log_configuration_change(&self, message: &str) {
-        let event = SecurityEvent {
+        let event = SecurityEventRecord {
             timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
             event_type: SecurityEventType::ConfigurationChange,
             client_ip: None,
@@ -501,7 +501,7 @@ impl SecurityManager {
         let client = reqwest::Client::new();
         let payload = serde_json::json!({
             "alerts": alerts,
-            "timestamp": Instant::now(),
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         });
 
         for _ in 0..config.retry_count {

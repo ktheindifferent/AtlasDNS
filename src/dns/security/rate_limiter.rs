@@ -695,7 +695,7 @@ impl SecurityComponent for EnhancedRateLimiter {
 
     fn update_config(&self, config: serde_json::Value) -> Result<(), DnsError> {
         let new_config: RateLimitConfig = serde_json::from_value(config)
-            .map_err(|e| DnsError::InvalidInput(e.to_string()))?;
+            .map_err(|_| DnsError::InvalidInput)?;
         *self.config.write() = new_config;
         Ok(())
     }

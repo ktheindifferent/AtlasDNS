@@ -16,7 +16,7 @@ use crate::dns::errors::DnsError;
 pub use firewall::{DnsFirewall, FirewallConfig, FirewallAction, FirewallRule};
 pub use rate_limiter::{EnhancedRateLimiter, RateLimitConfig, RateLimitAlgorithm};
 pub use ddos_protection::{DDoSProtection, DDoSConfig, ThreatLevel, AttackType};
-pub use manager::{SecurityManager, SecurityConfig, SecurityEvent};
+pub use manager::{SecurityManager, SecurityConfig, SecurityEventRecord};
 
 #[cfg(test)]
 mod tests;

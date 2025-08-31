@@ -211,15 +211,16 @@ enum RpzAction {
 
 /// Firewall metrics
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct FirewallMetrics {
-    total_queries: u64,
-    blocked_queries: u64,
-    allowed_queries: u64,
-    monitored_queries: u64,
-    rules_triggered: HashMap<String, u64>,
-    categories_blocked: HashMap<ThreatCategory, u64>,
-    top_blocked_domains: Vec<(String, u64)>,
-    top_blocked_clients: Vec<(IpAddr, u64)>,
+pub struct FirewallMetrics {
+    pub total_queries: u64,
+    pub blocked_queries: u64,
+    pub allowed_queries: u64,
+    pub monitored_queries: u64,
+    pub active_rules: usize,
+    pub rules_triggered: HashMap<String, u64>,
+    pub categories_blocked: HashMap<ThreatCategory, u64>,
+    pub top_blocked_domains: Vec<(String, u64)>,
+    pub top_blocked_clients: Vec<(IpAddr, u64)>,
 }
 
 impl DnsFirewall {
@@ -288,12 +289,12 @@ impl DnsFirewall {
             return SecurityCheckResult {
                 allowed: false,
                 action: SecurityAction::BlockNxDomain,
-                reason: Some(reason),
+                reason: Some(reason.clone()),
                 threat_level: ThreatLevel::Medium,
                 events: vec![SecurityEvent::FirewallBlock {
                     domain: self.get_query_domain(packet),
                     client_ip,
-                    reason: reason.clone(),
+                    reason,
                 }],
             };
         }
@@ -356,7 +357,7 @@ impl DnsFirewall {
         let config = self.config.read();
         
         if rules.len() >= config.max_rules {
-            return Err(DnsError::ResourceLimit("Maximum rules exceeded".into()));
+            return Err(DnsError::InvalidInput);
         }
 
         rules.push(rule);
@@ -391,7 +392,7 @@ impl DnsFirewall {
 
     /// Add regex pattern
     pub fn add_pattern(&self, pattern: &str, action: FirewallAction, category: ThreatCategory) -> Result<(), DnsError> {
-        let regex = Regex::new(pattern).map_err(|e| DnsError::InvalidInput(e.to_string()))?;
+        let regex = Regex::new(pattern).map_err(|_| DnsError::InvalidInput)?;
         
         let mut matcher = self.pattern_matcher.write();
         matcher.patterns.push(CompiledPattern {
@@ -661,7 +662,7 @@ impl SecurityComponent for DnsFirewall {
 
     fn update_config(&self, config: serde_json::Value) -> Result<(), DnsError> {
         let new_config: FirewallConfig = serde_json::from_value(config)
-            .map_err(|e| DnsError::InvalidInput(e.to_string()))?;
+            .map_err(|_| DnsError::InvalidInput)?;
         *self.config.write() = new_config;
         Ok(())
     }
