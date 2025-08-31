@@ -29,17 +29,23 @@ type Result<T> = std::result::Result<T, ProtocolError>;
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Copy, Serialize, Deserialize)]
 pub enum QueryType {
     Unknown(u16),
-    A,     // 1
-    Ns,    // 2
-    Cname, // 5
-    Soa,   // 6
-    Mx,    // 15
-    Txt,   // 16
-    Aaaa,  // 28
-    Srv,   // 33
-    Opt,   // 41
-    Ixfr,  // 251
-    Axfr,  // 252
+    A,      // 1
+    Ns,     // 2
+    Cname,  // 5
+    Soa,    // 6
+    Mx,     // 15
+    Txt,    // 16
+    Aaaa,   // 28
+    Srv,    // 33
+    Opt,    // 41
+    Ds,     // 43
+    Rrsig,  // 46
+    Nsec,   // 47
+    Dnskey, // 48
+    Nsec3,  // 50
+    Nsec3param, // 51
+    Ixfr,   // 251
+    Axfr,   // 252
 }
 
 impl QueryType {
@@ -55,6 +61,12 @@ impl QueryType {
             QueryType::Aaaa => 28,
             QueryType::Srv => 33,
             QueryType::Opt => 41,
+            QueryType::Ds => 43,
+            QueryType::Rrsig => 46,
+            QueryType::Nsec => 47,
+            QueryType::Dnskey => 48,
+            QueryType::Nsec3 => 50,
+            QueryType::Nsec3param => 51,
             QueryType::Ixfr => 251,
             QueryType::Axfr => 252,
         }
@@ -71,6 +83,12 @@ impl QueryType {
             28 => QueryType::Aaaa,
             33 => QueryType::Srv,
             41 => QueryType::Opt,
+            43 => QueryType::Ds,
+            46 => QueryType::Rrsig,
+            47 => QueryType::Nsec,
+            48 => QueryType::Dnskey,
+            50 => QueryType::Nsec3,
+            51 => QueryType::Nsec3param,
             251 => QueryType::Ixfr,
             252 => QueryType::Axfr,
             _ => QueryType::Unknown(num),
@@ -176,6 +194,59 @@ pub enum DnsRecord {
         flags: u32,
         data: String,
     }, // 41
+    Ds {
+        domain: String,
+        key_tag: u16,
+        algorithm: u8,
+        digest_type: u8,
+        digest: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 43
+    Rrsig {
+        domain: String,
+        type_covered: u16,
+        algorithm: u8,
+        labels: u8,
+        original_ttl: u32,
+        expiration: u32,
+        inception: u32,
+        key_tag: u16,
+        signer_name: String,
+        signature: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 46
+    Nsec {
+        domain: String,
+        next_domain: String,
+        type_bitmaps: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 47
+    Dnskey {
+        domain: String,
+        flags: u16,
+        protocol: u8,
+        algorithm: u8,
+        public_key: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 48
+    Nsec3 {
+        domain: String,
+        hash_algorithm: u8,
+        flags: u8,
+        iterations: u16,
+        salt: Vec<u8>,
+        next_hashed: Vec<u8>,
+        type_bitmaps: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 50
+    Nsec3param {
+        domain: String,
+        hash_algorithm: u8,
+        flags: u8,
+        iterations: u16,
+        salt: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 51
 }
 
 impl DnsRecord {
@@ -340,6 +411,152 @@ impl DnsRecord {
                     domain,
                     qtype: qtype_num,
                     data_len,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Ds => {
+                let key_tag = buffer.read_u16()?;
+                let algorithm = buffer.read()?;
+                let digest_type = buffer.read()?;
+                
+                let digest_len = data_len - 4; // key_tag(2) + algorithm(1) + digest_type(1)
+                let mut digest = vec![0; digest_len as usize];
+                for i in 0..digest_len as usize {
+                    digest[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Ds {
+                    domain,
+                    key_tag,
+                    algorithm,
+                    digest_type,
+                    digest,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Rrsig => {
+                let type_covered = buffer.read_u16()?;
+                let algorithm = buffer.read()?;
+                let labels = buffer.read()?;
+                let original_ttl = buffer.read_u32()?;
+                let expiration = buffer.read_u32()?;
+                let inception = buffer.read_u32()?;
+                let key_tag = buffer.read_u16()?;
+                
+                let mut signer_name = String::new();
+                buffer.read_qname(&mut signer_name)?;
+                
+                let sig_start = buffer.pos();
+                let sig_len = data_len as usize - (sig_start - (buffer.pos() - data_len as usize));
+                let mut signature = vec![0; sig_len];
+                for i in 0..sig_len {
+                    signature[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Rrsig {
+                    domain,
+                    type_covered,
+                    algorithm,
+                    labels,
+                    original_ttl,
+                    expiration,
+                    inception,
+                    key_tag,
+                    signer_name,
+                    signature,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Nsec => {
+                let mut next_domain = String::new();
+                buffer.read_qname(&mut next_domain)?;
+                
+                let bitmap_start = buffer.pos();
+                let bitmap_len = data_len as usize - (bitmap_start - (buffer.pos() - data_len as usize));
+                let mut type_bitmaps = vec![0; bitmap_len];
+                for i in 0..bitmap_len {
+                    type_bitmaps[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Nsec {
+                    domain,
+                    next_domain,
+                    type_bitmaps,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Dnskey => {
+                let flags = buffer.read_u16()?;
+                let protocol = buffer.read()?;
+                let algorithm = buffer.read()?;
+                
+                let key_len = data_len - 4; // flags(2) + protocol(1) + algorithm(1)
+                let mut public_key = vec![0; key_len as usize];
+                for i in 0..key_len as usize {
+                    public_key[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Dnskey {
+                    domain,
+                    flags,
+                    protocol,
+                    algorithm,
+                    public_key,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Nsec3 => {
+                let hash_algorithm = buffer.read()?;
+                let flags = buffer.read()?;
+                let iterations = buffer.read_u16()?;
+                let salt_length = buffer.read()?;
+                
+                let mut salt = vec![0; salt_length as usize];
+                for i in 0..salt_length as usize {
+                    salt[i] = buffer.read()?;
+                }
+                
+                let hash_length = buffer.read()?;
+                let mut next_hashed = vec![0; hash_length as usize];
+                for i in 0..hash_length as usize {
+                    next_hashed[i] = buffer.read()?;
+                }
+                
+                let bitmap_start = buffer.pos();
+                let bitmap_len = data_len as usize - (bitmap_start - (buffer.pos() - data_len as usize));
+                let mut type_bitmaps = vec![0; bitmap_len];
+                for i in 0..bitmap_len {
+                    type_bitmaps[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Nsec3 {
+                    domain,
+                    hash_algorithm,
+                    flags,
+                    iterations,
+                    salt,
+                    next_hashed,
+                    type_bitmaps,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Nsec3param => {
+                let hash_algorithm = buffer.read()?;
+                let flags = buffer.read()?;
+                let iterations = buffer.read_u16()?;
+                let salt_length = buffer.read()?;
+                
+                let mut salt = vec![0; salt_length as usize];
+                for i in 0..salt_length as usize {
+                    salt[i] = buffer.read()?;
+                }
+                
+                Ok(DnsRecord::Nsec3param {
+                    domain,
+                    hash_algorithm,
+                    flags,
+                    iterations,
+                    salt,
                     ttl: TransientTtl(ttl),
                 })
             }
@@ -518,6 +735,161 @@ impl DnsRecord {
                 }
             }
             DnsRecord::Opt { .. } => {}
+            DnsRecord::Ds {
+                ref domain,
+                key_tag,
+                algorithm,
+                digest_type,
+                ref digest,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Ds.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                buffer.write_u16((4 + digest.len()) as u16)?;
+                
+                buffer.write_u16(key_tag)?;
+                buffer.write_u8(algorithm)?;
+                buffer.write_u8(digest_type)?;
+                for b in digest {
+                    buffer.write_u8(*b)?;
+                }
+            }
+            DnsRecord::Rrsig {
+                ref domain,
+                type_covered,
+                algorithm,
+                labels,
+                original_ttl,
+                expiration,
+                inception,
+                key_tag,
+                ref signer_name,
+                ref signature,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Rrsig.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                
+                let pos = buffer.pos();
+                buffer.write_u16(0)?; // placeholder for length
+                
+                buffer.write_u16(type_covered)?;
+                buffer.write_u8(algorithm)?;
+                buffer.write_u8(labels)?;
+                buffer.write_u32(original_ttl)?;
+                buffer.write_u32(expiration)?;
+                buffer.write_u32(inception)?;
+                buffer.write_u16(key_tag)?;
+                buffer.write_qname(signer_name)?;
+                for b in signature {
+                    buffer.write_u8(*b)?;
+                }
+                
+                let size = buffer.pos() - (pos + 2);
+                buffer.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::Nsec {
+                ref domain,
+                ref next_domain,
+                ref type_bitmaps,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Nsec.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                
+                let pos = buffer.pos();
+                buffer.write_u16(0)?; // placeholder for length
+                
+                buffer.write_qname(next_domain)?;
+                for b in type_bitmaps {
+                    buffer.write_u8(*b)?;
+                }
+                
+                let size = buffer.pos() - (pos + 2);
+                buffer.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::Dnskey {
+                ref domain,
+                flags,
+                protocol,
+                algorithm,
+                ref public_key,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Dnskey.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                buffer.write_u16((4 + public_key.len()) as u16)?;
+                
+                buffer.write_u16(flags)?;
+                buffer.write_u8(protocol)?;
+                buffer.write_u8(algorithm)?;
+                for b in public_key {
+                    buffer.write_u8(*b)?;
+                }
+            }
+            DnsRecord::Nsec3 {
+                ref domain,
+                hash_algorithm,
+                flags,
+                iterations,
+                ref salt,
+                ref next_hashed,
+                ref type_bitmaps,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Nsec3.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                
+                let data_len = 5 + salt.len() + 1 + next_hashed.len() + type_bitmaps.len();
+                buffer.write_u16(data_len as u16)?;
+                
+                buffer.write_u8(hash_algorithm)?;
+                buffer.write_u8(flags)?;
+                buffer.write_u16(iterations)?;
+                buffer.write_u8(salt.len() as u8)?;
+                for b in salt {
+                    buffer.write_u8(*b)?;
+                }
+                buffer.write_u8(next_hashed.len() as u8)?;
+                for b in next_hashed {
+                    buffer.write_u8(*b)?;
+                }
+                for b in type_bitmaps {
+                    buffer.write_u8(*b)?;
+                }
+            }
+            DnsRecord::Nsec3param {
+                ref domain,
+                hash_algorithm,
+                flags,
+                iterations,
+                ref salt,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Nsec3param.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                buffer.write_u16((5 + salt.len()) as u16)?;
+                
+                buffer.write_u8(hash_algorithm)?;
+                buffer.write_u8(flags)?;
+                buffer.write_u16(iterations)?;
+                buffer.write_u8(salt.len() as u8)?;
+                for b in salt {
+                    buffer.write_u8(*b)?;
+                }
+            }
             DnsRecord::Unknown { .. } => {
                 log::info!("Skipping record: {:?}", self);
             }
@@ -538,6 +910,12 @@ impl DnsRecord {
             DnsRecord::Soa { .. } => QueryType::Soa,
             DnsRecord::Txt { .. } => QueryType::Txt,
             DnsRecord::Opt { .. } => QueryType::Opt,
+            DnsRecord::Ds { .. } => QueryType::Ds,
+            DnsRecord::Rrsig { .. } => QueryType::Rrsig,
+            DnsRecord::Nsec { .. } => QueryType::Nsec,
+            DnsRecord::Dnskey { .. } => QueryType::Dnskey,
+            DnsRecord::Nsec3 { .. } => QueryType::Nsec3,
+            DnsRecord::Nsec3param { .. } => QueryType::Nsec3param,
         }
     }
 
@@ -551,7 +929,13 @@ impl DnsRecord {
             | DnsRecord::Mx { ref domain, .. }
             | DnsRecord::Unknown { ref domain, .. }
             | DnsRecord::Soa { ref domain, .. }
-            | DnsRecord::Txt { ref domain, .. } => Some(domain.clone()),
+            | DnsRecord::Txt { ref domain, .. }
+            | DnsRecord::Ds { ref domain, .. }
+            | DnsRecord::Rrsig { ref domain, .. }
+            | DnsRecord::Nsec { ref domain, .. }
+            | DnsRecord::Dnskey { ref domain, .. }
+            | DnsRecord::Nsec3 { ref domain, .. }
+            | DnsRecord::Nsec3param { ref domain, .. } => Some(domain.clone()),
             DnsRecord::Opt { .. } => None,
         }
     }
@@ -591,6 +975,30 @@ impl DnsRecord {
                 ..
             }
             | DnsRecord::Txt {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Ds {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Rrsig {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Nsec {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Dnskey {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Nsec3 {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Nsec3param {
                 ttl: TransientTtl(ttl),
                 ..
             } => ttl,

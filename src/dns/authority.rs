@@ -60,6 +60,7 @@ use derive_more::{Display, From, Error};
 
 use crate::dns::buffer::{PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
+use crate::dns::dnssec::{DnssecSigner, SigningConfig, SignedZone};
 
 #[derive(Debug)]
 pub enum AuthorityError {
@@ -119,6 +120,8 @@ pub struct Zone {
     pub expire: u32,
     pub minimum: u32,
     pub records: BTreeSet<DnsRecord>,
+    pub dnssec_enabled: bool,
+    pub signed_zone: Option<SignedZone>,
 }
 
 impl Zone {
@@ -133,6 +136,8 @@ impl Zone {
             expire: 0,
             minimum: 0,
             records: BTreeSet::new(),
+            dnssec_enabled: false,
+            signed_zone: None,
         }
     }
 
@@ -251,12 +256,15 @@ impl<'a> Zones {
 #[derive(Default)]
 pub struct Authority {
     zones: RwLock<Zones>,
+    dnssec_signer: RwLock<DnssecSigner>,
 }
 
 impl Authority {
     pub fn new() -> Authority {
+        let signing_config = SigningConfig::default();
         Authority {
             zones: RwLock::new(Zones::new()),
+            dnssec_signer: RwLock::new(DnssecSigner::new(signing_config)),
         }
     }
 
@@ -355,8 +363,17 @@ impl Authority {
                                     DnsRecord::Mx { ref mut domain, .. } |
                                     DnsRecord::Txt { ref mut domain, .. } |
                                     DnsRecord::Soa { ref mut domain, .. } |
-                                    DnsRecord::Unknown { ref mut domain, .. } => {
+                                    DnsRecord::Unknown { ref mut domain, .. } |
+                                    DnsRecord::Ds { ref mut domain, .. } |
+                                    DnsRecord::Rrsig { ref mut domain, .. } |
+                                    DnsRecord::Nsec { ref mut domain, .. } |
+                                    DnsRecord::Dnskey { ref mut domain, .. } |
+                                    DnsRecord::Nsec3 { ref mut domain, .. } |
+                                    DnsRecord::Nsec3param { ref mut domain, .. } => {
                                         *domain = qname.to_string();
+                                    }
+                                    DnsRecord::Opt { .. } => {
+                                        // OPT records don't have a domain field
                                     }
                                 }
                                 wildcard_matches.push(matched_rec);
@@ -419,6 +436,8 @@ impl Authority {
                 expire: 86400,
                 minimum: 3600,
                 records: BTreeSet::new(),
+                dnssec_enabled: false,
+                signed_zone: None,
             });
         
         // Remove existing records with same domain
@@ -657,6 +676,165 @@ impl Authority {
         // For now, just create an empty zone
         // TODO: Implement proper zone file parsing
         self.create_zone(zone_name, &format!("ns1.{}", zone_name), &format!("admin.{}", zone_name))
+    }
+
+    /// Enable DNSSEC for a zone
+    pub fn enable_dnssec(&self, zone_name: &str) -> Result<()> {
+        let mut signer = self.dnssec_signer.write().unwrap();
+        
+        // Get zone records
+        let records = self.get_zone_records(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        // Sign the zone
+        let signed_zone = signer.enable_zone(zone_name, self)
+            .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        
+        // Store signed zone data
+        let mut zones = self.zones.write().unwrap();
+        if let Some(zone) = zones.zones.get_mut(zone_name) {
+            // Collect DNSKEY and RRSIG records first
+            let mut dnskey_records = Vec::new();
+            let mut rrsig_records = Vec::new();
+            
+            // Add DNSKEY records to the zone
+            for dnskey in &signed_zone.dnskeys {
+                let dnskey_record = DnsRecord::Dnskey {
+                    domain: zone_name.to_string(),
+                    flags: dnskey.flags,
+                    protocol: dnskey.protocol,
+                    algorithm: dnskey.algorithm as u8,
+                    public_key: dnskey.public_key.clone(),
+                    ttl: TransientTtl(3600),
+                };
+                dnskey_records.push(dnskey_record);
+            }
+            
+            // Add RRSIG records
+            for rrsig in &signed_zone.rrsigs {
+                let rrsig_record = DnsRecord::Rrsig {
+                    domain: zone_name.to_string(),
+                    type_covered: rrsig.type_covered.to_num(),
+                    algorithm: rrsig.algorithm as u8,
+                    labels: rrsig.labels,
+                    original_ttl: rrsig.original_ttl,
+                    expiration: rrsig.expiration,
+                    inception: rrsig.inception,
+                    key_tag: rrsig.key_tag,
+                    signer_name: rrsig.signer_name.clone(),
+                    signature: rrsig.signature.clone(),
+                    ttl: TransientTtl(3600),
+                };
+                rrsig_records.push(rrsig_record);
+            }
+            
+            // Now update the zone
+            zone.dnssec_enabled = true;
+            zone.signed_zone = Some(signed_zone);
+            
+            // Add the collected records
+            for record in dnskey_records {
+                zone.add_record(&record);
+            }
+            for record in rrsig_records {
+                zone.add_record(&record);
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Disable DNSSEC for a zone
+    pub fn disable_dnssec(&self, zone_name: &str) -> Result<()> {
+        let mut zones = self.zones.write().unwrap();
+        let zone = zones.zones.get_mut(zone_name)
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
+        
+        zone.dnssec_enabled = false;
+        zone.signed_zone = None;
+        
+        // Remove DNSSEC records
+        zone.records.retain(|r| {
+            !matches!(r, 
+                DnsRecord::Dnskey { .. } | 
+                DnsRecord::Rrsig { .. } | 
+                DnsRecord::Nsec { .. } | 
+                DnsRecord::Nsec3 { .. } |
+                DnsRecord::Ds { .. }
+            )
+        });
+        
+        Ok(())
+    }
+
+    /// Get DNSSEC status for a zone
+    pub fn get_dnssec_status(&self, zone_name: &str) -> Option<bool> {
+        let zones = self.zones.read().ok()?;
+        zones.zones.get(zone_name).map(|z| z.dnssec_enabled)
+    }
+
+    /// Get DS records for a zone (for parent zone delegation)
+    pub fn get_ds_records(&self, zone_name: &str) -> Option<Vec<DnsRecord>> {
+        let zones = self.zones.read().ok()?;
+        let zone = zones.zones.get(zone_name)?;
+        
+        if !zone.dnssec_enabled || zone.signed_zone.is_none() {
+            return None;
+        }
+        
+        let signed_zone = zone.signed_zone.as_ref()?;
+        let mut ds_records = Vec::new();
+        
+        for ds in &signed_zone.ds_records {
+            ds_records.push(DnsRecord::Ds {
+                domain: zone_name.to_string(),
+                key_tag: ds.key_tag,
+                algorithm: ds.algorithm as u8,
+                digest_type: ds.digest_type as u8,
+                digest: ds.digest.clone(),
+                ttl: TransientTtl(3600),
+            });
+        }
+        
+        Some(ds_records)
+    }
+
+    /// Perform DNSSEC key rollover for a zone
+    pub fn rollover_dnssec_keys(&self, zone_name: &str) -> Result<()> {
+        if !self.get_dnssec_status(zone_name).unwrap_or(false) {
+            return Err(AuthorityError::NoSuchZone(format!("DNSSEC not enabled for zone {}", zone_name)));
+        }
+        
+        let mut signer = self.dnssec_signer.write().unwrap();
+        signer.rollover_keys(zone_name)
+            .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        
+        // Re-sign the zone with new keys
+        self.enable_dnssec(zone_name)?;
+        
+        Ok(())
+    }
+
+    /// Get DNSSEC statistics
+    pub fn get_dnssec_stats(&self) -> serde_json::Value {
+        let signer = self.dnssec_signer.read().unwrap();
+        let stats = signer.get_statistics();
+        
+        let zones = self.zones.read().unwrap();
+        let total_zones = zones.zones.len();
+        let signed_zones = zones.zones.values()
+            .filter(|z| z.dnssec_enabled)
+            .count();
+        
+        serde_json::json!({
+            "total_zones": total_zones,
+            "signed_zones": signed_zones,
+            "signatures_created": stats.signatures_created,
+            "keys_generated": stats.keys_generated,
+            "key_rollovers": stats.key_rollovers,
+            "validation_failures": stats.validation_failures,
+            "avg_signing_time_ms": stats.avg_signing_time_ms,
+        })
     }
 }
 

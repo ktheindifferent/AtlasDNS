@@ -228,6 +228,14 @@ impl ApiV2Handler {
             (Method::Post, ["zones", zone_name, "export"]) => self.export_zone(zone_name),
             (Method::Post, ["zones", zone_name, "import"]) => self.import_zone(zone_name, request),
             
+            // DNSSEC operations
+            (Method::Post, ["zones", zone_name, "dnssec", "enable"]) => self.enable_dnssec(zone_name),
+            (Method::Post, ["zones", zone_name, "dnssec", "disable"]) => self.disable_dnssec(zone_name),
+            (Method::Get, ["zones", zone_name, "dnssec", "status"]) => self.get_dnssec_status(zone_name),
+            (Method::Get, ["zones", zone_name, "dnssec", "ds"]) => self.get_ds_records(zone_name),
+            (Method::Post, ["zones", zone_name, "dnssec", "rollover"]) => self.rollover_keys(zone_name),
+            (Method::Get, ["dnssec", "stats"]) => self.get_dnssec_stats(),
+            
             // Health check
             (Method::Get, ["health"]) => self.health_check(),
             
@@ -906,6 +914,143 @@ impl ApiV2Handler {
         };
 
         handle_json_response(&response, status)
+    }
+
+    /// Enable DNSSEC for a zone
+    fn enable_dnssec(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        match self.authority.enable_dnssec(zone_name) {
+            Ok(_) => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "message": format!("DNSSEC enabled for zone {}", zone_name),
+                        "zone": zone_name,
+                        "status": "signing"
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+            Err(e) => self.error_response(&format!("Failed to enable DNSSEC: {}", e), StatusCode(500))
+        }
+    }
+
+    /// Disable DNSSEC for a zone
+    fn disable_dnssec(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        match self.authority.disable_dnssec(zone_name) {
+            Ok(_) => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "message": format!("DNSSEC disabled for zone {}", zone_name),
+                        "zone": zone_name,
+                        "status": "unsigned"
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+            Err(e) => self.error_response(&format!("Failed to disable DNSSEC: {}", e), StatusCode(500))
+        }
+    }
+
+    /// Get DNSSEC status for a zone
+    fn get_dnssec_status(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        match self.authority.get_dnssec_status(zone_name) {
+            Some(enabled) => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "zone": zone_name,
+                        "dnssec_enabled": enabled,
+                        "status": if enabled { "signed" } else { "unsigned" }
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+            None => self.error_response(&format!("Zone {} not found", zone_name), StatusCode(404))
+        }
+    }
+
+    /// Get DS records for a zone
+    fn get_ds_records(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        match self.authority.get_ds_records(zone_name) {
+            Some(records) => {
+                let ds_records: Vec<Value> = records.iter().map(|r| {
+                    if let DnsRecord::Ds { key_tag, algorithm, digest_type, digest, .. } = r {
+                        json!({
+                            "key_tag": key_tag,
+                            "algorithm": algorithm,
+                            "digest_type": digest_type,
+                            "digest": base64::encode(&digest)
+                        })
+                    } else {
+                        json!({})
+                    }
+                }).collect();
+                
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "zone": zone_name,
+                        "ds_records": ds_records
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+            None => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "zone": zone_name,
+                        "ds_records": [],
+                        "message": "No DS records available (zone not signed or not found)"
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+        }
+    }
+
+    /// Rollover DNSSEC keys for a zone
+    fn rollover_keys(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        match self.authority.rollover_dnssec_keys(zone_name) {
+            Ok(_) => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(json!({
+                        "message": format!("Key rollover initiated for zone {}", zone_name),
+                        "zone": zone_name,
+                        "status": "rollover_in_progress"
+                    })),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+            Err(e) => self.error_response(&format!("Failed to rollover keys: {}", e), StatusCode(500))
+        }
+    }
+
+    /// Get global DNSSEC statistics
+    fn get_dnssec_stats(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let stats = self.authority.get_dnssec_stats();
+        
+        let response = ApiResponse {
+            success: true,
+            data: Some(stats),
+            error: None,
+            meta: None,
+        };
+        handle_json_response(&response, StatusCode(200))
     }
 }
 
