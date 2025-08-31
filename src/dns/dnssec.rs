@@ -298,7 +298,7 @@ pub struct DnssecSigner {
 }
 
 /// Signed zone data
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SignedZone {
     /// Zone name
     pub zone: String,
@@ -333,6 +333,12 @@ pub struct SigningStatistics {
     pub validation_failures: u64,
     /// Average signing time
     pub avg_signing_time_ms: f64,
+}
+
+impl Default for DnssecSigner {
+    fn default() -> Self {
+        Self::new(SigningConfig::default())
+    }
 }
 
 impl DnssecSigner {

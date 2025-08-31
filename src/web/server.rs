@@ -319,7 +319,7 @@ impl<'a> WebServer<'a> {
         
         let referer = request.headers()
             .iter()
-            .find(|h| h.field.as_str() == "Referer" || h.field.as_str() == "referer")
+            .find(|h| h.field.as_str().to_ascii_lowercase() == "referer")
             .map(|h| h.value.as_str().to_string());
         
         // Calculate request size
@@ -397,7 +397,7 @@ impl<'a> WebServer<'a> {
         // Check Content-Length header for body size
         if let Some(content_length) = request.headers()
             .iter()
-            .find(|h| h.field.as_str() == "Content-Length" || h.field.as_str() == "content-length")
+            .find(|h| h.field.as_str().to_ascii_lowercase() == "content-length")
             .and_then(|h| h.value.as_str().parse::<u64>().ok()) {
             size += content_length;
         }
@@ -1259,9 +1259,14 @@ impl<'a> WebServer<'a> {
     }
     
     fn dnssec_page(&self, request: &Request) -> Result<ResponseBox> {
-        // Get real zone count from authority
-        let total_zones = if let Ok(zones) = self.context.authority.read() {
-            zones.zones().len()
+        // Get DNSSEC statistics from authority
+        let dnssec_stats = self.context.authority.get_dnssec_stats();
+        
+        // Extract values from JSON
+        let total_zones = dnssec_stats["total_zones"].as_u64().unwrap_or(0);
+        let signed_zones = dnssec_stats["signed_zones"].as_u64().unwrap_or(0);
+        let signed_percent = if total_zones > 0 {
+            ((signed_zones as f64 / total_zones as f64) * 100.0) as u64
         } else {
             0
         };
@@ -1269,15 +1274,16 @@ impl<'a> WebServer<'a> {
         let data = serde_json::json!({
             "title": "DNSSEC Management",
             "total_zones": total_zones,
-            // TODO: Implement DNSSEC support
-            "signed_zones": 0,
-            "signed_percent": 0,
-            "active_keys": 0,
-            "ksk_count": 0,
-            "zsk_count": 0,
-            "pending_rollovers": 0,
-            "next_rollover_days": 0,
-            "last_check": "Not implemented",
+            "signed_zones": signed_zones,
+            "signed_percent": signed_percent,
+            "active_keys": dnssec_stats["keys_generated"].as_u64().unwrap_or(0),
+            "ksk_count": signed_zones, // Assume one KSK per signed zone
+            "zsk_count": signed_zones, // Assume one ZSK per signed zone
+            "key_rollovers": dnssec_stats["key_rollovers"].as_u64().unwrap_or(0),
+            "signatures_created": dnssec_stats["signatures_created"].as_u64().unwrap_or(0),
+            "validation_failures": dnssec_stats["validation_failures"].as_u64().unwrap_or(0),
+            "avg_signing_time_ms": dnssec_stats["avg_signing_time_ms"].as_f64().unwrap_or(0.0),
+            "dnssec_enabled": self.context.dnssec_enabled,
         });
         self.response_from_media_type(request, "dnssec", data)
     }

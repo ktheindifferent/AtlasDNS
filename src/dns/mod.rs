@@ -42,6 +42,9 @@ pub mod resolve;
 /// UDP and TCP DNS server implementations
 pub mod server;
 
+/// RFC 1035 compliant zone file parser
+pub mod zone_parser;
+
 /// Internal network utilities
 mod netutil;
 
