@@ -14,6 +14,7 @@ use crate::dns::acme::SslConfig;
 use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{StructuredLogger, LoggerConfig};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
+use crate::dns::security::{SecurityManager, SecurityConfig};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -95,6 +96,7 @@ pub struct ServerContext {
     pub metrics: Arc<MetricsCollector>,
     pub logger: Arc<StructuredLogger>,
     pub connection_pool: Option<Arc<ConnectionPoolManager>>,
+    pub security_manager: Arc<SecurityManager>,
 }
 
 impl Default for ServerContext {
@@ -135,8 +137,9 @@ impl ServerContext {
             zones_dir: Arc::from("/opt/atlas/zones"),
             ssl_config: SslConfig::default(),
             metrics: metrics.clone(),
-            logger,
+            logger: logger.clone(),
             connection_pool: None,
+            security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
         })
     }
 

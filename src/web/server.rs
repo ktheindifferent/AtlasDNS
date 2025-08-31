@@ -271,8 +271,16 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["analytics"]) => self.analytics_page(request),
             (Method::Get, ["dnssec"]) => self.dnssec_page(request),
             (Method::Get, ["firewall"]) => self.firewall_page(request),
+            (Method::Post, ["api", "firewall", "rules"]) => self.add_firewall_rule(request),
+            (Method::Delete, ["api", "firewall", "rules", rule_id]) => self.delete_firewall_rule(request, rule_id),
+            (Method::Post, ["api", "firewall", "blocklist"]) => self.load_blocklist(request),
+            (Method::Post, ["api", "firewall", "allowlist"]) => self.load_allowlist(request),
             (Method::Get, ["templates"]) => self.templates_page(request),
             (Method::Get, ["rate-limiting"]) => self.rate_limiting_page(request),
+            (Method::Post, ["api", "rate-limiting", "unblock", client_ip]) => self.unblock_client(request, client_ip),
+            (Method::Get, ["api", "security", "metrics"]) => self.get_security_metrics(request),
+            (Method::Get, ["api", "security", "alerts"]) => self.get_security_alerts(request),
+            (Method::Get, ["api", "security", "events"]) => self.get_security_events(request),
             (Method::Get, ["ddos-protection"]) => self.ddos_protection_page(request),
             (Method::Get, ["protocols", "doh"]) => self.doh_page(request),
             (Method::Get, ["protocols", "dot"]) => self.dot_page(request),
@@ -374,9 +382,11 @@ impl<'a> WebServer<'a> {
         // Headers size
         for header in request.headers() {
             // Each header: "Name: Value\r\n"
-            size += header.field.as_str().len() as u64;
+            let field = header.field.to_string();
+            let value = header.value.to_string();
+            size += field.len() as u64;
             size += 2; // ": "
-            size += header.value.as_str().len() as u64;
+            size += value.len() as u64;
             size += 2; // "\r\n"
         }
         
@@ -1279,14 +1289,21 @@ impl<'a> WebServer<'a> {
     }
     
     fn firewall_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get firewall metrics from security manager
+        let security_metrics = self.context.security_manager.get_metrics();
+        let security_stats = self.context.security_manager.get_statistics();
+        
         let data = serde_json::json!({
             "title": "DNS Firewall",
-            // TODO: Implement DNS firewall functionality
-            "blocked_queries": 0,
-            "active_rules": 0,
-            "custom_rules": 0,
-            "threat_feeds": 0,
-            "block_rate": 0.0,
+            "blocked_queries": security_metrics.firewall_blocked,
+            "active_rules": security_metrics.active_rules,
+            "custom_rules": security_metrics.active_rules, // Same as active rules for now
+            "threat_feeds": 0, // TODO: Track threat feed count
+            "block_rate": if security_metrics.total_queries > 0 {
+                (security_metrics.firewall_blocked as f64 / security_metrics.total_queries as f64) * 100.0
+            } else {
+                0.0
+            },
         });
         self.response_from_media_type(request, "firewall", data)
     }
@@ -1299,25 +1316,42 @@ impl<'a> WebServer<'a> {
     }
     
     fn rate_limiting_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get rate limiting metrics from security manager
+        let security_metrics = self.context.security_manager.get_metrics();
+        let security_stats = self.context.security_manager.get_statistics();
+        
         let data = serde_json::json!({
             "title": "Rate Limiting",
-            // TODO: Connect to rate limiting manager when implemented
-            "throttled_queries": 0,
-            "blocked_clients": 0,
-            "active_limits": 0,
-            "avg_qps": 0,
+            "throttled_queries": security_metrics.rate_limited,
+            "blocked_clients": security_metrics.blocked_ips,
+            "active_limits": security_metrics.throttled_clients,
+            "avg_qps": if security_metrics.total_queries > 0 {
+                security_metrics.total_queries / 60 // Assuming per minute
+            } else {
+                0
+            },
         });
         self.response_from_media_type(request, "rate_limiting", data)
     }
     
     fn ddos_protection_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get DDoS protection metrics from security manager
+        let security_metrics = self.context.security_manager.get_metrics();
+        
+        let threat_level_str = match security_metrics.threat_level {
+            crate::dns::security::ThreatLevel::None => "None",
+            crate::dns::security::ThreatLevel::Low => "Low",
+            crate::dns::security::ThreatLevel::Medium => "Medium",
+            crate::dns::security::ThreatLevel::High => "High",
+            crate::dns::security::ThreatLevel::Critical => "Critical",
+        };
+        
         let data = serde_json::json!({
             "title": "DDoS Protection",
-            // TODO: Implement DDoS protection functionality
-            "blocked_attacks": 0,
-            "detection_rules": 0,
-            "threat_level": "Low",
-            "auto_block_enabled": false,
+            "blocked_attacks": security_metrics.ddos_attacks_detected,
+            "detection_rules": security_metrics.active_rules,
+            "threat_level": threat_level_str,
+            "auto_block_enabled": true, // Default enabled in our implementation
         });
         self.response_from_media_type(request, "ddos_protection", data)
     }
@@ -1536,6 +1570,145 @@ impl<'a> WebServer<'a> {
             "auto_renewal_enabled": acme_enabled,
         });
         self.response_from_media_type(request, "certificates", data)
+    }
+    
+    // Security API endpoints
+    
+    fn add_firewall_rule(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Parse firewall rule from request
+        let rule: crate::dns::security::firewall::FirewallRule = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?            
+        } else {
+            return Err(WebError::InvalidInput("Firewall rules must be submitted as JSON".into()));
+        };
+        
+        // Add rule to security manager
+        self.context.security_manager.add_firewall_rule(rule)
+            .map_err(|e| WebError::InternalError(format!("Failed to add firewall rule: {}", e)))?;
+        
+        Ok(Response::empty(201)
+            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .boxed())
+    }
+    
+    fn delete_firewall_rule(&self, _request: &Request, rule_id: &str) -> Result<ResponseBox> {
+        // Remove rule from security manager
+        self.context.security_manager.remove_firewall_rule(rule_id)
+            .map_err(|e| WebError::InternalError(format!("Failed to remove firewall rule: {}", e)))?;
+        
+        Ok(Response::empty(204).boxed())
+    }
+    
+    fn load_blocklist(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Parse blocklist request
+        let blocklist_req: serde_json::Value = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?
+        } else {
+            return Err(WebError::InvalidInput("Blocklist must be submitted as JSON".into()));
+        };
+        
+        let source = blocklist_req["source"].as_str()
+            .ok_or_else(|| WebError::InvalidInput("Missing 'source' field".into()))?;
+        let category_str = blocklist_req["category"].as_str()
+            .unwrap_or("Custom");
+        
+        // Map category string to enum
+        let category = match category_str {
+            "Malware" => crate::dns::security::firewall::ThreatCategory::Malware,
+            "Phishing" => crate::dns::security::firewall::ThreatCategory::Phishing,
+            "Botnet" => crate::dns::security::firewall::ThreatCategory::Botnet,
+            _ => crate::dns::security::firewall::ThreatCategory::Custom,
+        };
+        
+        // Load blocklist
+        self.context.security_manager.load_blocklist(source, category)
+            .map_err(|e| WebError::InternalError(format!("Failed to load blocklist: {}", e)))?;
+        
+        Ok(Response::empty(201).boxed())
+    }
+    
+    fn load_allowlist(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Parse allowlist request
+        let allowlist_req: serde_json::Value = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?
+        } else {
+            return Err(WebError::InvalidInput("Allowlist must be submitted as JSON".into()));
+        };
+        
+        let source = allowlist_req["source"].as_str()
+            .ok_or_else(|| WebError::InvalidInput("Missing 'source' field".into()))?;
+        
+        // Load allowlist
+        self.context.security_manager.load_allowlist(source)
+            .map_err(|e| WebError::InternalError(format!("Failed to load allowlist: {}", e)))?;
+        
+        Ok(Response::empty(201).boxed())
+    }
+    
+    fn unblock_client(&self, _request: &Request, client_ip: &str) -> Result<ResponseBox> {
+        // Parse IP address
+        let ip_addr = client_ip.parse::<std::net::IpAddr>()
+            .map_err(|_| WebError::InvalidInput("Invalid IP address".into()))?;
+        
+        // Unblock client
+        self.context.security_manager.unblock_client(ip_addr);
+        
+        Ok(Response::empty(204).boxed())
+    }
+    
+    fn get_security_metrics(&self, request: &Request) -> Result<ResponseBox> {
+        let metrics = self.context.security_manager.get_metrics();
+        let stats = self.context.security_manager.get_statistics();
+        
+        let data = serde_json::json!({
+            "metrics": metrics,
+            "statistics": stats,
+        });
+        
+        if request.json_output() {
+            let json_string = serde_json::to_string(&data)?;
+            Ok(Response::from_string(json_string)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            self.response_from_media_type(request, "security_metrics", data)
+        }
+    }
+    
+    fn get_security_alerts(&self, request: &Request) -> Result<ResponseBox> {
+        let limit = 100; // Default limit
+        let alerts = self.context.security_manager.get_alerts(limit);
+        
+        let data = serde_json::json!({
+            "alerts": alerts,
+        });
+        
+        if request.json_output() {
+            let json_string = serde_json::to_string(&data)?;
+            Ok(Response::from_string(json_string)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            self.response_from_media_type(request, "security_alerts", data)
+        }
+    }
+    
+    fn get_security_events(&self, request: &Request) -> Result<ResponseBox> {
+        let limit = 1000; // Default limit
+        let events = self.context.security_manager.get_events(limit);
+        
+        let data = serde_json::json!({
+            "events": events,
+        });
+        
+        if request.json_output() {
+            let json_string = serde_json::to_string(&data)?;
+            Ok(Response::from_string(json_string)
+                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .boxed())
+        } else {
+            self.response_from_media_type(request, "security_events", data)
+        }
     }
     
     fn settings_page(&self, request: &Request) -> Result<ResponseBox> {

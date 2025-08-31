@@ -1,0 +1,158 @@
+# Atlas DNS Security Configuration
+
+[security]
+enabled = true
+log_security_events = true
+max_event_log_size = 10000
+alert_threshold = "Warning"  # Info, Warning, High, Critical
+metrics_interval_secs = 60
+
+[security.firewall]
+enabled = true
+default_action = "Allow"  # Allow, BlockNxDomain, BlockRefused, Sinkhole
+enable_rpz = true
+enable_regex_matching = true
+enable_threat_feeds = true
+log_blocked_queries = true
+sinkhole_ipv4 = "127.0.0.2"
+sinkhole_ipv6 = "::2"
+update_interval_secs = 3600
+max_rules = 10000
+
+# Default blocklists to load
+[[security.firewall.blocklists]]
+name = "malware-domains"
+url = "https://example.com/malware-domains.txt"
+category = "Malware"
+format = "hosts"
+enabled = true
+
+[[security.firewall.blocklists]]
+name = "phishing-domains"
+url = "https://example.com/phishing-domains.txt"
+category = "Phishing"
+format = "domains"
+enabled = true
+
+# Custom firewall rules
+[[security.firewall.rules]]
+id = "block-malware-1"
+name = "Block Known Malware Domains"
+description = "Blocks domains known to distribute malware"
+enabled = true
+priority = 1
+action = "BlockNxDomain"
+match_type = "WildcardDomain"
+match_value = "*.malicious-site.com"
+categories = ["Malware"]
+
+[[security.firewall.rules]]
+id = "rate-limit-any"
+name = "Rate Limit ANY Queries"
+description = "Rate limits clients making excessive ANY queries"
+enabled = true
+priority = 10
+action = "RateLimit"
+match_type = "QueryType"
+match_value = "ANY"
+query_types = ["ANY"]
+
+[security.rate_limiting]
+enabled = true
+algorithm = "TokenBucket"  # TokenBucket, SlidingWindow, FixedWindow, LeakyBucket, Adaptive
+per_client_qps = 100
+per_client_burst = 200
+global_qps = 10000
+global_burst = 20000
+window_size_secs = 1
+enable_adaptive = true
+adaptive_threshold = 0.8
+throttle_duration_secs = 60
+ban_duration_secs = 3600
+ban_threshold = 5
+
+# Query type specific limits
+[security.rate_limiting.query_type_limits]
+ANY = 10
+TXT = 50
+DNSKEY = 20
+AXFR = 1
+IXFR = 5
+
+[security.ddos_protection]
+enabled = true
+detection_threshold = 1000
+mitigation_mode = "Automatic"  # Automatic, Manual, Learning, Aggressive
+enable_dns_cookies = true
+enable_entropy_detection = true
+enable_pattern_analysis = true
+max_connections_per_ip = 100
+amplification_threshold = 10.0
+random_subdomain_threshold = 0.8
+auto_mitigation = true
+mitigation_duration_secs = 300
+
+# IP addresses to whitelist from DDoS protection
+whitelist = [
+    "127.0.0.1",
+    "::1",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16"
+]
+
+[security.webhooks]
+enabled = false
+url = "https://your-webhook-endpoint.com/security-alerts"
+auth_token = ""
+retry_count = 3
+timeout_secs = 10
+batch_size = 100
+batch_interval_secs = 30
+
+# Security alert thresholds
+[security.alerts]
+firewall_block_threshold = 100     # Alert when X queries blocked in 1 minute
+rate_limit_threshold = 50          # Alert when X clients rate limited in 1 minute
+ddos_detection_threshold = 10      # Alert when X DDoS attacks detected in 1 hour
+entropy_threshold = 0.9             # Alert when domain entropy exceeds this value
+
+# Response Policy Zones (RPZ)
+[[security.rpz]]
+name = "threat-intelligence"
+url = "https://example.com/rpz/threat-intel.zone"
+enabled = false
+update_interval_secs = 3600
+
+[[security.rpz]]
+name = "custom-blocks"
+file = "/opt/atlas/zones/rpz/custom-blocks.zone"
+enabled = false
+
+# DNS Cookie configuration (RFC 7873)
+[security.dns_cookies]
+enabled = true
+secret_rotation_interval_secs = 86400  # Rotate server secret daily
+cookie_lifetime_secs = 3600           # Client cookies valid for 1 hour
+require_cookies_for_tcp = false       # Don't require cookies for TCP queries
+
+# Connection limits
+[security.connection_limits]
+max_tcp_connections = 1000
+max_udp_connections_per_ip = 100
+max_concurrent_queries_per_ip = 50
+connection_timeout_secs = 30
+
+# Attack pattern detection
+[security.patterns]
+enable_dga_detection = true           # Detect Domain Generation Algorithms
+enable_tunnel_detection = true        # Detect DNS tunneling attempts
+enable_cache_poisoning_detection = true  # Detect cache poisoning attempts
+suspicious_query_threshold = 0.7      # Threshold for marking queries suspicious
+
+# Geo-blocking configuration
+[security.geo_blocking]
+enabled = false
+blocked_countries = []  # ISO country codes to block
+blocked_asns = []       # ASN numbers to block
+allow_unknown_geo = true  # Allow queries from unknown locations
