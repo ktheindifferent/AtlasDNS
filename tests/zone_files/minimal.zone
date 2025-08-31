@@ -1,0 +1,5 @@
+; Minimal zone file
+$ORIGIN minimal.test.
+@   SOA ns1 admin 1 3600 1800 604800 86400
+    NS  ns1
+ns1 A   10.0.0.1
