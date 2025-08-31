@@ -89,7 +89,7 @@ impl GeoIpAnalyzer {
 
         // If we have a GeoIP database, use it
         if let Some(reader) = &self.reader {
-            if let Ok(city: geoip2::City) = reader.lookup(ip) {
+            if let Ok(city) = reader.lookup::<geoip2::City>(ip) {
                 let location = Location {
                     country_code: city.country
                         .and_then(|c| c.iso_code)
