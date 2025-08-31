@@ -18,6 +18,7 @@ use crate::dns::netutil::{read_packet_length, write_packet_length};
 use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode};
 use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
+use crate::dns::dnssec::DnssecSigner;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {
@@ -183,6 +184,27 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
     }
 }
 
+/// Validate DNSSEC signatures in a response packet
+fn validate_dnssec(context: &Arc<ServerContext>, packet: &DnsPacket) -> std::result::Result<bool, Box<dyn std::error::Error>> {
+    // Check if the response contains DNSSEC records
+    let has_dnssec = packet.answers.iter().any(|r| matches!(r, 
+        DnsRecord::Rrsig { .. } | 
+        DnsRecord::Dnskey { .. } |
+        DnsRecord::Ds { .. }
+    ));
+    
+    if !has_dnssec {
+        return Ok(false); // No DNSSEC records to validate
+    }
+    
+    // Create a DNSSEC signer for validation (reuse signing config)
+    let signing_config = crate::dns::dnssec::SigningConfig::default();
+    let signer = DnssecSigner::new(signing_config);
+    
+    // Validate the packet signatures
+    signer.validate(packet)
+}
+
 /// This function will always return a valid packet, even if the request could not
 /// be performed, since we still want to send something back to the client.
 pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
@@ -245,6 +267,23 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
             process_valid_query(context.clone(), request, &mut packet);
         }
         
+        // Perform DNSSEC validation if requested
+        let dnssec_status = if request.header.z && context.dnssec_enabled {
+            match validate_dnssec(&context, &packet) {
+                Ok(valid) => {
+                    if valid {
+                        packet.header.authed_data = true; // Set Authenticated Data flag
+                        Some("validated".to_string())
+                    } else {
+                        Some("invalid".to_string())
+                    }
+                }
+                Err(_) => Some("unvalidated".to_string())
+            }
+        } else {
+            None
+        };
+
         // Log successful response
         let query_log = DnsQueryLog {
             domain: domain.clone(),
@@ -254,7 +293,7 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
             answer_count: packet.answers.len() as u16,
             cache_hit,
             upstream_server: None, // TODO: Track upstream server
-            dnssec_status: None,   // TODO: Add DNSSEC validation status
+            dnssec_status,
         };
         context.logger.log_dns_query(&ctx, query_log);
     }

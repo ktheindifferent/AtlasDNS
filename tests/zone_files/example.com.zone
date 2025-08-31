@@ -1,0 +1,52 @@
+; Example.com zone file - Standard BIND format
+$ORIGIN example.com.
+$TTL 3600  ; Default TTL of 1 hour
+
+; SOA Record
+@   IN  SOA ns1.example.com. admin.example.com. (
+            2024010101 ; serial
+            3600       ; refresh (1 hour)
+            1800       ; retry (30 minutes)
+            604800     ; expire (1 week)
+            86400 )    ; minimum (1 day)
+
+; Name Servers
+        IN  NS  ns1.example.com.
+        IN  NS  ns2.example.com.
+
+; Mail Servers
+        IN  MX  10 mail.example.com.
+        IN  MX  20 mail2.example.com.
+
+; A Records
+@       IN  A   192.0.2.1
+www     IN  A   192.0.2.2
+mail    IN  A   192.0.2.3
+mail2   IN  A   192.0.2.4
+ftp     IN  A   192.0.2.5
+ns1     IN  A   192.0.2.10
+ns2     IN  A   192.0.2.11
+
+; AAAA Records
+@       IN  AAAA    2001:db8::1
+www     IN  AAAA    2001:db8::2
+mail    IN  AAAA    2001:db8::3
+
+; CNAME Records
+blog    IN  CNAME   www.example.com.
+shop    IN  CNAME   www.example.com.
+
+; TXT Records
+@       IN  TXT     "v=spf1 include:_spf.example.com ~all"
+_dmarc  IN  TXT     "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"
+
+; SRV Records
+_http._tcp      IN  SRV 10 60 80 www.example.com.
+_https._tcp     IN  SRV 10 60 443 www.example.com.
+
+; CAA Records
+@       IN  CAA     0 issue "letsencrypt.org"
+@       IN  CAA     0 issuewild "letsencrypt.org"
+
+; Wildcard Record
+*.dev   IN  A   192.0.2.100

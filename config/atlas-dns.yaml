@@ -123,9 +123,45 @@ features:
   # DNSSEC
   dnssec:
     enabled: false
-    algorithm: ECDSAP256SHA256
-    auto_sign: true
-    key_rotation: 90d
+    
+    # Signing configuration
+    signing:
+      algorithm: ECDSAP256SHA256  # ECDSAP256SHA256, ECDSAP384SHA384, RSASHA256, RSASHA512, ED25519
+      auto_sign: true              # Automatically sign zones when enabled
+      signature_validity: 7d       # How long signatures are valid
+      resign_interval: 6d          # Re-sign zones before signatures expire
+      nsec3: true                  # Use NSEC3 for authenticated denial of existence
+      nsec3_iterations: 10         # NSEC3 hash iterations
+      nsec3_salt_length: 8         # NSEC3 salt length in bytes
+      
+    # Key management
+    keys:
+      ksk_algorithm: ECDSAP256SHA256
+      ksk_keysize: 256             # Key size in bits (for RSA: 2048, 4096)
+      ksk_lifetime: 365d           # KSK rotation period
+      zsk_algorithm: ECDSAP256SHA256
+      zsk_keysize: 256             # Key size in bits (for RSA: 1024, 2048)
+      zsk_lifetime: 30d            # ZSK rotation period
+      prepublish_period: 7d        # Publish new keys before activation
+      postpublish_period: 7d       # Keep old keys after deactivation
+      
+    # Key rollover
+    rollover:
+      automatic: true              # Enable automatic key rollover
+      schedule: "0 3 * * 0"        # Cron schedule for key rollover checks
+      overlap_period: 7d           # Overlap period for smooth transition
+      notify_parent: true          # Notify parent zone of DS record changes
+      
+    # Validation
+    validation:
+      enabled: true                # Validate DNSSEC signatures
+      strict: false                # Fail queries if validation fails
+      trust_anchors:               # Additional trust anchors
+        - zone: "."
+          key_tag: 20326
+          algorithm: 8
+          digest_type: 2
+          digest: "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D"
     
   # DNS-over-HTTPS (DoH)
   doh:

@@ -1,0 +1,61 @@
+; Complex zone file with various features
+$TTL 1h    ; 1 hour default TTL
+$ORIGIN complex.test.
+
+; SOA with comments
+@   IN  SOA (
+    ns1.complex.test.       ; primary name server
+    hostmaster.complex.test. ; email address
+    2024010101              ; serial number
+    1h                      ; refresh
+    15m                     ; retry
+    1w                      ; expire
+    1d                      ; minimum TTL
+)
+
+; NS records with different TTLs
+    3600    IN  NS  ns1
+    7200    IN  NS  ns2.complex.test.
+
+; Test various TTL formats
+short   60      IN  A   10.0.0.1    ; 60 seconds
+min     5m      IN  A   10.0.0.2    ; 5 minutes  
+hour    1h      IN  A   10.0.0.3    ; 1 hour
+day     1d      IN  A   10.0.0.4    ; 1 day
+week    1w      IN  A   10.0.0.5    ; 1 week
+
+; Test @ symbol
+@       IN  A   192.168.1.1
+@       IN  MX  10 mail
+
+; Relative vs absolute names
+relative    IN  A   10.1.1.1
+absolute.   IN  A   10.1.1.2
+
+; Multi-line TXT record
+long    IN  TXT ( "This is a very long TXT record that spans"
+                  " multiple lines and uses parentheses for"
+                  " continuation. It should be parsed as one record." )
+
+; Multiple TXT strings
+multi   IN  TXT "first" "second" "third"
+
+; Wildcards at different levels
+*           IN  A   10.2.0.1
+*.sub       IN  A   10.2.0.2
+*.*.deep    IN  A   10.2.0.3
+
+; SRV with underscores
+_ldap._tcp  IN  SRV 0 0 389 ldap.complex.test.
+
+; PTR records
+1.0.0.10.in-addr.arpa.  IN  PTR host1.complex.test.
+
+; Record without explicit domain (uses last)
+        IN  A   10.3.0.1
+        IN  A   10.3.0.2
+
+; Class variations
+test1   IN      A   10.4.0.1
+test2   1h  IN  A   10.4.0.2
+test3   IN  1h  A   10.4.0.3

@@ -1,0 +1,12 @@
+; Test $INCLUDE directive
+$ORIGIN include.test.
+$TTL 3600
+
+@   IN  SOA ns1 admin 1 3600 1800 604800 86400
+    IN  NS  ns1
+
+; Include another zone file
+$INCLUDE tests/zone_files/include_part.zone
+
+; Local records
+local   IN  A   192.168.1.1

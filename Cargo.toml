@@ -59,6 +59,10 @@ axum = { version = "0.6", features = ["ws"] }
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.48", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
 
+[dev-dependencies]
+proptest = "1.0"
+criterion = "0.5"
+
 [[bin]]
 name = "atlas"
 path = "src/bin/atlas.rs"
