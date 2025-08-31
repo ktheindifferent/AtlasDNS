@@ -30,3 +30,6 @@ pub mod k8s;
 
 /// Privilege escalation utilities for binding to privileged ports
 pub mod privilege_escalation;
+
+/// Real-time metrics collection and analytics system
+pub mod metrics;
