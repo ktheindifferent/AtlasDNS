@@ -48,6 +48,9 @@ mod netutil;
 /// DNS query type definitions
 pub mod query_type;
 
+/// DNS security module (firewall, rate limiting, DDoS protection)
+pub mod security;
+
 /// DNS result code definitions  
 pub mod result_code;
 

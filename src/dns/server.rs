@@ -18,6 +18,7 @@ use crate::dns::netutil::{read_packet_length, write_packet_length};
 use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode};
 use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
+use crate::dns::security::SecurityAction;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {
@@ -186,6 +187,11 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 /// This function will always return a valid packet, even if the request could not
 /// be performed, since we still want to send something back to the client.
 pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPacket {
+    execute_query_with_ip(context, request, None)
+}
+
+/// Execute query with client IP for security checks
+pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, client_ip: Option<std::net::IpAddr>) -> DnsPacket {
     // Create correlation context for this DNS query
     let mut ctx = CorrelationContext::new("dns_server", "execute_query");
     
@@ -203,6 +209,50 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
     ctx = ctx.with_metadata("domain", &domain)
            .with_metadata("query_type", &query_type)
            .with_metadata("query_id", &request.header.id.to_string());
+    
+    // Perform security checks first if client IP is available
+    if let Some(ip) = client_ip {
+        let security_result = context.security_manager.check_request(request, ip);
+        
+        if !security_result.allowed {
+            let mut packet = build_response_packet(&context, request);
+            
+            // Set appropriate response code based on security action
+            packet.header.rescode = match security_result.action {
+                SecurityAction::BlockNxDomain => ResultCode::NXDOMAIN,
+                SecurityAction::BlockRefused => ResultCode::REFUSED,
+                SecurityAction::BlockServfail => ResultCode::SERVFAIL,
+                SecurityAction::RateLimit => ResultCode::REFUSED,
+                SecurityAction::Challenge => ResultCode::REFUSED,
+                SecurityAction::Sinkhole(_) => ResultCode::NOERROR,
+                _ => ResultCode::REFUSED,
+            };
+            
+            // Log security block
+            let query_log = DnsQueryLog {
+                domain: domain.clone(),
+                query_type: query_type.clone(),
+                protocol: protocol.clone(),
+                response_code: format!("{:?}", packet.header.rescode),
+                answer_count: 0,
+                cache_hit: false,
+                upstream_server: None,
+                dnssec_status: None,
+            };
+            context.logger.log_dns_query(&ctx, query_log);
+            
+            // Record metrics
+            context.metrics.record_dns_query(&protocol, &query_type, &domain);
+            context.metrics.record_dns_response(
+                &format!("{:?}", packet.header.rescode),
+                &protocol,
+                &query_type
+            );
+            
+            log::info!("Security blocked query from {:?}: {:?}", ip, security_result.reason);
+            return packet;
+        }
+    }
     
     let mut packet = build_response_packet(&context, request);
     let mut cache_hit = false;
@@ -321,7 +371,7 @@ impl DnsUdpServer {
 
         log::info!("req: {:?}", request.clone());
 
-        let mut packet = execute_query(context, request);
+        let mut packet = execute_query_with_ip(context, request, Some(src));
         let _ = packet.write(&mut res_buffer, size_limit);
 
         // Fire off the response
@@ -515,7 +565,7 @@ impl DnsServer for DnsTcpServer {
                     let mut res_buffer = VectorPacketBuffer::new();
                     log::info!("req: {:?}", request.clone());
 
-                    let mut packet = execute_query(context.clone(), &request);
+                    let mut packet = execute_query_with_ip(context.clone(), &request, Some(src));
                     ignore_or_report!(
                         packet.write(&mut res_buffer, 0xFFFF),
                         "Failed to write packet to buffer"
