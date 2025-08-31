@@ -671,11 +671,32 @@ impl Authority {
         Ok(output)
     }
 
-    /// Import zone from string
-    pub fn import_zone(&self, zone_name: &str, _data: &str) -> Result<()> {
-        // For now, just create an empty zone
-        // TODO: Implement proper zone file parsing
-        self.create_zone(zone_name, &format!("ns1.{}", zone_name), &format!("admin.{}", zone_name))
+    /// Import zone from string using RFC-compliant zone file parser
+    pub fn import_zone(&self, zone_name: &str, data: &str) -> Result<()> {
+        // Parse the zone file
+        let mut parser = crate::dns::zone_parser::ZoneParser::new(zone_name);
+        let parsed_zone = parser.parse_string(data).map_err(|e| {
+            AuthorityError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Zone parse error: {}", e)
+            ))
+        })?;
+
+        // Validate the parsed zone
+        let warnings = crate::dns::zone_parser::validate_zone(&parsed_zone);
+        for warning in &warnings {
+            eprintln!("Zone validation warning: {}", warning);
+        }
+
+        // Add the parsed zone to authority
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
+        
+        if zones.zones.contains_key(zone_name) {
+            return Err(AuthorityError::ZoneExists(zone_name.to_string()));
+        }
+
+        zones.zones.insert(zone_name.to_string(), parsed_zone);
+        Ok(())
     }
 
     /// Enable DNSSEC for a zone
