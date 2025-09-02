@@ -92,21 +92,25 @@ impl GeoIpAnalyzer {
             if let Ok(city) = reader.lookup::<geoip2::City>(ip) {
                 let location = Location {
                     country_code: city.country
+                        .as_ref()
                         .and_then(|c| c.iso_code)
                         .unwrap_or("XX")
                         .to_string(),
                     country_name: city.country
-                        .and_then(|c| c.names)
+                        .as_ref()
+                        .and_then(|c| c.names.as_ref())
                         .and_then(|n| n.get("en"))
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| "Unknown".to_string()),
                     region: city.subdivisions
+                        .as_ref()
                         .and_then(|s| s.get(0))
-                        .and_then(|s| s.names)
+                        .and_then(|s| s.names.as_ref())
                         .and_then(|n| n.get("en"))
                         .map(|s| s.to_string()),
                     city: city.city
-                        .and_then(|c| c.names)
+                        .as_ref()
+                        .and_then(|c| c.names.as_ref())
                         .and_then(|n| n.get("en"))
                         .map(|s| s.to_string()),
                     latitude: city.location.as_ref().and_then(|l| l.latitude),

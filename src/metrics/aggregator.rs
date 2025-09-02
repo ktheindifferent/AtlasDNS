@@ -364,11 +364,11 @@ impl MetricsAggregator {
         let previous_count = previous_queries.len() as f64;
         
         if previous_count > 0.0 {
-            ((current_count - previous_count) / previous_count) * 100.0
+            Ok(((current_count - previous_count) / previous_count) * 100.0)
         } else if current_count > 0.0 {
-            100.0
+            Ok(100.0)
         } else {
-            0.0
+            Ok(0.0)
         }
     }
 

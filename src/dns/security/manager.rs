@@ -467,24 +467,31 @@ impl SecurityManager {
                     Some(alert) = rx.recv() => {
                         alert_batch.push(alert);
                         
-                        let config = webhook_config.read();
-                        if alert_batch.len() >= config.batch_size ||
-                           last_send.elapsed() >= config.batch_interval {
-                            if config.url.is_empty() {
-                                continue;
+                        {
+                            let config = webhook_config.read();
+                            if alert_batch.len() >= config.batch_size ||
+                               last_send.elapsed() >= config.batch_interval {
+                                if config.url.is_empty() {
+                                    continue;
+                                }
+                                
+                                let config_clone = config.clone();
+                                drop(config);
+                                
+                                // Send webhook
+                                Self::send_webhook(&config_clone, &alert_batch).await;
+                                alert_batch.clear();
+                                last_send = Instant::now();
                             }
-                            
-                            // Send webhook
-                            Self::send_webhook(&config, &alert_batch).await;
-                            alert_batch.clear();
-                            last_send = Instant::now();
                         }
                     }
                     _ = tokio::time::sleep(Duration::from_secs(30)) => {
                         if !alert_batch.is_empty() {
                             let config = webhook_config.read();
                             if !config.url.is_empty() {
-                                Self::send_webhook(&config, &alert_batch).await;
+                                let config_clone = config.clone();
+                                drop(config);
+                                Self::send_webhook(&config_clone, &alert_batch).await;
                                 alert_batch.clear();
                                 last_send = Instant::now();
                             }

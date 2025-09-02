@@ -78,9 +78,14 @@ impl MetricsManager {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             loop {
                 interval.tick().await;
-                if let Ok(snapshot) = collector.get_snapshot().await {
-                    let _ = storage.store_snapshot(&snapshot).await;
-                    stream.broadcast_update(&snapshot).await;
+                match collector.get_snapshot().await {
+                    Ok(snapshot) => {
+                        let _ = storage.store_snapshot(&snapshot).await;
+                        stream.broadcast_update(&snapshot).await;
+                    }
+                    Err(_) => {
+                        // Log error or handle it appropriately
+                    }
                 }
             }
         });
