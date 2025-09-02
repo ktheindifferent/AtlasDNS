@@ -40,28 +40,7 @@ RUN mkdir -p /opt/atlas/certs /opt/atlas/zones \
 # Copy binary from builder
 COPY --from=builder /usr/src/atlas/target/release/atlas /usr/local/bin/atlas
 
-# Switch to atlas user
-USER atlas
-
-# Set working directory
-WORKDIR /opt/atlas
-
-# Expose DNS ports (TCP and UDP) and web interface ports
-EXPOSE 53/tcp
-EXPOSE 53/udp
-EXPOSE 5380
-EXPOSE 5343
-
-# Default environment variables for CapRover
-ENV RUST_LOG=info
-ENV ZONES_DIR=/opt/atlas/zones
-ENV FORWARD_ADDRESS=""
-ENV SSL_ENABLED="false"
-ENV ACME_PROVIDER=""
-ENV ACME_EMAIL=""
-ENV ACME_DOMAINS=""
-
-# Create entrypoint script inline
+# Create entrypoint script while still root
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -97,7 +76,28 @@ fi\n\
 # Execute atlas with arguments\n\
 echo "Starting Atlas DNS Server with arguments: $ARGS"\n\
 exec /usr/local/bin/atlas $ARGS' > /usr/local/bin/docker-entrypoint.sh \
-    && sudo chmod +x /usr/local/bin/docker-entrypoint.sh
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Switch to atlas user
+USER atlas
+
+# Set working directory
+WORKDIR /opt/atlas
+
+# Expose DNS ports (TCP and UDP) and web interface ports
+EXPOSE 53/tcp
+EXPOSE 53/udp
+EXPOSE 5380
+EXPOSE 5343
+
+# Default environment variables for CapRover
+ENV RUST_LOG=info
+ENV ZONES_DIR=/opt/atlas/zones
+ENV FORWARD_ADDRESS=""
+ENV SSL_ENABLED="false"
+ENV ACME_PROVIDER=""
+ENV ACME_EMAIL=""
+ENV ACME_DOMAINS=""
 
 # Set entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
