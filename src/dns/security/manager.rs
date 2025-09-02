@@ -144,11 +144,21 @@ impl SecurityManager {
             webhook_config: Arc::new(RwLock::new(WebhookConfig::default())),
         };
 
-        // Start background tasks
+        // Start background tasks that don't require Tokio runtime
         manager.start_metrics_collector();
+        
+        // Note: Alert processor requires Tokio runtime and will be started automatically
+        // when first used if a runtime is available, or can be manually started
+        // by calling initialize_background_tasks()
         manager.start_alert_processor();
 
         manager
+    }
+
+    /// Initialize background tasks (must be called after Tokio runtime is started)
+    pub fn initialize_background_tasks(&self) {
+        self.start_metrics_collector();
+        self.start_alert_processor();
     }
 
     /// Perform comprehensive security check
@@ -458,7 +468,9 @@ impl SecurityManager {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let webhook_config = Arc::clone(&self.webhook_config);
         
-        tokio::spawn(async move {
+        // Check if we're in a Tokio runtime context
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
             let mut alert_batch = Vec::new();
             let mut last_send = Instant::now();
             
@@ -509,7 +521,10 @@ impl SecurityManager {
                     }
                 }
             }
-        });
+            });
+        } else {
+            log::debug!("Alert processor not started - no Tokio runtime available");
+        }
     }
 
     async fn send_webhook(config: &WebhookConfig, alerts: &[SecurityAlert]) {
