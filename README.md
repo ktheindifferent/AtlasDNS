@@ -187,6 +187,8 @@ Access the web interface at:
 
 ## 🐳 Docker Support
 
+### Local Docker
+
 ```bash
 # Build Docker image
 docker build -t atlas-dns .
@@ -194,6 +196,123 @@ docker build -t atlas-dns .
 # Run with Docker Compose
 docker-compose up -d
 ```
+
+### CapRover Deployment
+
+Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port mapping capabilities.
+
+#### Prerequisites
+
+- CapRover instance with version 1.11.0 or later (for TCP/UDP support)
+- Domain configured for your CapRover instance
+- DNS records pointing to your CapRover server
+
+#### Deployment Steps
+
+1. **Create the App in CapRover**
+   ```bash
+   # Using CapRover CLI
+   caprover apps:create atlas-dns
+   ```
+
+2. **Configure Port Mapping**
+   
+   In the CapRover web interface, navigate to your `atlas-dns` app and configure:
+   
+   - **Container HTTP Port**: 5380 (for web interface)
+   - **Additional Port Mappings**:
+     - `53:53/tcp` - DNS TCP port
+     - `53:53/udp` - DNS UDP port
+     - `5343:5343/tcp` - HTTPS web interface (if SSL enabled)
+
+3. **Set Environment Variables**
+   
+   In the CapRover app configuration, add these environment variables:
+   
+   ```
+   RUST_LOG=info
+   ZONES_DIR=/opt/atlas/zones
+   FORWARD_ADDRESS=8.8.8.8  # Optional: upstream DNS server
+   SSL_ENABLED=false         # Set to true if using SSL
+   ACME_PROVIDER=            # letsencrypt or zerossl (if SSL enabled)
+   ACME_EMAIL=               # Your email (if using ACME)
+   ACME_DOMAINS=             # Your domains (if using ACME)
+   ```
+
+4. **Deploy from GitHub**
+   
+   Option A: Deploy directly from GitHub
+   ```bash
+   caprover deploy -a atlas-dns -b master \
+     -r https://github.com/ktheindifferent/AtlasDNS.git
+   ```
+   
+   Option B: Deploy from local repository
+   ```bash
+   # From the project root directory
+   caprover deploy -a atlas-dns
+   ```
+
+5. **Configure Persistent Storage (Optional)**
+   
+   For persistent DNS zones and certificates:
+   
+   - Add persistent directories in CapRover:
+     - `/opt/atlas/zones` - For DNS zone files
+     - `/opt/atlas/certs` - For SSL certificates
+
+6. **Configure Firewall**
+   
+   Ensure your server firewall allows:
+   - Port 53 TCP/UDP for DNS queries
+   - Port 5380 TCP for HTTP web interface
+   - Port 5343 TCP for HTTPS web interface (if SSL enabled)
+
+#### Post-Deployment Configuration
+
+1. **Access the Web Interface**
+   
+   Navigate to: `http://your-caprover-domain:5380`
+   
+   Default credentials:
+   - Username: `admin`
+   - Password: `admin` (change immediately after first login)
+
+2. **Configure DNS Zones**
+   
+   Use the web interface to:
+   - Create authoritative zones
+   - Add DNS records
+   - Configure forwarding rules
+
+3. **Test DNS Resolution**
+   ```bash
+   # Test DNS query
+   dig @your-server-ip example.com
+   
+   # Test specific record type
+   dig @your-server-ip example.com MX
+   ```
+
+#### Troubleshooting CapRover Deployment
+
+- **Port Binding Issues**: Ensure no other services are using port 53 on the host
+- **Permission Errors**: The container runs with sudo privileges for port 53 binding
+- **DNS Not Responding**: Check CapRover's port mapping configuration
+- **Logs**: View logs in CapRover web interface or via CLI:
+  ```bash
+  caprover logs -a atlas-dns
+  ```
+
+#### Advanced CapRover Configuration
+
+For production deployments, consider:
+
+1. **Resource Limits**: Set appropriate CPU and memory limits
+2. **Health Checks**: Configure CapRover health checks for the DNS service
+3. **Backup Strategy**: Regular backups of `/opt/atlas/zones` directory
+4. **Monitoring**: Set up monitoring for DNS query metrics
+5. **Multi-Instance**: Deploy multiple instances for high availability
 
 ## 📊 API v2 Endpoints
 

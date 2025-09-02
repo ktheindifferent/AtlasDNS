@@ -1,7 +1,39 @@
-version: '3.9'
+version: '3.8'
 
 services:
-  # Primary Atlas DNS Server
+  # Atlas DNS Server - Simple single-instance configuration
+  atlas-dns:
+    build: .
+    container_name: atlas-dns
+    restart: unless-stopped
+    ports:
+      # DNS ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Web interface ports
+      - "5380:5380"
+      - "5343:5343"
+    environment:
+      - RUST_LOG=info
+      - ZONES_DIR=/opt/atlas/zones
+      - FORWARD_ADDRESS=8.8.8.8
+      - SSL_ENABLED=false
+      # Uncomment and configure for SSL with ACME
+      # - SSL_ENABLED=true
+      # - ACME_PROVIDER=letsencrypt
+      # - ACME_EMAIL=admin@example.com
+      # - ACME_DOMAINS=example.com,www.example.com
+    volumes:
+      # Persistent storage for zones and certificates
+      - atlas-zones:/opt/atlas/zones
+      - atlas-certs:/opt/atlas/certs
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    networks:
+      - atlas-network
+
+  # Primary Atlas DNS Server - Advanced multi-instance configuration
   atlas-dns-primary:
     build:
       context: .
