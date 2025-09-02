@@ -227,17 +227,21 @@ Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port map
 
 3. **Set Environment Variables**
    
-   In the CapRover app configuration, add these environment variables:
+   In the CapRover web interface, navigate to your app and click on "App Configs" tab.
+   Add these environment variables in the "Environmental Variables" section:
    
-   ```
-   RUST_LOG=info
-   ZONES_DIR=/opt/atlas/zones
-   FORWARD_ADDRESS=8.8.8.8  # Optional: upstream DNS server
-   SSL_ENABLED=false         # Set to true if using SSL
-   ACME_PROVIDER=            # letsencrypt or zerossl (if SSL enabled)
-   ACME_EMAIL=               # Your email (if using ACME)
-   ACME_DOMAINS=             # Your domains (if using ACME)
-   ```
+   | Variable | Default Value | Description |
+   |----------|--------------|-------------|
+   | `RUST_LOG` | `info` | Logging level (debug, info, warn, error) |
+   | `ZONES_DIR` | `/opt/atlas/zones` | Directory for DNS zone files |
+   | `FORWARD_ADDRESS` | *(empty)* | Optional: Upstream DNS server (e.g., 8.8.8.8) |
+   | `SSL_ENABLED` | `false` | Set to `true` to enable SSL/TLS |
+   | `ACME_PROVIDER` | *(empty)* | `letsencrypt` or `zerossl` (if SSL enabled) |
+   | `ACME_EMAIL` | *(empty)* | Your email for ACME registration (if SSL enabled) |
+   | `ACME_DOMAINS` | *(empty)* | Comma-separated domains for SSL cert (if SSL enabled) |
+   
+   **Note:** Environment variables must be configured through CapRover's web interface, 
+   not in the Dockerfile. This allows for easy configuration without rebuilding the image.
 
 4. **Deploy from GitHub**
    

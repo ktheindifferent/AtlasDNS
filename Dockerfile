@@ -1,8 +1,8 @@
 # Build stage
 FROM rust:bookworm AS builder
 
-# Cache bust: 2025-01-02-v1
-ARG CACHE_BUST=1
+# Cache bust: 2025-01-02-v3
+ARG CACHE_BUST=3
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -27,14 +27,13 @@ FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    libssl3 \
     ca-certificates \
+    libssl3 \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Create atlas user with sudo privileges for port binding
-RUN useradd -m -s /bin/bash atlas \
-    && echo "atlas ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+# Create user for running the server
+RUN useradd -m -u 1001 atlas
 
 # Create necessary directories
 RUN mkdir -p /opt/atlas/certs /opt/atlas/zones \
@@ -50,7 +49,8 @@ set -e\n\
 # Build command arguments\n\
 ARGS=""\n\
 \n\
-# Add zones directory\n\
+# Add zones directory (default if not set)\n\
+ZONES_DIR=${ZONES_DIR:-/opt/atlas/zones}\n\
 ARGS="$ARGS --zones-dir $ZONES_DIR"\n\
 \n\
 # Add forward address if provided\n\
@@ -92,15 +92,6 @@ EXPOSE 53/tcp
 EXPOSE 53/udp
 EXPOSE 5380
 EXPOSE 5343
-
-# Default environment variables for CapRover
-ENV RUST_LOG=info
-ENV ZONES_DIR=/opt/atlas/zones
-ENV FORWARD_ADDRESS=""
-ENV SSL_ENABLED="false"
-ENV ACME_PROVIDER=""
-ENV ACME_EMAIL=""
-ENV ACME_DOMAINS=""
 
 # Set entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
