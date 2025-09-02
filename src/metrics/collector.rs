@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, Instant};
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
-use sysinfo::{System, SystemExt, ProcessExt, NetworkExt};
+use sysinfo::{System, SystemExt, ProcessExt, NetworkExt, CpuExt};
 
 /// Metrics snapshot at a point in time
 #[derive(Debug, Clone, Serialize, Deserialize)]
