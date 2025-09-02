@@ -1,8 +1,8 @@
 # Build stage
 FROM rust:bookworm AS builder
 
-# Cache bust: 2025-01-02-v3
-ARG CACHE_BUST=3
+# Cache bust: 2025-01-02-v4
+ARG CACHE_BUST=4
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -81,11 +81,11 @@ echo "Starting Atlas DNS Server with arguments: $ARGS"\n\
 exec /usr/local/bin/atlas $ARGS' > /usr/local/bin/docker-entrypoint.sh \
     && chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Switch to atlas user
-USER atlas
-
 # Set working directory
 WORKDIR /opt/atlas
+
+# Note: Running as root is required for binding to port 53
+# In a container environment, this is acceptable as the container provides isolation
 
 # Expose DNS ports (TCP and UDP) and web interface ports
 EXPOSE 53/tcp
