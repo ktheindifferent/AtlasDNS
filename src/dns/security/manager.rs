@@ -491,11 +491,17 @@ impl SecurityManager {
                     }
                     _ = tokio::time::sleep(Duration::from_secs(30)) => {
                         if !alert_batch.is_empty() {
-                            let config = webhook_config.read();
-                            if !config.url.is_empty() {
-                                let config_clone = config.clone();
-                                drop(config);
-                                Self::send_webhook(&config_clone, &alert_batch).await;
+                            let config_clone = {
+                                let config = webhook_config.read();
+                                if !config.url.is_empty() {
+                                    Some(config.clone())
+                                } else {
+                                    None
+                                }
+                            }; // lock definitely dropped here
+                            
+                            if let Some(config) = config_clone {
+                                Self::send_webhook(&config, &alert_batch).await;
                                 alert_batch.clear();
                                 last_send = Instant::now();
                             }

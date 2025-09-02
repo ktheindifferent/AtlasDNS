@@ -165,7 +165,7 @@ impl MetricsCollector {
     }
 
     /// Get current metrics snapshot
-    pub async fn get_snapshot(&self) -> Result<MetricsSnapshot, Box<dyn std::error::Error>> {
+    pub async fn get_snapshot(&self) -> Result<MetricsSnapshot, Box<dyn std::error::Error + Send + Sync>> {
         // Calculate average response time
         let response_times = self.recent_response_times.read().await;
         let times: Vec<f64> = response_times.entries.iter().map(|(_, t)| *t).collect();
