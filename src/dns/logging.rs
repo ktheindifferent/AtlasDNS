@@ -14,7 +14,8 @@
 //! * **OpenTelemetry** - Distributed tracing integration
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn, error, span, Level, Span};
 use tracing_subscriber::EnvFilter;
@@ -545,6 +546,64 @@ macro_rules! create_correlation_context {
     ($component:expr, $operation:expr) => {{
         $crate::dns::logging::CorrelationContext::new($component, $operation)
     }};
+}
+
+/// In-memory query log storage for retrieving recent DNS queries
+pub struct QueryLogStorage {
+    logs: Arc<RwLock<VecDeque<DnsQueryLog>>>,
+    max_entries: usize,
+}
+
+impl QueryLogStorage {
+    /// Create a new query log storage with specified capacity
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            logs: Arc::new(RwLock::new(VecDeque::with_capacity(max_entries))),
+            max_entries,
+        }
+    }
+    
+    /// Store a query log entry
+    pub fn store_query(&self, query_log: DnsQueryLog) {
+        let mut logs = self.logs.write().unwrap();
+        
+        // Add new entry
+        logs.push_back(query_log);
+        
+        // Keep only the most recent entries
+        while logs.len() > self.max_entries {
+            logs.pop_front();
+        }
+    }
+    
+    /// Get recent query logs (up to specified limit)
+    pub fn get_recent(&self, limit: usize) -> Vec<DnsQueryLog> {
+        let logs = self.logs.read().unwrap();
+        logs.iter()
+            .rev() // Most recent first
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+    
+    /// Get total count of logged queries
+    pub fn get_total_count(&self) -> usize {
+        let logs = self.logs.read().unwrap();
+        logs.len()
+    }
+    
+    /// Clear all stored query logs
+    pub fn clear(&self) {
+        let mut logs = self.logs.write().unwrap();
+        logs.clear();
+    }
+    
+    /// Get estimated memory usage in bytes
+    pub fn get_memory_usage(&self) -> usize {
+        let logs = self.logs.read().unwrap();
+        // Rough estimate: each log entry averages ~200 bytes
+        logs.len() * 200
+    }
 }
 
 #[cfg(test)]

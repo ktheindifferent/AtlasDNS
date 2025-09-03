@@ -161,7 +161,10 @@ fn process_valid_query(
     );
 
     packet.header.rescode = rescode;
-    populate_packet_from_results(packet, results);
+    populate_packet_from_results(packet, results.clone());
+    
+    // Log the DNS query for storage and display
+    store_dns_query_log(&context, question, rescode, &results);
 }
 
 /// Resolve a DNS question and handle CNAME resolution
@@ -770,6 +773,42 @@ impl DnsServer for DnsTcpServer {
 
         Ok(())
     }
+}
+
+/// Store DNS query information for logging and display
+fn store_dns_query_log(
+    context: &ServerContext,
+    question: &DnsQuestion,
+    rescode: ResultCode,
+    results: &[DnsPacket]
+) {
+    use crate::dns::logging::DnsQueryLog;
+    
+    // Determine if response came from cache
+    let cache_hit = match context.cache.lookup(&question.name, question.qtype) {
+        Some(_) => true,
+        None => false,
+    };
+    
+    // Count answers
+    let answer_count = results.iter()
+        .map(|packet| packet.answers.len())
+        .sum::<usize>() as u16;
+    
+    // Create query log entry
+    let query_log = DnsQueryLog {
+        domain: question.name.clone(),
+        query_type: format!("{:?}", question.qtype),
+        protocol: "UDP/TCP".to_string(), // Could be enhanced to track specific protocol
+        response_code: format!("{:?}", rescode),
+        answer_count,
+        cache_hit,
+        upstream_server: None, // Could be enhanced to track upstream server used
+        dnssec_status: None,   // Could be enhanced to track DNSSEC validation
+    };
+    
+    // Store in query log storage
+    context.query_log_storage.store_query(query_log);
 }
 
 #[cfg(test)]

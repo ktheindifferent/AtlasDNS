@@ -12,7 +12,7 @@ use crate::dns::client::{DnsClient, DnsNetworkClient};
 use crate::dns::resolve::{DnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
 use crate::dns::acme::SslConfig;
 use crate::dns::metrics::MetricsCollector;
-use crate::dns::logging::{StructuredLogger, LoggerConfig};
+use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 use crate::dns::security::{SecurityManager, SecurityConfig};
 
@@ -95,6 +95,7 @@ pub struct ServerContext {
     pub ssl_config: SslConfig,
     pub metrics: Arc<MetricsCollector>,
     pub logger: Arc<StructuredLogger>,
+    pub query_log_storage: Arc<QueryLogStorage>,
     pub connection_pool: Option<Arc<ConnectionPoolManager>>,
     pub security_manager: Arc<SecurityManager>,
 }
@@ -117,6 +118,9 @@ impl ServerContext {
                 format!("Failed to initialize logger: {}", e)
             )))?);
         
+        // Initialize query log storage (store up to 1000 recent queries)
+        let query_log_storage = Arc::new(QueryLogStorage::new(1000));
+        
         Ok(ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
@@ -138,6 +142,7 @@ impl ServerContext {
             ssl_config: SslConfig::default(),
             metrics: metrics.clone(),
             logger: logger.clone(),
+            query_log_storage: query_log_storage.clone(),
             connection_pool: None,
             security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
         })

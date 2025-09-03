@@ -21,6 +21,7 @@ use crate::web::{
     sessions::{SessionMiddleware, create_session_cookie, clear_session_cookie},
     util::{parse_formdata, FormDataDecodable},
     api_v2::ApiV2Handler,
+    system_info::format,
     Result, WebError,
 };
 
@@ -1652,17 +1653,51 @@ impl<'a> WebServer<'a> {
         let udp_count = self.context.statistics.get_udp_query_count();
         let total_logs = tcp_count + udp_count;
         
+        // Get recent query logs from storage
+        let recent_queries = self.context.query_log_storage.get_recent(50)
+            .into_iter()
+            .map(|query_log| serde_json::json!({
+                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(), // TODO: Store actual timestamp in DnsQueryLog
+                "level": if query_log.response_code == "SERVFAIL" { "ERROR" } 
+                        else if query_log.response_code == "NXDOMAIN" { "WARN" } 
+                        else { "INFO" },
+                "source": "DNS",
+                "message": format!("Query: {} record for {} ({})", 
+                    query_log.query_type, 
+                    query_log.domain,
+                    query_log.response_code
+                ),
+                "cache_hit": query_log.cache_hit,
+                "answer_count": query_log.answer_count,
+                "protocol": query_log.protocol
+            }))
+            .collect::<Vec<_>>();
+            
+        // Calculate log size from query storage memory usage
+        let log_size_bytes = self.context.query_log_storage.get_memory_usage();
+        let log_size = format::format_bytes(log_size_bytes as u64);
+        
+        // Count errors and warnings from recent queries
+        let (error_count, warning_count) = self.context.query_log_storage.get_recent(100)
+            .iter()
+            .fold((0, 0), |(errors, warnings), query| {
+                match query.response_code.as_str() {
+                    "SERVFAIL" | "REFUSED" | "FORMERR" => (errors + 1, warnings),
+                    "NXDOMAIN" => (errors, warnings + 1),
+                    _ => (errors, warnings)
+                }
+            });
+
         let data = serde_json::json!({
             "title": "Query Logs",
             "total_queries": total_logs,
             "tcp_queries": tcp_count,
             "udp_queries": udp_count,
-            "recent_queries": [], // TODO: Implement query log storage
-            // TODO: Track errors and warnings in metrics
-            "error_count": 0,
-            "warning_count": 0,
+            "recent_queries": recent_queries,
+            "error_count": error_count,
+            "warning_count": warning_count,
             "log_level": "INFO",
-            "log_size": "N/A", // TODO: Calculate actual log size
+            "log_size": log_size,
         });
         self.response_from_media_type(request, "logs", data)
     }
