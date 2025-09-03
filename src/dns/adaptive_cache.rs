@@ -11,7 +11,7 @@
 //! * **Cache Pressure Management** - Intelligent eviction policies
 //! * **Performance Analytics** - Real-time cache effectiveness metrics
 
-use std::collections::{HashMap, VecDeque, BinaryHeap};
+use std::collections::{VecDeque, BinaryHeap};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use std::cmp::Ordering;

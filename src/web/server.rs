@@ -261,6 +261,17 @@ impl<'a> WebServer<'a> {
         })
     }
 
+    /// Add security headers to protect against common web vulnerabilities
+    fn add_security_headers(mut response: Response<std::io::Cursor<Vec<u8>>>) -> Response<std::io::Cursor<Vec<u8>>> {
+        response = response
+            .with_header(Self::safe_header("X-Frame-Options: DENY"))
+            .with_header(Self::safe_header("X-Content-Type-Options: nosniff"))
+            .with_header(Self::safe_header("X-XSS-Protection: 1; mode=block"))
+            .with_header(Self::safe_header("Referrer-Policy: strict-origin-when-cross-origin"))
+            .with_header(Self::safe_header("Cache-Control: no-cache, no-store, must-revalidate"));
+        response
+    }
+
     /// Route an HTTP request to the appropriate handler
     fn route_request(
         &self,
@@ -774,14 +785,14 @@ impl<'a> WebServer<'a> {
     {
         if request.json_output() {
             let json_string = serde_json::to_string(&data)?;
-            Ok(Response::from_string(json_string)
-                .with_header(Self::safe_header("Content-Type: application/json"))
-                .boxed())
+            let response = Response::from_string(json_string)
+                .with_header(Self::safe_header("Content-Type: application/json"));
+            Ok(Self::add_security_headers(response).boxed())
         } else {
             let html_string = self.handlebars.render(template, &data)?;
-            Ok(Response::from_string(html_string)
-                .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/html"))
-                .boxed())
+            let response = Response::from_string(html_string)
+                .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/html"));
+            Ok(Self::add_security_headers(response).boxed())
         }
     }
 

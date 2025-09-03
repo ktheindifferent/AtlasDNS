@@ -20,7 +20,7 @@ use std::io::{Read, Write};
 use parking_lot::{RwLock, Mutex};
 use openssl::ssl::{SslConnector, SslMethod, SslStream};
 
-use crate::dns::protocol::{DnsPacket, QueryType};
+use crate::dns::protocol::DnsPacket;
 use crate::dns::buffer::BytePacketBuffer;
 use crate::dns::errors::DnsError;
 use crate::dns::metrics::MetricsCollector;
