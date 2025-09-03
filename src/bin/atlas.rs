@@ -82,10 +82,11 @@ fn main() {
         "disable-api",
         "Disable the Atlas web server API",
     );
-    opts.optflag(
+    opts.optopt(
         "j",
         "zones-dir",
         "The directory for the zone files",
+        "DIRECTORY",
     );
     opts.optflag(
         "s",

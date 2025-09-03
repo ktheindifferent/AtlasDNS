@@ -1768,5 +1768,142 @@
         
         console.log('✅ Sentry UI/UX monitoring initialized successfully');
     </script>
+
+    <!-- Real-time Metrics Streaming via Server-Sent Events -->
+    <script>
+        let metricsEventSource = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function connectToMetricsStream() {
+            if (metricsEventSource) {
+                metricsEventSource.close();
+            }
+
+            metricsEventSource = new EventSource('/api/metrics/stream');
+            
+            metricsEventSource.onopen = function() {
+                console.log('✅ Real-time metrics stream connected');
+                reconnectAttempts = 0;
+                
+                // Show connection indicator
+                const indicator = document.getElementById('live-indicator');
+                if (indicator) {
+                    indicator.className = 'badge bg-success';
+                    indicator.textContent = 'Live';
+                }
+            };
+            
+            metricsEventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateDashboardMetrics(data);
+                } catch (error) {
+                    console.error('Error parsing metrics data:', error);
+                }
+            };
+            
+            metricsEventSource.addEventListener('metrics', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    updateDashboardMetrics(data);
+                } catch (error) {
+                    console.error('Error parsing metrics event data:', error);
+                }
+            });
+            
+            metricsEventSource.onerror = function(event) {
+                console.warn('Metrics stream connection error:', event);
+                
+                // Show disconnection indicator
+                const indicator = document.getElementById('live-indicator');
+                if (indicator) {
+                    indicator.className = 'badge bg-warning';
+                    indicator.textContent = 'Reconnecting...';
+                }
+                
+                // Attempt reconnection
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    setTimeout(() => {
+                        reconnectAttempts++;
+                        console.log(`Attempting to reconnect metrics stream (${reconnectAttempts}/${maxReconnectAttempts})`);
+                        connectToMetricsStream();
+                    }, 2000 + (reconnectAttempts * 1000)); // Exponential backoff
+                } else {
+                    console.error('Max reconnection attempts reached for metrics stream');
+                    const indicator = document.getElementById('live-indicator');
+                    if (indicator) {
+                        indicator.className = 'badge bg-danger';
+                        indicator.textContent = 'Disconnected';
+                    }
+                }
+            };
+        }
+
+        function updateDashboardMetrics(data) {
+            // Update cache hit rate
+            const cacheHitElement = document.querySelector('[data-metric="cache-hit-rate"]');
+            if (cacheHitElement && data.cache_hit_rate !== undefined) {
+                const percentage = Math.round(data.cache_hit_rate * 100);
+                cacheHitElement.textContent = percentage + '%';
+                
+                // Update progress bar
+                const progressBar = document.getElementById('cache-hit-progress');
+                if (progressBar) {
+                    progressBar.style.width = percentage + '%';
+                }
+            }
+
+            // Update total queries
+            const totalQueriesElement = document.querySelector('[data-metric="total-queries"]');
+            if (totalQueriesElement && data.total_queries !== undefined) {
+                totalQueriesElement.textContent = data.total_queries.toLocaleString();
+            }
+
+            // Update average response time
+            const avgResponseElement = document.querySelector('[data-metric="avg-response-time"]');
+            if (avgResponseElement && data.avg_response_time !== undefined) {
+                avgResponseElement.textContent = Math.round(data.avg_response_time) + 'ms';
+            }
+
+            // Update active connections
+            const connectionsElement = document.querySelector('[data-metric="active-connections"]');
+            if (connectionsElement && data.active_connections !== undefined) {
+                connectionsElement.textContent = data.active_connections.toLocaleString();
+            }
+
+            // Update timestamp for "Last Updated"
+            const timestampElement = document.querySelector('[data-metric="last-updated"]');
+            if (timestampElement && data.timestamp) {
+                const date = new Date(data.timestamp);
+                timestampElement.textContent = date.toLocaleTimeString();
+            }
+
+            console.log('✅ Dashboard metrics updated:', {
+                cache_hit_rate: data.cache_hit_rate,
+                total_queries: data.total_queries,
+                timestamp: data.timestamp
+            });
+        }
+
+        // Initialize metrics streaming when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only connect on dashboard and analytics pages
+            const path = window.location.pathname;
+            if (path === '/' || path === '/analytics' || path === '/dashboard') {
+                console.log('🚀 Initializing real-time metrics streaming...');
+                connectToMetricsStream();
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (metricsEventSource) {
+                metricsEventSource.close();
+            }
+        });
+
+        console.log('✅ Real-time metrics streaming initialized');
+    </script>
 </body>
 </html>

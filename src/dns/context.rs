@@ -16,6 +16,7 @@ use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 use crate::dns::security::{SecurityManager, SecurityConfig};
 use crate::dns::api_keys::ApiKeyManager;
+use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -100,6 +101,7 @@ pub struct ServerContext {
     pub connection_pool: Option<Arc<ConnectionPoolManager>>,
     pub security_manager: Arc<SecurityManager>,
     pub api_key_manager: Arc<ApiKeyManager>,
+    pub enhanced_metrics: Option<Arc<MetricsManager>>,
 }
 
 impl Default for ServerContext {
@@ -148,6 +150,7 @@ impl ServerContext {
             connection_pool: None,
             security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
             api_key_manager: Arc::new(ApiKeyManager::new()),
+            enhanced_metrics: None, // Will be initialized later if metrics DB is available
         })
     }
 
@@ -176,6 +179,29 @@ impl ServerContext {
         // Load authority data
         self.authority.load(&self.zones_dir)?;
 
+        Ok(())
+    }
+
+    /// Initialize enhanced metrics system (async)
+    pub async fn initialize_enhanced_metrics(&mut self, db_path: Option<&str>) -> Result<()> {
+        let path = db_path.unwrap_or(":memory:");
+        
+        match MetricsManager::new(path).await {
+            Ok(manager) => {
+                let manager_arc = Arc::new(manager);
+                
+                // Start background tasks for metrics processing
+                manager_arc.start_background_tasks().await;
+                
+                self.enhanced_metrics = Some(manager_arc);
+                log::info!("Enhanced metrics system initialized with database: {}", path);
+            }
+            Err(e) => {
+                log::warn!("Failed to initialize enhanced metrics system: {}", e);
+                log::info!("Continuing with basic metrics only");
+            }
+        }
+        
         Ok(())
     }
 

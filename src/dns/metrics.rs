@@ -20,7 +20,7 @@ use prometheus::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 lazy_static! {
     /// DNS query counters by protocol and query type
@@ -219,6 +219,9 @@ pub struct MetricsSummary {
     pub query_type_distribution: HashMap<String, (u64, f64)>,
     pub response_code_distribution: HashMap<String, (u64, f64)>,
     pub protocol_distribution: HashMap<String, (u64, f64)>,
+    pub api_requests_today: u64,
+    pub api_avg_response_time: f64,
+    pub web_requests_total: u64,
 }
 
 /// Enhanced statistics tracker for real-time metrics
@@ -236,6 +239,10 @@ pub struct MetricsTracker {
     response_codes: Arc<RwLock<HashMap<String, u64>>>,
     /// Protocol usage tracking
     protocol_usage: Arc<RwLock<HashMap<String, u64>>>,
+    /// API request tracking with timestamp
+    api_requests: Arc<RwLock<Vec<(SystemTime, f64)>>>, // (timestamp, response_time_ms)
+    /// Web request counter
+    web_requests_total: Arc<RwLock<u64>>,
 }
 
 impl MetricsTracker {
@@ -248,6 +255,8 @@ impl MetricsTracker {
             query_types: Arc::new(RwLock::new(HashMap::new())),
             response_codes: Arc::new(RwLock::new(HashMap::new())),
             protocol_usage: Arc::new(RwLock::new(HashMap::new())),
+            api_requests: Arc::new(RwLock::new(Vec::new())),
+            web_requests_total: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -422,6 +431,68 @@ impl MetricsTracker {
                 .collect()
         } else {
             HashMap::new()
+        }
+    }
+
+    /// Track an API request
+    pub fn track_api_request(&self, response_time_ms: f64) {
+        let now = SystemTime::now();
+        if let Ok(mut requests) = self.api_requests.write() {
+            requests.push((now, response_time_ms));
+            
+            // Keep only last 1000 requests to prevent memory growth
+            let current_len = requests.len();
+            if current_len > 1000 {
+                requests.drain(0..current_len-1000);
+            }
+        }
+    }
+
+    /// Track a web request
+    pub fn track_web_request(&self) {
+        if let Ok(mut total) = self.web_requests_total.write() {
+            *total += 1;
+        }
+    }
+
+    /// Get API requests from today
+    pub fn get_api_requests_today(&self) -> u64 {
+        let now = SystemTime::now();
+        let today_start = now
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() / 86400 * 86400; // Start of today in seconds
+        let today_start_time = UNIX_EPOCH + Duration::from_secs(today_start);
+        
+        if let Ok(requests) = self.api_requests.read() {
+            requests.iter()
+                .filter(|(timestamp, _)| *timestamp >= today_start_time)
+                .count() as u64
+        } else {
+            0
+        }
+    }
+
+    /// Get average API response time
+    pub fn get_api_avg_response_time(&self) -> f64 {
+        if let Ok(requests) = self.api_requests.read() {
+            if requests.is_empty() {
+                return 0.0;
+            }
+            
+            let total_time: f64 = requests.iter().map(|(_, time)| *time).sum();
+            total_time / requests.len() as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Get total web requests
+    pub fn get_web_requests_total(&self) -> u64 {
+        if let Ok(total) = self.web_requests_total.read() {
+            *total
+        } else {
+            0
         }
     }
 
@@ -607,6 +678,9 @@ impl MetricsCollector {
         WEB_REQUESTS
             .with_label_values(&[method, endpoint, status_code])
             .inc();
+        
+        // Track in our internal metrics
+        self.tracker.track_web_request();
     }
 
     /// Record web request duration
@@ -614,6 +688,11 @@ impl MetricsCollector {
         WEB_REQUEST_DURATION
             .with_label_values(&[method, endpoint])
             .observe(duration.as_secs_f64());
+        
+        // Track API requests separately
+        if endpoint.starts_with("/api") || endpoint.starts_with("/graphql") {
+            self.tracker.track_api_request(duration.as_millis() as f64);
+        }
     }
 
     /// Update user sessions
@@ -690,6 +769,9 @@ impl MetricsCollector {
             query_type_distribution: query_types,
             response_code_distribution: response_codes,
             protocol_distribution: protocol_usage,
+            api_requests_today: self.tracker.get_api_requests_today(),
+            api_avg_response_time: self.tracker.get_api_avg_response_time(),
+            web_requests_total: self.tracker.get_web_requests_total(),
         }
     }
 

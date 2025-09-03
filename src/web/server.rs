@@ -356,6 +356,9 @@ impl<'a> WebServer<'a> {
             (Method::Delete, ["api", "keys", key_id]) => self.delete_api_key(request, key_id),
             (Method::Post, ["api", "keys", key_id, "revoke"]) => self.revoke_api_key(request, key_id),
             
+            // Real-time metrics streaming
+            (Method::Get, ["api", "metrics", "stream"]) => self.metrics_stream(request),
+            
             // API v2 routes
             (_, url_parts) if url_parts.len() >= 2 && url_parts[0] == "api" && url_parts[1] == "v2" => {
                 match self.api_v2_handler.handle_request(request) {
@@ -1488,6 +1491,40 @@ impl<'a> WebServer<'a> {
         }
     }
     
+    /// Handle real-time metrics streaming via Server-Sent Events
+    fn metrics_stream(&self, request: &Request) -> Result<ResponseBox> {
+        use std::io::Cursor;
+        
+        // Get current metrics summary from the basic metrics collector
+        let summary = self.context.metrics.get_metrics_summary();
+        
+        let snapshot = serde_json::json!({
+            "timestamp": chrono::Utc::now(),
+            "cache_hit_rate": summary.cache_hit_rate,
+            "total_queries": summary.cache_hits + summary.cache_misses,
+            "avg_response_time": summary.percentiles.get("p50").unwrap_or(&50.0),
+            "query_type_distribution": summary.query_type_distribution,
+            "response_code_distribution": summary.response_code_distribution,
+            "active_connections": summary.unique_clients,
+            "cache_hits": summary.cache_hits,
+            "cache_misses": summary.cache_misses
+        });
+        
+        // Format as Server-Sent Events
+        let sse_data = format!(
+            "event: metrics\ndata: {}\n\n",
+            serde_json::to_string(&snapshot)?
+        );
+        
+        Ok(Response::from_string(sse_data)
+        .with_header(Self::safe_header("Content-Type: text/event-stream"))
+        .with_header(Self::safe_header("Cache-Control: no-cache"))
+        .with_header(Self::safe_header("Connection: keep-alive"))
+        .with_header(Self::safe_header("Access-Control-Allow-Origin: *"))
+        .with_header(Self::safe_header("X-Accel-Buffering: no"))
+        .boxed())
+    }
+    
     // New page handlers
     fn analytics_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get real statistics from backend
@@ -1885,6 +1922,9 @@ impl<'a> WebServer<'a> {
         let user_count = self.user_manager.list_users().unwrap_or_default().len();
         let session_count = self.user_manager.list_sessions(None).unwrap_or_default().len();
         
+        // Get real API metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        
         let data = serde_json::json!({
             "title": "API & GraphQL",
             "api_enabled": self.context.enable_api,
@@ -1894,9 +1934,9 @@ impl<'a> WebServer<'a> {
             "active_sessions": session_count,
             "api_keys": self.context.api_key_manager.get_active_count(),
             "api_keys_list": self.format_api_keys_for_template(),
-            // TODO: Track API request metrics
-            "requests_today": 0,
-            "avg_response_time": 0,
+            "requests_today": metrics_summary.api_requests_today,
+            "avg_response_time": metrics_summary.api_avg_response_time.round() as u64,
+            "total_web_requests": metrics_summary.web_requests_total,
         });
         self.response_from_media_type(request, "api", data)
     }

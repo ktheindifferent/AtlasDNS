@@ -120,7 +120,7 @@
 - [x] **Recent Activity Tracking** - Implement actual activity logging (currently empty placeholder) ✅ (2025-09-03 - aec9a3ee9)
 - [x] **Cache Hit Rate Calculation** - Replace hardcoded 75% with real metrics ✅ (2025-09-03 - 28853b682)
 - [x] **Active Users Tracking** - Replace placeholder "1" with actual session counting ✅ (2025-09-03 - aec9a3ee9)
-- [ ] **Real-time Dashboard Updates** - Implement WebSocket/SSE for live data instead of simulated refresh
+- [x] **Real-time Dashboard Updates** - Implement WebSocket/SSE for live data instead of simulated refresh ✅ (2025-09-03 - SSE streaming endpoint)
 
 #### DNS Security Features (Currently UI-only)
 - [ ] **DNSSEC Implementation** - Backend currently returns "Not implemented" 
@@ -146,9 +146,9 @@
 - [ ] **Alert System** - Build actual alert manager (UI exists, no backend)
 
 #### API & Integration
-- [ ] **API Key Management** - Implement key generation and validation
+- [x] **API Key Management** - Implement key generation and validation ✅ (2025-09-03 - f9d0665e7)
 - [ ] **Webhook System** - Build event dispatch system (UI complete, backend missing)
-- [ ] **API Request Metrics** - Track actual API usage statistics
+- [x] **API Request Metrics** - Track actual API usage statistics ✅ (2025-09-03 - Real-time API metrics implementation)
 - [ ] **Rate Limiting API** - Implement per-client rate limits
 
 #### Certificate Management

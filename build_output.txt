@@ -1,0 +1,1049 @@
+   Compiling atlas v0.0.1 (/Users/calebsmith/Documents/ktheindifferent/AtlasDNS)
+warning: unused import: `Public`
+  --> src/dns/dnssec.rs:20:36
+   |
+20 | use openssl::pkey::{PKey, Private, Public};
+   |                                    ^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `base64`
+  --> src/dns/dnssec.rs:27:5
+   |
+27 | use base64;
+   |     ^^^^^^
+
+warning: unused import: `ResultCode`
+  --> src/dns/dnssec.rs:29:61
+   |
+29 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
+   |                                                             ^^^^^^^^^^
+
+warning: unused import: `crate::dns::context::ServerContext`
+  --> src/dns/dnssec.rs:31:5
+   |
+31 | use crate::dns::context::ServerContext;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `self`
+  --> src/dns/zerocopy.rs:18:16
+   |
+18 | use std::mem::{self, MaybeUninit};
+   |                ^^^^
+
+warning: unused import: `crate::dns::buffer::BytePacketBuffer`
+  --> src/dns/zerocopy.rs:25:5
+   |
+25 | use crate::dns::buffer::BytePacketBuffer;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/dns/edns0.rs:16:5
+   |
+16 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `QueryType` and `ResultCode`
+  --> src/dns/edns0.rs:19:50
+   |
+19 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
+   |                                                  ^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `crate::dns::buffer::BytePacketBuffer`
+  --> src/dns/edns0.rs:20:5
+   |
+20 | use crate::dns::buffer::BytePacketBuffer;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SocketAddr`
+  --> src/dns/qname_minimization.rs:16:24
+   |
+16 | use std::net::{IpAddr, SocketAddr};
+   |                        ^^^^^^^^^^
+
+warning: unused import: `crate::dns::cache::SynchronizedCache`
+  --> src/dns/qname_minimization.rs:21:5
+   |
+21 | use crate::dns::cache::SynchronizedCache;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BTreeMap`
+  --> src/dns/geo_loadbalancing.rs:15:33
+   |
+15 | use std::collections::{HashMap, BTreeMap};
+   |                                 ^^^^^^^^
+
+warning: unused import: `Ipv6Addr`
+  --> src/dns/geo_loadbalancing.rs:17:34
+   |
+17 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                                  ^^^^^^^^
+
+warning: unused imports: `EdnsProcessor` and `EdnsRecord`
+  --> src/dns/geo_loadbalancing.rs:24:25
+   |
+24 | use crate::dns::edns0::{EdnsProcessor, EdnsRecord};
+   |                         ^^^^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused imports: `Ipv4Addr` and `Ipv6Addr`
+  --> src/dns/ddos_protection.rs:19:24
+   |
+19 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                        ^^^^^^^^  ^^^^^^^^
+
+warning: unused import: `ResultCode`
+  --> src/dns/ddos_protection.rs:24:50
+   |
+24 | use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
+   |                                                  ^^^^^^^^^^
+
+warning: unused import: `IpAddr`
+  --> src/dns/cache_poisoning.rs:18:16
+   |
+18 | use std::net::{IpAddr, SocketAddr};
+   |                ^^^^^^
+
+warning: unused import: `DnsQuestion`
+  --> src/dns/cache_poisoning.rs:24:73
+   |
+24 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion};
+   |                                                                         ^^^^^^^^^^^
+
+warning: unused import: `Ipv6Addr`
+  --> src/dns/rpz.rs:18:34
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                                  ^^^^^^^^
+
+warning: unused import: `HashSet`
+  --> src/dns/source_validation.rs:16:33
+   |
+16 | use std::collections::{HashMap, HashSet};
+   |                                 ^^^^^^^
+
+warning: unused import: `Ipv6Addr`
+  --> src/dns/source_validation.rs:18:34
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                                  ^^^^^^^^
+
+warning: unused imports: `QueryType` and `ResultCode`
+  --> src/dns/source_validation.rs:23:39
+   |
+23 | use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
+   |                                       ^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `crate::dns::errors::DnsError`
+  --> src/dns/source_validation.rs:24:5
+   |
+24 | use crate::dns::errors::DnsError;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::dns::errors::DnsError`
+  --> src/dns/intelligent_failover.rs:25:5
+   |
+25 | use crate::dns::errors::DnsError;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BufferSize`
+  --> src/dns/performance_optimizer.rs:25:43
+   |
+25 | use crate::dns::memory_pool::{BufferPool, BufferSize};
+   |                                           ^^^^^^^^^^
+
+warning: unused import: `BTreeMap`
+  --> src/dns/analytics.rs:16:33
+   |
+16 | use std::collections::{HashMap, BTreeMap, VecDeque};
+   |                                 ^^^^^^^^
+
+warning: unused import: `ResultCode`
+  --> src/dns/zone_transfer.rs:23:61
+   |
+23 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion, TransientTtl};
+   |                                                             ^^^^^^^^^^
+
+warning: unused imports: `DnsQuestion` and `TransientTtl`
+  --> src/dns/dynamic_update.rs:24:73
+   |
+24 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion, TransientTtl};
+   |                                                                         ^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `IpAddr`
+  --> src/dns/cname_flattening.rs:18:16
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                ^^^^^^
+
+warning: unused imports: `SystemTime` and `UNIX_EPOCH`
+  --> src/dns/cname_flattening.rs:19:36
+   |
+19 | use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+   |                                    ^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused imports: `DnsPacket` and `ResultCode`
+  --> src/dns/cname_flattening.rs:23:28
+   |
+23 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion, TransientTtl};
+   |                            ^^^^^^^^^                        ^^^^^^^^^^
+
+warning: unused imports: `DnsPacket` and `QueryType`
+  --> src/dns/split_horizon.rs:23:28
+   |
+23 | use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, DnsQuestion, TransientTtl};
+   |                            ^^^^^^^^^             ^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/dns/grafana_dashboards.rs:16:5
+   |
+16 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BTreeMap`
+  --> src/dns/health_check_analytics.rs:17:43
+   |
+17 | use std::collections::{HashMap, VecDeque, BTreeMap};
+   |                                           ^^^^^^^^
+
+warning: unused import: `IpAddr`
+  --> src/dns/health_check_analytics.rs:18:16
+   |
+18 | use std::net::{IpAddr, SocketAddr};
+   |                ^^^^^^
+
+warning: unused import: `BTreeMap`
+  --> src/dns/proximity_routing.rs:17:33
+   |
+17 | use std::collections::{HashMap, BTreeMap};
+   |                                 ^^^^^^^^
+
+warning: unused imports: `Ipv4Addr` and `Ipv6Addr`
+  --> src/dns/proximity_routing.rs:18:24
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+   |                        ^^^^^^^^  ^^^^^^^^
+
+warning: unused import: `IpAddr`
+  --> src/dns/multi_region_failover.rs:18:16
+   |
+18 | use std::net::{IpAddr, SocketAddr};
+   |                ^^^^^^
+
+warning: unused import: `HashSet`
+  --> src/dns/geodns.rs:17:33
+   |
+17 | use std::collections::{HashMap, HashSet};
+   |                                 ^^^^^^^
+
+warning: unused import: `Ipv6Addr`
+  --> src/dns/geodns.rs:18:34
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                                  ^^^^^^^^
+
+warning: unused import: `HashSet`
+  --> src/dns/traffic_steering.rs:17:33
+   |
+17 | use std::collections::{HashMap, HashSet};
+   |                                 ^^^^^^^
+
+warning: unused import: `HashSet`
+  --> src/dns/dns_views.rs:17:33
+   |
+17 | use std::collections::{HashMap, HashSet};
+   |                                 ^^^^^^^
+
+warning: unused imports: `Ipv4Addr` and `Ipv6Addr`
+  --> src/dns/dns_views.rs:18:24
+   |
+18 | use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+   |                        ^^^^^^^^  ^^^^^^^^
+
+warning: unused imports: `SystemTime` and `UNIX_EPOCH`
+  --> src/dns/dns_views.rs:19:36
+   |
+19 | use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+   |                                    ^^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused import: `DateTime`
+  --> src/dns/dns_views.rs:22:14
+   |
+22 | use chrono::{DateTime, Local, Timelike, Datelike};
+   |              ^^^^^^^^
+
+warning: unused imports: `Ipv4Network` and `Ipv6Network`
+  --> src/dns/dns_views.rs:23:28
+   |
+23 | use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
+   |                            ^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> src/web/api_v2.rs:18:5
+   |
+18 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Header`
+  --> src/web/api_v2.rs:22:36
+   |
+22 | use tiny_http::{Request, Response, Header, Method, StatusCode};
+   |                                    ^^^^^^
+
+warning: unused import: `crate::dns::authority::Authority`
+  --> src/web/api_v2.rs:24:5
+   |
+24 | use crate::dns::authority::Authority;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `QueryType` and `TransientTtl`
+  --> src/web/api_v2.rs:25:39
+   |
+25 | use crate::dns::protocol::{DnsRecord, QueryType, TransientTtl};
+   |                                       ^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `std::io::Read`
+    --> src/web/api_v2.rs:1057:5
+     |
+1057 | use std::io::Read;
+     |     ^^^^^^^^^^^^^
+
+warning: unused imports: `DnsPacket` and `DnsRecord`
+  --> src/web/bulk_operations.rs:22:28
+   |
+22 | use crate::dns::protocol::{DnsRecord, DnsPacket};
+   |                            ^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `crate::dns::query_type::QueryType`
+  --> src/web/bulk_operations.rs:23:5
+   |
+23 | use crate::dns::query_type::QueryType;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio::time::sleep`
+  --> src/web/webhooks.rs:21:5
+   |
+21 | use tokio::time::sleep;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `SystemMetric`
+ --> src/metrics/collector.rs:3:29
+  |
+3 | use super::{DnsQueryMetric, SystemMetric, SecurityEvent};
+  |                             ^^^^^^^^^^^^
+
+warning: unused import: `UNIX_EPOCH`
+ --> src/metrics/aggregator.rs:7:39
+  |
+7 | use std::time::{Duration, SystemTime, UNIX_EPOCH};
+  |                                       ^^^^^^^^^^
+
+warning: unused imports: `DateTime` and `Utc`
+ --> src/metrics/aggregator.rs:9:14
+  |
+9 | use chrono::{DateTime, Utc};
+  |              ^^^^^^^^  ^^^
+
+warning: unused import: `tokio::sync::RwLock`
+  --> src/metrics/mod.rs:19:5
+   |
+19 | use tokio::sync::RwLock;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `time_range`
+   --> src/web/graphql.rs:319:9
+    |
+319 |         time_range: Option<TimeRange>,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+error[E0277]: a value of type `u64` cannot be made by summing an iterator over elements of type `&(u64, f64)`
+    --> src/web/graphql.rs:364:83
+     |
+364  |         let total_queries: u64 = metrics_summary.query_type_distribution.values().sum();
+     |                                                                                   ^^^ value of type `u64` cannot be made by summing a `std::iter::Iterator<Item=&(u64, f64)>`
+     |
+     = help: the trait `Sum<&(u64, f64)>` is not implemented for `u64`
+     = help: the following other types implement trait `Sum<A>`:
+               `u64` implements `Sum<&u64>`
+               `u64` implements `Sum`
+note: the method call chain might not have had the expected associated types
+    --> src/web/graphql.rs:364:74
+     |
+364  |         let total_queries: u64 = metrics_summary.query_type_distribution.values().sum();
+     |                                  --------------------------------------- ^^^^^^^^ `Iterator::Item` is `&(u64, f64)` here
+     |                                  |
+     |                                  this expression has type `HashMap<String, (u64, f64)>`
+note: required by a bound in `std::iter::Iterator::sum`
+    --> /Users/calebsmith/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:3524:12
+     |
+3521 |     fn sum<S>(self) -> S
+     |        --- required by a bound in this associated function
+...
+3524 |         S: Sum<Self::Item>,
+     |            ^^^^^^^^^^^^^^^ required by this bound in `Iterator::sum`
+
+error[E0609]: no field `p50` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:385:67
+    |
+385 |                 avg_response_time_ms: metrics_summary.percentiles.p50.unwrap_or(10.0),
+    |                                                                   ^^^ unknown field
+
+error[E0609]: no field `p50` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:396:67
+    |
+396 |                 avg_response_time_ms: metrics_summary.percentiles.p50.unwrap_or(10.0),
+    |                                                                   ^^^ unknown field
+
+warning: unused variable: `time_range`
+   --> src/web/graphql.rs:410:9
+    |
+410 |         time_range: Option<TimeRange>,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+
+warning: unused variable: `time_range`
+   --> src/web/graphql.rs:459:9
+    |
+459 |         time_range: Option<TimeRange>,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+
+error[E0277]: a value of type `u64` cannot be made by summing an iterator over elements of type `&(u64, f64)`
+    --> src/web/graphql.rs:495:88
+     |
+495  |         let total_responses: u64 = metrics_summary.response_code_distribution.values().sum();
+     |                                                                                        ^^^ value of type `u64` cannot be made by summing a `std::iter::Iterator<Item=&(u64, f64)>`
+     |
+     = help: the trait `Sum<&(u64, f64)>` is not implemented for `u64`
+     = help: the following other types implement trait `Sum<A>`:
+               `u64` implements `Sum<&u64>`
+               `u64` implements `Sum`
+note: the method call chain might not have had the expected associated types
+    --> src/web/graphql.rs:495:79
+     |
+495  |         let total_responses: u64 = metrics_summary.response_code_distribution.values().sum();
+     |                                    ------------------------------------------ ^^^^^^^^ `Iterator::Item` is `&(u64, f64)` here
+     |                                    |
+     |                                    this expression has type `HashMap<String, (u64, f64)>`
+note: required by a bound in `std::iter::Iterator::sum`
+    --> /Users/calebsmith/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:3524:12
+     |
+3521 |     fn sum<S>(self) -> S
+     |        --- required by a bound in this associated function
+...
+3524 |         S: Sum<Self::Item>,
+     |            ^^^^^^^^^^^^^^^ required by this bound in `Iterator::sum`
+
+error[E0308]: mismatched types
+   --> src/web/graphql.rs:496:100
+    |
+496 |         let error_responses = metrics_summary.response_code_distribution.get("SERVFAIL").unwrap_or(&0) +
+    |                                                                                          --------- ^^ expected `&(u64, f64)`, found `&{integer}`
+    |                                                                                          |
+    |                                                                                          arguments to this method are incorrect
+    |
+    = note: expected reference `&(u64, f64)`
+               found reference `&{integer}`
+help: the return type of this call is `&{integer}` due to the type of the argument passed
+   --> src/web/graphql.rs:496:31
+    |
+496 |         let error_responses = metrics_summary.response_code_distribution.get("SERVFAIL").unwrap_or(&0) +
+    |                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--^
+    |                                                                                                    |
+    |                                                                                                    this argument influences the return type of `unwrap_or`
+note: method defined here
+   --> /Users/calebsmith/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs:998:12
+    |
+998 |     pub fn unwrap_or(self, default: T) -> T {
+    |            ^^^^^^^^^
+
+error[E0308]: mismatched types
+   --> src/web/graphql.rs:497:98
+    |
+497 | ...                   metrics_summary.response_code_distribution.get("REFUSED").unwrap_or(&0) +
+    |                                                                                 --------- ^^ expected `&(u64, f64)`, found `&{integer}`
+    |                                                                                 |
+    |                                                                                 arguments to this method are incorrect
+    |
+    = note: expected reference `&(u64, f64)`
+               found reference `&{integer}`
+help: the return type of this call is `&{integer}` due to the type of the argument passed
+   --> src/web/graphql.rs:497:30
+    |
+497 | ...                   metrics_summary.response_code_distribution.get("REFUSED").unwrap_or(&0) +
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--^
+    |                                                                                           |
+    |                                                                                           this argument influences the return type of `unwrap_or`
+note: method defined here
+   --> /Users/calebsmith/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs:998:12
+    |
+998 |     pub fn unwrap_or(self, default: T) -> T {
+    |            ^^^^^^^^^
+
+error[E0369]: cannot add `&(u64, f64)` to `&(u64, f64)`
+   --> src/web/graphql.rs:496:104
+    |
+496 |         let error_responses = metrics_summary.response_code_distribution.get("SERVFAIL").unwrap_or(&0) +
+    |                               ------------------------------------------------------------------------ ^
+    |                               |
+    |                               &(u64, f64)
+497 |                              metrics_summary.response_code_distribution.get("REFUSED").unwrap_or(&0) +
+    |                              ----------------------------------------------------------------------- &(u64, f64)
+
+error[E0308]: mismatched types
+   --> src/web/graphql.rs:498:98
+    |
+498 | ...                   metrics_summary.response_code_distribution.get("FORMERR").unwrap_or(&0);
+    |                                                                                 --------- ^^ expected `&(u64, f64)`, found `&{integer}`
+    |                                                                                 |
+    |                                                                                 arguments to this method are incorrect
+    |
+    = note: expected reference `&(u64, f64)`
+               found reference `&{integer}`
+help: the return type of this call is `&{integer}` due to the type of the argument passed
+   --> src/web/graphql.rs:498:30
+    |
+498 | ...                   metrics_summary.response_code_distribution.get("FORMERR").unwrap_or(&0);
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--^
+    |                                                                                           |
+    |                                                                                           this argument influences the return type of `unwrap_or`
+note: method defined here
+   --> /Users/calebsmith/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs:998:12
+    |
+998 |     pub fn unwrap_or(self, default: T) -> T {
+    |            ^^^^^^^^^
+
+error[E0609]: no field `avg` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:513:63
+    |
+513 |             avg_response_time_ms: metrics_summary.percentiles.avg.unwrap_or(12.5),
+    |                                                               ^^^ unknown field
+
+error[E0609]: no field `p50` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:514:63
+    |
+514 |             p50_response_time_ms: metrics_summary.percentiles.p50.unwrap_or(10.0),
+    |                                                               ^^^ unknown field
+
+error[E0609]: no field `p95` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:515:63
+    |
+515 |             p95_response_time_ms: metrics_summary.percentiles.p95.unwrap_or(25.0),
+    |                                                               ^^^ unknown field
+
+error[E0609]: no field `p99` on type `HashMap<std::string::String, f64>`
+   --> src/web/graphql.rs:516:63
+    |
+516 |             p99_response_time_ms: metrics_summary.percentiles.p99.unwrap_or(50.0),
+    |                                                               ^^^ unknown field
+
+warning: unused variable: `time_range`
+   --> src/web/graphql.rs:527:9
+    |
+527 |         time_range: Option<TimeRange>,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+
+warning: unused variable: `category`
+   --> src/web/graphql.rs:734:38
+    |
+734 |     async fn reset_statistics(&self, category: Option<String>) -> Result<bool> {
+    |                                      ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_category`
+
+error[E0700]: hidden type for `impl Stream<Item = PerformanceMetric>` captures lifetime that does not appear in bounds
+   --> src/web/graphql.rs:751:1
+    |
+751 | #[Subscription]
+    | ^^^^^^^^^^^^^^^
+...
+791 |     async fn performance_metrics(&self) -> impl Stream<Item = PerformanceMetric> {
+    |                                  -----     ------------------------------------- opaque type defined here
+    |                                  |
+    |                                  hidden type `AsyncStream<PerformanceMetric, {async block@/Users/calebsmith/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/async-stream-0.3.6/src/lib.rs:193:9: 193:59}>` captures the anonymous lifetime defined here
+    |
+    = note: this error originates in the attribute macro `Subscription` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: add a `use<...>` bound to explicitly capture `'_`
+    |
+791 |     async fn performance_metrics(&self) -> impl Stream<Item = PerformanceMetric> + use<'_> {
+    |                                                                                  +++++++++
+
+warning: unused variable: `endpoint`
+   --> src/web/webhooks.rs:734:13
+    |
+734 |         let endpoint = endpoints.get(endpoint_id)
+    |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_endpoint`
+
+warning: unused variable: `request`
+   --> src/k8s/operator.rs:656:39
+    |
+656 |     async fn reconcile_service(&self, request: &ReconcileRequest) -> ReconcileResult {
+    |                                       ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+warning: unused variable: `request`
+   --> src/k8s/operator.rs:680:39
+    |
+680 |     async fn reconcile_ingress(&self, request: &ReconcileRequest) -> ReconcileResult {
+    |                                       ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+warning: unused variable: `zone`
+   --> src/k8s/operator.rs:701:38
+    |
+701 |     async fn sync_zone_to_dns(&self, zone: &DnsZone) -> Result<(), String> {
+    |                                      ^^^^ help: if this is intentional, prefix it with an underscore: `_zone`
+
+warning: unused variable: `zone_name`
+   --> src/k8s/operator.rs:707:42
+    |
+707 |     async fn delete_zone_from_dns(&self, zone_name: &str) -> Result<(), String> {
+    |                                          ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_zone_name`
+
+warning: unused variable: `record`
+   --> src/k8s/operator.rs:713:40
+    |
+713 |     async fn sync_record_to_dns(&self, record: &DnsRecord) -> Result<(), String> {
+    |                                        ^^^^^^ help: if this is intentional, prefix it with an underscore: `_record`
+
+warning: unused variable: `record`
+   --> src/k8s/operator.rs:719:44
+    |
+719 |     async fn delete_record_from_dns(&self, record: &DnsRecord) -> Result<(), String> {
+    |                                            ^^^^^^ help: if this is intentional, prefix it with an underscore: `_record`
+
+warning: unused variable: `policy`
+   --> src/k8s/operator.rs:725:41
+    |
+725 |     async fn apply_policy_to_dns(&self, policy: &DnsPolicy) -> Result<(), String> {
+    |                                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_policy`
+
+warning: unused variable: `count`
+   --> src/metrics/collector.rs:246:51
+    |
+246 |     pub async fn update_active_connections(&self, count: u32) {
+    |                                                   ^^^^^ help: if this is intentional, prefix it with an underscore: `_count`
+
+warning: unused variable: `count`
+   --> src/metrics/collector.rs:251:46
+    |
+251 |     pub async fn update_cache_entries(&self, count: u64) {
+    |                                              ^^^^^ help: if this is intentional, prefix it with an underscore: `_count`
+
+warning: unused variable: `time_range`
+   --> src/metrics/aggregator.rs:297:9
+    |
+297 |         time_range: TimeRange,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+
+warning: unused variable: `time_range`
+   --> src/metrics/aggregator.rs:378:9
+    |
+378 |         time_range: TimeRange,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_time_range`
+
+warning: an associated function with this name may be added to the standard library in the future
+  --> src/dns/alert_management.rs:49:31
+   |
+49 |             retention_period: Duration::from_days(7),
+   |                               ^^^^^^^^^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `DurationExt::from_days(...)` to keep using the current method
+   = note: `#[warn(unstable_name_collisions)]` on by default
+
+warning: unused import: `ProcessExt`
+  --> src/metrics/collector.rs:10:34
+   |
+10 | use sysinfo::{System, SystemExt, ProcessExt, NetworkExt, CpuExt};
+   |                                  ^^^^^^^^^^
+
+warning: unused import: `Digest`
+  --> src/web/webhooks.rs:23:20
+   |
+23 | use sha2::{Sha256, Digest};
+   |                    ^^^^^^
+
+warning: unused import: `sha2::Digest`
+ --> src/dns/security/ddos_protection.rs:9:5
+  |
+9 | use sha2::Digest;
+  |     ^^^^^^^^^^^^
+
+warning: unused import: `std::io::Read`
+  --> src/dns/doh.rs:16:5
+   |
+16 | use std::io::Read;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `crate::dns::client::DnsClient`
+  --> src/dns/qname_minimization.rs:20:5
+   |
+20 | use crate::dns::client::DnsClient;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::io::Read`
+ --> src/web/server.rs:3:5
+  |
+3 | use std::io::Read;
+  |     ^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/dns/authority.rs:534:13
+    |
+534 |         let mut records = zone.records.clone();
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: unused variable: `records`
+   --> src/dns/authority.rs:706:13
+    |
+706 |         let records = self.get_zone_records(zone_name)
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_records`
+
+warning: variable does not need to be mutable
+   --> src/dns/cache.rs:347:13
+    |
+347 |         let mut total_hits = 0u64;
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/dns/cache.rs:348:13
+    |
+348 |         let mut total_misses = 0u64;
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `e`
+   --> src/dns/cache.rs:391:17
+    |
+391 |             Err(e) => {
+    |                 ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `e`
+   --> src/dns/cache.rs:434:53
+    |
+434 |         let mut cache = self.cache.write().map_err(|e| {
+    |                                                     ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `context`
+   --> src/dns/server.rs:204:20
+    |
+204 | fn validate_dnssec(context: &Arc<ServerContext>, packet: &DnsPacket) -> std::result::Result<bool, Box<dyn std::error::Error>> {
+    |                    ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_context`
+
+warning: variable `class` is assigned to, but never used
+   --> src/dns/zone_parser.rs:308:17
+    |
+308 |         let mut class = None;
+    |                 ^^^^^
+    |
+    = note: consider using `_class` instead
+
+warning: value assigned to `class` is never read
+   --> src/dns/zone_parser.rs:329:13
+    |
+329 |             class = Some("IN");
+    |             ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: unused variable: `source`
+   --> src/dns/security/firewall.rs:376:34
+    |
+376 |     pub fn load_blocklist(&self, source: &str, category: ThreatCategory) -> Result<(), DnsError> {
+    |                                  ^^^^^^ help: if this is intentional, prefix it with an underscore: `_source`
+
+warning: unused variable: `category`
+   --> src/dns/security/firewall.rs:376:48
+    |
+376 |     pub fn load_blocklist(&self, source: &str, category: ThreatCategory) -> Result<(), DnsError> {
+    |                                                ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_category`
+
+warning: unused variable: `source`
+   --> src/dns/security/firewall.rs:382:34
+    |
+382 |     pub fn load_allowlist(&self, source: &str) -> Result<(), DnsError> {
+    |                                  ^^^^^^ help: if this is intentional, prefix it with an underscore: `_source`
+
+warning: unused variable: `zone_data`
+   --> src/dns/security/firewall.rs:388:33
+    |
+388 |     pub fn load_rpz_zone(&self, zone_data: &str) -> Result<(), DnsError> {
+    |                                 ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_zone_data`
+
+warning: unused variable: `packet`
+   --> src/dns/security/firewall.rs:577:51
+    |
+577 |     fn apply_rpz_policy(&self, policy: RpzPolicy, packet: &DnsPacket, client_ip: IpAddr) -> SecurityCheckResult {
+    |                                                   ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `client_ip`
+   --> src/dns/security/firewall.rs:577:71
+    |
+577 |     fn apply_rpz_policy(&self, policy: RpzPolicy, packet: &DnsPacket, client_ip: IpAddr) -> SecurityCheckResult {
+    |                                                                       ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_client_ip`
+
+warning: unused variable: `action`
+   --> src/dns/security/ddos_protection.rs:346:21
+    |
+346 |         if let Some(action) = self.check_connection_limits(client_ip) {
+    |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_action`
+
+warning: unused variable: `packet`
+   --> src/dns/security/ddos_protection.rs:577:35
+    |
+577 |     fn validate_dns_cookie(&self, packet: &DnsPacket, client_ip: IpAddr) -> bool {
+    |                                   ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `client_ip`
+   --> src/dns/security/ddos_protection.rs:590:52
+    |
+590 |     fn analyze_patterns(&self, packet: &DnsPacket, client_ip: IpAddr) -> Option<(PatternType, ThreatLevel)> {
+    |                                                    ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_client_ip`
+
+warning: unused variable: `packet`
+   --> src/dns/security/ddos_protection.rs:607:34
+    |
+607 |     fn detect_attack_type(&self, packet: &DnsPacket, client_ip: IpAddr) -> Option<AttackInfo> {
+    |                                  ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `firewall_metrics`
+   --> src/dns/security/manager.rs:267:13
+    |
+267 |         let firewall_metrics = self.firewall.get_metrics();
+    |             ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_firewall_metrics`
+
+warning: unused variable: `rate_limit_metrics`
+   --> src/dns/security/manager.rs:268:13
+    |
+268 |         let rate_limit_metrics = self.rate_limiter.get_metrics();
+    |             ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rate_limit_metrics`
+
+warning: unused variable: `ddos_metrics`
+   --> src/dns/security/manager.rs:456:21
+    |
+456 |                 let ddos_metrics = ddos_protection.get_metrics();
+    |                     ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ddos_metrics`
+
+warning: unused variable: `tx`
+   --> src/dns/security/manager.rs:468:14
+    |
+468 |         let (tx, mut rx) = mpsc::unbounded_channel();
+    |              ^^ help: if this is intentional, prefix it with an underscore: `_tx`
+
+warning: unused variable: `p`
+   --> src/dns/errors.rs:224:35
+    |
+224 |             ClientError::Protocol(p) => DnsError::Protocol(ProtocolError {
+    |                                   ^ help: if this is intentional, prefix it with an underscore: `_p`
+
+warning: unused variable: `domain`
+   --> src/dns/firewall.rs:538:30
+    |
+538 |     fn record_blocked(&self, domain: &str, client_ip: IpAddr, category: ThreatCategory, action: FirewallAction) {
+    |                              ^^^^^^ help: if this is intentional, prefix it with an underscore: `_domain`
+
+warning: unused variable: `client_ip`
+   --> src/dns/firewall.rs:538:44
+    |
+538 |     fn record_blocked(&self, domain: &str, client_ip: IpAddr, category: ThreatCategory, action: FirewallAction) {
+    |                                            ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_client_ip`
+
+warning: unused variable: `rule`
+   --> src/dns/firewall.rs:546:33
+    |
+546 |     fn record_rule_match(&self, rule: &FirewallRule, _domain: &str, _client_ip: IpAddr) {
+    |                                 ^^^^ help: if this is intentional, prefix it with an underscore: `_rule`
+
+warning: unused variable: `algorithm`
+   --> src/dns/dnssec.rs:134:45
+    |
+134 |     fn calculate_key_tag(public_key: &[u8], algorithm: DnssecAlgorithm) -> u16 {
+    |                                             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_algorithm`
+
+warning: unused variable: `zone`
+   --> src/dns/dnssec.rs:560:9
+    |
+560 |         zone: &str,
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_zone`
+
+warning: unused variable: `packet`
+   --> src/dns/dnssec.rs:641:9
+    |
+641 |         packet: &DnsPacket,
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `packet`
+   --> src/dns/zerocopy.rs:242:34
+    |
+242 |     pub fn process_packet(&self, packet: &mut DnsPacket) -> Result<(), DnsError> {
+    |                                  ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `qclass`
+   --> src/dns/zerocopy.rs:357:13
+    |
+357 |         let qclass = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_qclass`
+
+warning: unused variable: `data`
+   --> src/dns/zerocopy.rs:415:9
+    |
+415 |         data: &[u8],
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_data`
+
+warning: unused variable: `records`
+   --> src/dns/zerocopy.rs:417:9
+    |
+417 |         records: &mut Vec<crate::dns::protocol::DnsRecord>,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_records`
+
+warning: unused variable: `packet`
+   --> src/dns/zerocopy.rs:549:35
+    |
+549 |     fn serialize_to_buffer(&self, packet: &DnsPacket) -> Result<usize, DnsError> {
+    |                                   ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `packet`
+   --> src/dns/edns0.rs:540:9
+    |
+540 |         packet: &DnsPacket,
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: unused variable: `packet`
+   --> src/dns/geo_loadbalancing.rs:333:39
+    |
+333 |     fn get_effective_client_ip(&self, packet: &DnsPacket, default_ip: IpAddr) -> IpAddr {
+    |                                       ^^^^^^ help: if this is intentional, prefix it with an underscore: `_packet`
+
+warning: variable does not need to be mutable
+   --> src/dns/geo_loadbalancing.rs:404:13
+    |
+404 |         let mut available_dcs: Vec<&Datacenter> = dcs
+    |             ----^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `domain`
+   --> src/dns/rpz.rs:450:33
+    |
+450 |     pub fn remove_policy(&self, domain: &str) -> bool {
+    |                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_domain`
+
+warning: unused variable: `size`
+   --> src/dns/memory_pool.rs:324:29
+    |
+324 |     fn return_buffer(&self, size: BufferSize) {
+    |                             ^^^^ help: if this is intentional, prefix it with an underscore: `_size`
+
+warning: unused variable: `records`
+   --> src/dns/dynamic_update.rs:345:26
+    |
+345 |     fn parse_tsig(&self, records: &[DnsRecord]) -> Option<TsigRecord> {
+    |                          ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_records`
+
+warning: unused variable: `name`
+   --> src/dns/dynamic_update.rs:410:50
+    |
+410 |                 Prerequisite::RRsetValueExists { name, record } => {
+    |                                                  ^^^^ help: try ignoring the field: `name: _`
+
+warning: unused variable: `record`
+   --> src/dns/dynamic_update.rs:621:13
+    |
+621 |         for record in &entry.previous_state {
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_record`
+
+warning: unused variable: `existing`
+   --> src/dns/alert_management.rs:436:21
+    |
+436 |         if let Some(existing) = active.get(&alert.fingerprint) {
+    |                     ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_existing`
+
+warning: unused variable: `ramp_duration`
+   --> src/dns/multi_region_failover.rs:532:54
+    |
+532 |     fn execute_gradual_failback(&self, region: &str, ramp_duration: Duration) {
+    |                                                      ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ramp_duration`
+
+warning: unused variable: `delay`
+   --> src/dns/multi_region_failover.rs:539:47
+    |
+539 |     fn schedule_failback(&self, region: &str, delay: Duration) {
+    |                                               ^^^^^ help: if this is intentional, prefix it with an underscore: `_delay`
+
+warning: unused variable: `config`
+   --> src/dns/multi_region_failover.rs:547:13
+    |
+547 |         let config = self.config.read();
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+
+warning: unused variable: `request`
+    --> src/web/server.rs:1295:31
+     |
+1295 |     fn resolve_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+     |                               ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_request`
+
+warning: unused variable: `security_stats`
+    --> src/web/server.rs:1470:13
+     |
+1470 |         let security_stats = self.context.security_manager.get_statistics();
+     |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_security_stats`
+
+warning: unused variable: `security_stats`
+    --> src/web/server.rs:1497:13
+     |
+1497 |         let security_stats = self.context.security_manager.get_statistics();
+     |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_security_stats`
+
+warning: unused variable: `url`
+    --> src/web/server.rs:1729:58
+     |
+1729 |                 crate::dns::acme::AcmeProvider::Custom { url } => "Custom",
+     |                                                          ^^^ help: try ignoring the field: `url: _`
+
+warning: unused variable: `params`
+   --> src/web/api_v2.rs:424:13
+    |
+424 |         let params = self.parse_query_params(request);
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_params`
+
+warning: unused variable: `op`
+   --> src/web/api_v2.rs:660:35
+    |
+660 |     fn execute_bulk_create(&self, op: &BulkOperation) -> Result<(), String> {
+    |                                   ^^ help: if this is intentional, prefix it with an underscore: `_op`
+
+warning: unused variable: `op`
+   --> src/web/api_v2.rs:666:35
+    |
+666 |     fn execute_bulk_update(&self, op: &BulkOperation) -> Result<(), String> {
+    |                                   ^^ help: if this is intentional, prefix it with an underscore: `_op`
+
+warning: unused variable: `op`
+   --> src/web/api_v2.rs:672:35
+    |
+672 |     fn execute_bulk_delete(&self, op: &BulkOperation) -> Result<(), String> {
+    |                                   ^^ help: if this is intentional, prefix it with an underscore: `_op`
+
+warning: variable does not need to be mutable
+   --> src/web/bulk_operations.rs:731:13
+    |
+731 |         let mut operation_ids: HashSet<String> = operations.iter()
+    |             ----^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `event_count`
+   --> src/web/webhooks.rs:607:58
+    |
+607 |     fn handle_delivery_success(&self, endpoint_id: &str, event_count: usize) {
+    |                                                          ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_event_count`
+
+Some errors have detailed explanations: E0277, E0308, E0369, E0609, E0700.
+For more information about an error, try `rustc --explain E0277`.
+warning: `atlas` (lib) generated 139 warnings
+error: could not compile `atlas` (lib) due to 13 previous errors; 139 warnings emitted
