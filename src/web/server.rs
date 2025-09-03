@@ -904,8 +904,11 @@ impl<'a> WebServer<'a> {
                 .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
                 .boxed())
         } else {
+            let cookie_header = create_session_cookie(&session.token);
+            log::debug!("Setting session cookie: {} = {}", cookie_header.field, cookie_header.value);
+            log::debug!("Session token being set: {}", session.token);
             Ok(Response::empty(302)
-                .with_header(create_session_cookie(&session.token))
+                .with_header(cookie_header)
                 .with_header::<tiny_http::Header>("Location: /".parse().unwrap())
                 .boxed())
         }

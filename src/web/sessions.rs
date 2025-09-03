@@ -31,7 +31,7 @@ impl SessionMiddleware {
         }
         
         // Then try Cookie header
-        request
+        let cookie_result = request
             .headers()
             .iter()
             .find(|h| h.field.as_str() == "Cookie")
@@ -51,7 +51,18 @@ impl SessionMiddleware {
                 
                 log::debug!("Extracted token: {:?}", token);
                 token
-            })
+            });
+            
+        if cookie_result.is_none() {
+            log::debug!("No Cookie header found or no session_token in cookie");
+            // Log all headers for debugging
+            log::debug!("All request headers:");
+            for header in request.headers() {
+                log::debug!("  {} = {}", header.field, header.value);
+            }
+        }
+        
+        cookie_result
     }
     
     pub fn validate_request(&self, request: &Request) -> Result<(Session, User), String> {
@@ -101,9 +112,10 @@ impl SessionMiddleware {
 
 pub fn create_session_cookie(token: &str) -> Header {
     let cookie_value = format!(
-        "session_token={}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict",
+        "session_token={}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax",
         token
     );
+    log::debug!("Creating cookie: {}", cookie_value);
     Header::from_bytes(&b"Set-Cookie"[..], cookie_value.as_bytes())
         .expect("Failed to create session cookie header")
 }

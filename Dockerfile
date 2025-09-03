@@ -1,8 +1,8 @@
 # Build stage
 FROM rust:bookworm AS builder
 
-# Cache bust: 2025-01-02-v5
-ARG CACHE_BUST=5
+# Cache bust: 2025-01-02-v6
+ARG CACHE_BUST=6
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
