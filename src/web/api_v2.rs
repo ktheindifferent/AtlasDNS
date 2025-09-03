@@ -827,7 +827,7 @@ impl ApiV2Handler {
     /// Parse JSON body
     fn parse_json_body<T: for<'a> Deserialize<'a>>(&self, request: &mut Request) -> Result<T, WebError> {
         serde_json::from_reader(request.as_reader())
-            .map_err(|_| WebError::InvalidRequest)
+            .map_err(|e| WebError::InvalidInput(format!("Invalid JSON format: {}", e)))
     }
 
     /// Convert zone to API resource

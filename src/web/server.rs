@@ -1218,7 +1218,7 @@ impl<'a> WebServer<'a> {
         
         // Parse the GraphQL request
         let graphql_request: async_graphql::Request = serde_json::from_str(&body)
-            .map_err(|e| WebError::InvalidRequest)?;
+            .map_err(|e| WebError::InvalidInput(format!("Invalid GraphQL JSON: {}", e)))?;
         
         // Execute the GraphQL query synchronously using blocking
         // Since we're in a sync context, we need to use a runtime to execute async code
