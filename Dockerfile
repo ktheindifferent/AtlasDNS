@@ -1,6 +1,11 @@
 # Build stage
 FROM rust:bookworm AS builder
 
+# Code version argument - automatically updated by atlas_bug_fix command
+ARG CODE_VERSION=20250903_081246
+ENV CODE_VERSION=${CODE_VERSION}
+RUN echo "Code version: ${CODE_VERSION}"
+
 # Cache bust: 2025-01-03-v3
 ARG CACHE_BUST=3
 
@@ -24,6 +29,10 @@ RUN cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
+
+# Code version for runtime
+ARG CODE_VERSION=20250903_081246
+ENV CODE_VERSION=${CODE_VERSION}
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
