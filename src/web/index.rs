@@ -72,7 +72,7 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         collector.get_system_info()
     } else {
         // Fallback if we can't get the lock
-        return build_fallback_response(context, total_zones, total_records, zone_summaries, cache_entries, cache_hit_rate, 
+        return build_fallback_response(context, user_manager, activity_logger, total_zones, total_records, zone_summaries, cache_entries, cache_hit_rate, 
                                       client_sent_queries, client_failed_queries, server_tcp_queries, server_udp_queries);
     };
     
@@ -187,6 +187,8 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
 // Fallback function if system info collection fails
 fn build_fallback_response(
     _context: &ServerContext,
+    user_manager: &UserManager,
+    activity_logger: &ActivityLogger,
     total_zones: usize,
     total_records: usize,
     zone_summaries: Vec<serde_json::Value>,
@@ -202,7 +204,11 @@ fn build_fallback_response(
         "total_zones": total_zones,
         "total_records": total_records,
         "cache_entries": cache_entries,
-        "active_users": 1,
+        "active_users": user_manager.get_active_user_count(),
+        "active_sessions": user_manager.get_active_session_count(),
+        "total_users": user_manager.get_total_user_count(),
+        "active_zones": total_zones,
+        "last_update": "Just now",
         "zones": zone_summaries,
         "cache_hit_rate": cache_hit_rate,
         "memory_usage": 0,
@@ -213,7 +219,13 @@ fn build_fallback_response(
         "client_failed_queries": client_failed_queries,
         "server_tcp_queries": server_tcp_queries,
         "server_udp_queries": server_udp_queries,
-        "activities": [],
+        "activities": activity_logger.get_recent(10).into_iter().map(|entry| json!({
+            "timestamp": entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+            "action": entry.action,
+            "resource": entry.resource,
+            "success": entry.success,
+            "details": entry.details,
+        })).collect::<Vec<_>>(),
         "system_error": "Unable to collect system information"
     }))
 }
