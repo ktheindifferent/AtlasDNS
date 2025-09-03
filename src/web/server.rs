@@ -1817,7 +1817,7 @@ mod tests {
     use super::*;
     
     // Helper function to create a test server
-    fn create_test_server() -> WebServer {
+    fn create_test_server() -> WebServer<'static> {
         // Create a minimal context for testing
         let context = Arc::new(crate::dns::context::ServerContext::new().expect("Failed to create test context"));
         WebServer::new(context)
