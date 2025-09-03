@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use parking_lot::RwLock;
 use regex::Regex;
 use serde::{Serialize, Deserialize};

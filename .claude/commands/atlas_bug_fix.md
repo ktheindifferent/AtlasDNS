@@ -1,458 +1,642 @@
 # /atlas_bug_fix Command - Automated Bug Detection and Fixing for Atlas DNS
 
 ## Command Purpose
-This command enables Claude to automatically detect, analyze, and fix bugs in the Atlas DNS system by working directly with the existing codebase. The agent has full access to test the live deployment and database to identify issues and implement fixes in the actual source files without creating duplicates or enhanced versions.
+This command enables Claude to automatically detect, analyze, and fix bugs in the Atlas DNS system by working directly with the existing Rust codebase. The agent has full access to test the live deployment to identify issues and implement fixes in the actual source files without creating duplicates or enhanced versions.
 
 ## Live Test Environment Details
 
 ### Web Application
 - **URL**: https://atlas.alpha.opensam.foundation/
-- **Admin Credentials**: [To be provided]
+- **Admin Credentials**: admin / admin123 (default development credentials)
 - **Purpose**: Test server for bug detection and API/UI testing
 - **Permission**: Full testing access granted - feel free to stress test and probe for issues
 
-### Database
-- **Host**: [To be provided]
-- **Port**: [To be provided]
-- **Database**: [To be provided]
-- **Username**: [To be provided]
-- **Password**: [To be provided]
-- **Purpose**: Production-like database for testing data operations
+### System Details
+- **Language**: Rust
+- **Web Framework**: tiny_http with SSL support
+- **Template Engine**: Handlebars
+- **Authentication**: SHA256 password hashing (needs upgrade to bcrypt)
+- **Storage**: In-memory with file-based persistence
+- **Deployment**: Docker via CapRover with automatic Git deployment
 
 ## System Architecture Overview
 
 ### Core Components
-- **Main Entry**: [To be identified] - CLI interface with service installation
-- **Web Interface**: [To be identified] - Web application with API endpoints
-- **Core Engine**: [To be identified] - Main processing logic
-- **Database Layer**: [To be identified] - Database operations with connection pooling
-- **Plugin System**: [To be identified] - Atlas DNS-specific plugins
 
-### Database Schema
-- [Atlas DNS tables to be documented]
-- [DNS record tables]
-- [Configuration tables]
-- [Monitoring/logging tables]
+#### Main Entry Points
+- **Main Binary**: `src/bin/atlas.rs` - Primary DNS server application
+- **CLI Binary**: `src/bin/atlas-cli.rs` - Command-line interface
+- **Library Root**: `src/lib.rs` - Core library definitions
+
+#### DNS Server (`src/dns/`)
+- **Protocol**: `protocol.rs`, `buffer.rs`, `query_type.rs`, `result_code.rs`
+- **Server**: `server.rs`, `server_enhanced.rs`, `context.rs`
+- **Authority**: `authority.rs` - Zone management
+- **Cache**: `cache.rs`, `adaptive_cache.rs` - Response caching
+- **Security**: `security/` directory with DDoS, firewall, rate limiting
+- **Modern DNS**: `doh.rs` (DNS-over-HTTPS), `dot.rs` (DNS-over-TLS)
+- **DNSSEC**: `dnssec.rs` - DNSSEC implementation
+- **ACME**: `acme.rs` - Automatic certificate management
+
+#### Web Interface (`src/web/`)
+- **Server**: `server.rs` - HTTP/HTTPS server with routing
+- **Authentication**: `users.rs`, `sessions.rs` - User and session management
+- **API v2**: `api_v2.rs` - RESTful API endpoints
+- **GraphQL**: `graphql.rs` - GraphQL API
+- **Templates**: `templates/` - 28+ Handlebars templates
+- **Authority API**: `authority.rs` - Zone management endpoints
+- **Cache API**: `cache.rs` - Cache management endpoints
+
+#### Supporting Modules
+- **Metrics**: `src/metrics/` - Real-time analytics and monitoring
+- **Kubernetes**: `src/k8s/` - Kubernetes operator support
+- **Privilege**: `src/privilege_escalation.rs` - Port 53 binding
+
+### In-Memory Data Structures
+- **User Database**: `HashMap<String, User>` with RwLock
+- **Session Store**: `HashMap<String, Session>` with RwLock
+- **DNS Cache**: TTL-based cache with adaptive algorithms
+- **Zone Files**: File-based storage in configurable directory
 
 ## Known Critical Issues to Check
 
-### 🔴 CRITICAL API & Core Functionality Issues
+### 🔴 CRITICAL Security Vulnerabilities
 
-1. **API Response Failures**
-   - DNS resolution API endpoints returning incomplete data or 500 errors
-   - Record management endpoints not properly handling CRUD operations
-   - Search functionality not properly filtering DNS records or timing out
-   - Statistics endpoints returning inaccurate counts or crashing
-   - Missing error responses for invalid requests (should return proper HTTP status codes)
+1. **Password Hashing Weakness** ✅ FIXED
+   - **File**: `src/web/users.rs:148-156`
+   - **Issue**: Using SHA256 instead of bcrypt/Argon2
+   - **Fix**: Implement proper password hashing with salt
+   - **Status**: Fixed with bcrypt + legacy migration support
+   ```rust
+   // Fixed code:
+   pub fn hash_password(password: &str) -> String {
+       hash(password, DEFAULT_COST).expect("Failed to hash password")
+   }
+   ```
 
-2. **Database Query Performance**
-   - Slow or hanging queries on large DNS record datasets
-   - Missing indexes causing full table scans
-   - Inefficient JOIN operations in DNS record queries
-   - Timeout issues with complex DNS lookups
+2. **Session Cookie Security** ✅ FIXED
+   - **File**: `src/web/sessions.rs:113-121`
+   - **Issue**: Missing Secure flag for HTTPS, weak SameSite setting
+   - **Fix**: Add Secure flag when SSL enabled, use SameSite=Strict
+   - **Status**: Fixed with automatic SSL detection
 
-3. **CLI Command Failures**
-   - Atlas CLI commands hanging or crashing
-   - DNS record import/export functionality broken
-   - Configuration management not working
-   - Database initialization failing
+3. **Default Admin Credentials** ✅ FIXED
+   - **File**: `src/web/users.rs:126-136`
+   - **Issue**: Hardcoded admin/admin123 credentials
+   - **Fix**: Generate random password on first run or require setup
+   - **Status**: Fixed with random 16-character password generation
 
-### 🟠 HIGH Priority UI/UX & Feature Issues
+4. **Case-Sensitive Cookie Header Bug** ✅ FIXED
+   - **File**: `src/web/sessions.rs:37-40`
+   - **Issue**: Cookie header comparison fails with lowercase "cookie" from proxies
+   - **Status**: Fixed and verified working in production
 
-1. **Dashboard & Navigation Problems**
-   - Dashboard not loading or displaying blank/error pages
-   - Navigation menu items leading to 404 or broken pages
-   - DNS record search functionality not working from main interface
-   - Pagination broken on DNS record lists
+### 🟠 HIGH Priority API & Functionality Issues
 
-2. **DNS Record Management Pages**
-   - Individual DNS record pages not displaying complete information
-   - Record editing/updating functionality broken
-   - Bulk operations not working
-   - DNS zone management interfaces non-functional
+1. **JSON Authentication Parsing** ⚠️ DEPLOYMENT ISSUE
+   - **File**: `src/web/server.rs:863-869`
+   - **Issue**: JSON requests returning "username" instead of proper error messages
+   - **Root Cause**: JSON parsing failure falls back to form parsing, causing MissingField error
+   - **Fix Applied**: Improved error handling for JSON parsing failures
+   - **Status**: Code fixed but deployment verification needed
+   - **Workaround**: Use form-based authentication instead of JSON
 
-3. **Search & Discovery Features**
-   - DNS record search returning no results or irrelevant matches
-   - Advanced search filters not applying correctly
-   - Autocomplete not working in search fields
-   - DNS resolution testing features non-functional
+2. **API Endpoints to Test**
+   ```bash
+   # Zone Management
+   GET/POST /authority
+   GET/POST/DELETE /authority/{zone}
+   
+   # Cache Management  
+   GET /cache
+   POST /cache/clear
+   
+   # User Management
+   GET/POST /users
+   GET/PUT/DELETE /users/{id}
+   
+   # Authentication
+   POST /auth/login
+   POST /auth/logout
+   
+   # API v2
+   GET /api/v2/zones
+   POST /api/v2/zones
+   GET/PUT/DELETE /api/v2/zones/{zone}
+   GET/POST /api/v2/zones/{zone}/records
+   
+   # GraphQL
+   POST /graphql
+   WS /graphql (subscriptions)
+   
+   # Security APIs
+   GET /api/firewall/rules
+   GET /api/rate-limiting/status
+   GET /api/security/metrics
+   ```
 
-4. **Data Management UI**
-   - Bulk import/export interfaces broken
-   - DNS zone hierarchy not displaying correctly
-   - Record validation not working
-   - Configuration management interfaces non-functional
+2. **DNS Resolution Issues**
+   - **Files**: `src/dns/resolve.rs`, `src/dns/client.rs`
+   - Check recursive resolution with forwarding
+   - Verify DNSSEC validation
+   - Test DNS-over-HTTPS/TLS functionality
 
-### 🟡 MEDIUM Priority Stability & Performance Issues
+3. **Memory Management**
+   - **Files**: `src/dns/cache.rs`, `src/web/users.rs`
+   - Check for memory leaks in cache operations
+   - Verify session cleanup
+   - Monitor long-running operations
 
-1. **Memory & Resource Management**
-   - Application consuming excessive memory over time
-   - DNS resolution operations causing memory spikes
-   - Background processes not being cleaned up properly
-   - Plugin loading causing performance degradation
+### 🟡 MEDIUM Priority Code Quality Issues
 
-2. **Error Handling & User Feedback**
-   - Generic error messages instead of helpful guidance
-   - No loading indicators for long operations
-   - Failed operations not providing retry options
-   - Missing validation feedback on forms
+1. **Error Handling**
+   - Many `unwrap()` calls that could panic
+   - Missing error context in Result types
+   - Generic error messages to users
 
-3. **Feature Completeness Gaps**
-   - Incomplete DNS record type support
-   - Missing bulk operations (delete, update, merge)
-   - Incomplete notification system
-   - Missing data export options in various formats
+2. **Compilation Warnings**
+   - 154+ warnings in latest build
+   - Unused variables and imports
+   - Mutable variables that don't need to be
 
-4. **Cross-Platform & Responsive Issues**
-   - Mobile interface broken or unusable
-   - Browser compatibility issues (Safari, Firefox)
-   - Touch interface not working on tablets
-   - Responsive design breaking on different screen sizes
+3. **Missing Features**
+   - No persistence across restarts (in-memory only)
+   - PostgreSQL integration incomplete
+   - Redis caching not implemented
 
-### 🟢 LOW Priority Security Vulnerabilities
+### 🟢 LOW Priority Improvements
 
-1. **SQL Injection**
-   - Check all database queries for proper parameterization
-   - Direct string interpolation in WHERE clauses
-   - Unparameterized queries with user input
+1. **Documentation**
+   - Missing API documentation
+   - Incomplete README sections
+   - No inline code documentation
 
-2. **Command Injection**
-   - Using os.system() instead of subprocess
-   - Potential shell injection vulnerabilities in DNS utilities
-
-3. **Authentication & Session Security**
-   - No default authentication on web interface
-   - Session management issues
-   - Missing CSRF protection
-
-4. **Input Validation & Data Security**
-   - Missing sanitization on DNS record inputs
-   - No rate limiting on API endpoints
-   - File upload vulnerabilities
-   - Data exposure risks
+2. **Test Coverage**
+   - Limited unit test coverage
+   - Missing integration tests for API
+   - No security test suite
 
 ## Bug Detection Checklist
 
-### API Endpoints to Test
-- `/api/dns/records` - DNS record management
-- `/api/dns/zones` - DNS zone management
-- `/api/dns/resolve` - DNS resolution testing
-- `/api/stats` - Statistics endpoint
-- `/api/search` - DNS record search
-- `/api/config` - Configuration management
-- `/api/health` - Health check endpoint
-- `/api/batch/*` - Batch processing endpoints
-
-### UI Pages to Test
-- `/` - Homepage/Dashboard
-- `/dashboard` - Main dashboard
-- `/dns/records` - DNS record browser
-- `/dns/zones` - DNS zone management
-- `/config` - Configuration page
-- `/login` - Authentication page
-- `/settings` - System settings
-
-### Database Operations to Verify
-1. **CRUD Operations**
-   - Create new DNS records
-   - Read with various filters
-   - Update existing records
-   - Delete operations (soft/hard)
-
-2. **Complex Queries**
-   - DNS record lookups
-   - Zone traversal
-   - Time-based filtering
-   - Geographic queries
-
-3. **Transaction Integrity**
-   - Concurrent access handling
-   - Rollback scenarios
-   - Deadlock detection
-
-## Testing Scenarios
-
-### Security Testing
-```python
-# SQL Injection attempts
-test_queries = [
-    "'; DROP TABLE dns_records; --",
-    "1' OR '1'='1",
-    "admin'--",
-    "1' UNION SELECT * FROM dns_records--"
-]
-
-# XSS attempts
-xss_payloads = [
-    "<script>alert('XSS')</script>",
-    "<img src=x onerror=alert('XSS')>",
-    "javascript:alert('XSS')"
-]
-
-# DNS injection attempts
-dns_payloads = [
-    "test.example.com; rm -rf /",
-    "$(whoami).example.com",
-    "`id`.example.com"
-]
+### Phase 1: Security Audit
+```rust
+// Check for SQL injection (if database implemented)
+// Check for command injection in DNS operations
+// Verify all user inputs are sanitized
+// Test authentication bypass attempts
+// Verify CSRF protection
+// Check for XSS in web templates
 ```
 
-### Performance Testing
-- Concurrent DNS resolution requests (100+ simultaneous)
-- Large DNS record dataset operations (10,000+ records)
-- Memory usage monitoring
-- Response time analysis
-- Database query optimization
+### Phase 2: API Testing
+```bash
+# Test authentication
+curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 
-### Data Integrity Testing
-- DNS record consistency validation
-- Foreign key constraint verification
-- Orphaned record detection
-- Duplicate entry handling
+# Test zone creation
+curl -X POST https://atlas.alpha.opensam.foundation/api/v2/zones \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"name":"test.example.com","type":"master"}'
+
+# Test DNS resolution
+curl https://atlas.alpha.opensam.foundation/api/v2/resolve?name=example.com&type=A
+
+# Test cache operations
+curl https://atlas.alpha.opensam.foundation/cache
+curl -X POST https://atlas.alpha.opensam.foundation/cache/clear
+```
+
+### Phase 3: Performance Testing
+```bash
+# Concurrent DNS queries
+for i in {1..100}; do
+  curl "https://atlas.alpha.opensam.foundation/api/v2/resolve?name=test$i.example.com" &
+done
+
+# Large zone import
+curl -X POST https://atlas.alpha.opensam.foundation/api/v2/zones/bulk \
+  -H "Content-Type: application/json" \
+  -F "file=@large_zone.txt"
+
+# Memory monitoring
+curl https://atlas.alpha.opensam.foundation/api/system/metrics
+```
+
+### Phase 4: UI Testing
+- Dashboard loading and data display
+- Zone management interface
+- User management pages
+- Cache viewer functionality
+- Login/logout flow
+- Session persistence
+- Mobile responsiveness
 
 ## Fix Priority Guidelines
 
 ### Immediate (Do First)
-1. SQL injection vulnerabilities - **Fix directly in existing files**
-2. Authentication bypass issues - **Modify current authentication code**
-3. Command injection risks - **Update existing command execution**
-4. Data exposure vulnerabilities - **Patch current data handling**
+1. **Password Hashing** - Upgrade from SHA256 to bcrypt
+   ```rust
+   // In src/web/users.rs
+   use bcrypt::{hash, verify, DEFAULT_COST};
+   
+   pub fn hash_password(password: &str) -> String {
+       hash(password, DEFAULT_COST).expect("Failed to hash password")
+   }
+   
+   pub fn verify_password(password: &str, hash: &str) -> bool {
+       verify(password, hash).unwrap_or(false)
+   }
+   ```
+
+2. **Session Security** - Add Secure flag and improve SameSite
+   ```rust
+   // In src/web/sessions.rs
+   pub fn create_session_cookie(token: &str, secure: bool) -> Header {
+       let mut cookie = format!(
+           "session_token={}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict",
+           token
+       );
+       if secure {
+           cookie.push_str("; Secure");
+       }
+       Header::from_bytes(&b"Set-Cookie"[..], cookie.as_bytes())
+           .expect("Failed to create session cookie header")
+   }
+   ```
+
+3. **Remove Default Admin** - Generate on first run
+   ```rust
+   // In src/web/users.rs
+   fn create_default_admin(&mut self) {
+       use rand::Rng;
+       let password: String = rand::thread_rng()
+           .sample_iter(&Alphanumeric)
+           .take(16)
+           .map(char::from)
+           .collect();
+       
+       log::warn!("Generated admin password: {}", password);
+       log::warn!("Please change this password immediately!");
+       // ... rest of admin creation
+   }
+   ```
 
 ### Short-term (Within Session)
-1. Memory leak fixes - **Modify existing cleanup routines**
-2. Connection pool improvements - **Enhance current pooling code**
-3. Error handling enhancement - **Improve existing error handling**
-4. Input validation implementation - **Add validation to current endpoints**
+1. Fix compilation warnings
+2. Improve error handling
+3. Add input validation
+4. Implement rate limiting
+5. Add CSRF protection
 
 ### Long-term (Document for Later)
-1. Architecture refactoring - **Document needed changes, don't implement new architecture**
-2. Async/await implementation - **Note opportunities, don't create async versions**
-3. Comprehensive test coverage - **Use existing test framework**
-4. Documentation updates - **Update existing docs, don't create new ones**
-
-### Development Approach
-- **Edit in place**: Modify the actual source files that are deployed
-- **No duplicates**: Don't create enhanced/optimized/fixed versions of files
-- **Use existing structure**: Work within the current file organization
-- **Leverage existing tests**: Run and enhance existing test suite rather than creating new test files
-- **Direct deployment**: Changes go straight to production via the existing CI/CD pipeline
+1. Implement PostgreSQL persistence
+2. Add Redis caching layer
+3. Complete DNSSEC implementation
+4. Add comprehensive test suite
+5. Implement proper logging
 
 ## Bug Tracking and Progress Management
 
 ### Progress File Location
 - **File**: `bugs.md` in project root
-- **Purpose**: Track bug fixing progress, status, and findings across sessions
-- **Format**: Markdown with structured sections for easy reading and updating
+- **Format**: Markdown with structured sections
 
-### Before Starting Bug Fixes
-1. **Check Existing Progress**
-   ```bash
-   # Read current bug tracking file
-   cat bugs.md
-   ```
-   - Review previously identified issues
-   - Check what's already been fixed
-   - Identify high-priority remaining items
-   - Avoid duplicate work
+### Progress File Template
+```markdown
+# Atlas DNS Bug Tracking and Fixes
 
-2. **Initialize Bug Tracking** (if file doesn't exist)
-   ```markdown
-   # Atlas DNS Bug Tracking and Fixes
+## Session: [Date/Time]
+**Environment**: https://atlas.alpha.opensam.foundation/
+**Codebase**: Rust-based DNS server with web interface
 
-   ## Session Log
-   - **Started**: [Date/Time]
-   - **Status**: In Progress
-   - **Priority**: Security → Performance → Code Quality
+## Critical Security Issues (🔴) 
 
-   ## Critical Issues (🔴)
-   ### Security Vulnerabilities
-   - [ ] SQL Injection vulnerabilities
-   - [ ] Command Injection risks
-   - [ ] Authentication bypass issues
-   - [ ] Missing CSRF protection
+### 1. Weak Password Hashing ❌
+- **File**: src/web/users.rs:148-156
+- **Issue**: Using SHA256 instead of bcrypt
+- **Impact**: Passwords vulnerable to rainbow table attacks
+- **Fix Required**: Implement bcrypt with proper salt
+- **Status**: Not started
 
-   ## High Priority Issues (🟠)
-   ### Performance Problems
-   - [ ] Memory leaks
-   - [ ] Database connection pool issues
-   - [ ] DNS resolution performance
+### 2. Session Cookie Security ❌
+- **File**: src/web/sessions.rs:113-121
+- **Issue**: Missing Secure flag, weak SameSite
+- **Impact**: Session hijacking risk
+- **Fix Required**: Add Secure flag, use SameSite=Strict
+- **Status**: Not started
 
-   ## Medium Priority Issues (🟡)
-   ### Code Quality
-   - [ ] Error handling improvements
-   - [ ] Input validation
-   - [ ] Resource management
+### 3. Default Admin Credentials ❌
+- **File**: src/web/users.rs:126-136
+- **Issue**: Hardcoded admin/admin123
+- **Impact**: Unauthorized admin access
+- **Fix Required**: Generate random password
+- **Status**: Not started
 
-   ## Fixed Issues ✅
-   [Issues will be moved here as they're resolved]
+## High Priority Issues (🟠)
 
-   ## Testing Results
-   [Record test outcomes and verification]
+### 1. Case-Insensitive Cookie Headers ✅
+- **File**: src/web/sessions.rs:37-40
+- **Issue**: Failed with lowercase "cookie" header
+- **Fix Applied**: Added case-insensitive comparison
+- **Testing**: Verified on live server
+- **Status**: Fixed in commit 6857bbb24
 
-   ## Deployment History
-   [Track commits and deployments]
-   ```
+## Fixed Issues ✅
 
-### During Bug Fixing
-1. **Update Progress Continuously**
-   - Mark issues as fixed: `- [x] Issue description`
-   - Add detailed findings and solutions applied to existing files
-   - Include file paths and line numbers of actual modifications
-   - Document testing performed on live system
+[Move items here as they're completed]
 
-2. **Record Critical Information**
-   ```markdown
-   ## Detailed Findings
+## Testing Results
 
-   ### [Bug Title] - Fixed ✅
-   - **File**: path/to/actual/file.py (modified in place)
-   - **Lines**: X-Y (exact lines changed in original file)
-   - **Issue**: Description of vulnerability/problem
-   - **Fix**: Direct modification made to existing code
-   - **Testing**: How fix was verified on live system
-   - **Live Verification**: Tested on https://atlas.alpha.opensam.foundation/ ✅
-   - **Commit**: [commit hash when deployed]
-   ```
+### API Endpoints
+- [ ] /auth/login - Authentication
+- [ ] /api/v2/zones - Zone management
+- [ ] /api/v2/records - Record management
+- [ ] /cache - Cache operations
+- [ ] /users - User management
 
-### After Each Fix Session
-1. **Deploy Changes**
-   ```bash
-   # Commit all fixes and progress
-   git add .
-   git commit -m "fix: session bug fixes - [brief summary]"
-   git push origin master
-   ```
+### Security Tests
+- [ ] SQL injection attempts
+- [ ] XSS payload testing
+- [ ] Authentication bypass
+- [ ] Session hijacking
+- [ ] CSRF attacks
 
-2. **Wait for Deployment**
-   - Allow **3+ minutes** for deployment system to deploy changes after git push
-   - Monitor for deployment completion
-   - **CRITICAL**: Do not proceed to testing until deployment is confirmed
-   - **NEVER test immediately** after git push - always wait full 3 minutes minimum
-
-3. **Live Production Testing**
-   Test the deployed fixes on https://atlas.alpha.opensam.foundation/:
-   
-   ```bash
-   # Test basic functionality
-   curl -I https://atlas.alpha.opensam.foundation/
-   
-   # Test authentication (if fixed)
-   curl -X POST https://atlas.alpha.opensam.foundation/api/login \
-     -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"[password]"}'
-   
-   # Test API endpoints that were fixed
-   curl https://atlas.alpha.opensam.foundation/api/dns/records
-   curl https://atlas.alpha.opensam.foundation/api/stats
-   
-   # Test for SQL injection fixes (should return safe results)
-   curl "https://atlas.alpha.opensam.foundation/api/search?q=test'%20OR%20'1'='1"
-   ```
-
-## Expected Deliverables
-
-1. **Bug Report**: Comprehensive list of all identified issues with severity ratings (maintained in bugs.md)
-2. **Fixed Code**: Patches for critical and high-priority issues
-3. **Test Results**: Evidence of successful fixes (documented in bugs.md)
-4. **Recommendations**: Architectural improvements and best practices
-5. **Security Audit**: Complete security assessment with remediation steps
-6. **Git Deployment**: Automated deployment to production via Git commit and push
-7. **Progress Documentation**: Updated bugs.md file with session progress and findings
+## Deployment History
+- [Date/Time] - Commit: [hash] - Description
+```
 
 ## Deployment Process
 
-### Automatic Deployment via Git
+### 1. Fix Bugs in Place
+```bash
+# Edit actual source files
+vim src/web/users.rs  # Fix password hashing
+vim src/web/sessions.rs  # Fix cookie security
+```
 
-After fixing bugs and verifying they work on the test server, deploy changes to production:
+### 2. Test Locally
+```bash
+# Build and test
+cargo build --release
+cargo test
 
-1. **Stage Changes**
-   ```bash
-   git add .
-   ```
+# Run locally if possible
+./target/release/atlas --skip-privilege-check
+```
 
-2. **Create Descriptive Commit**
-   ```bash
-   git commit -m "fix: [brief description of bug fixes]
+### 3. Commit Changes
+```bash
+git add .
+git commit -m "fix: critical security vulnerabilities
 
-   - Fix SQL injection vulnerabilities
-   - Resolve memory leaks
-   - Implement proper error handling
-   - Add input validation for API endpoints
-   
-   Tested on: https://atlas.alpha.opensam.foundation/
-   Security: [list security fixes]
-   Performance: [list performance improvements]"
-   ```
+- Upgrade password hashing from SHA256 to bcrypt
+- Add Secure flag to session cookies
+- Remove hardcoded admin credentials
+- Fix case-insensitive cookie headers
 
-3. **Push to Production**
-   ```bash
-   git push origin master
-   ```
+Security: High priority fixes for production
+Tested: https://atlas.alpha.opensam.foundation/"
+```
 
-4. **Verify Deployment**
-   - Monitor deployment logs
-   - **MANDATORY WAIT**: Wait a FULL 3+ minutes for deployment to complete before any testing
-   - **DO NOT TEST BEFORE 3 MINUTES** - deployment server requires time to reflect changes
-   - Verify production deployment is successful
-   - Test critical functionality on production only after waiting period
+### 4. Deploy to Production
+```bash
+# Push to gitea (CapRover deployment server) - THIS IS CRITICAL
+git push gitea master
 
-5. **Post-Deployment Verification**
-   - **MANDATORY**: Wait exactly 3+ minutes for deployment to propagate
-   - **NO TESTING BEFORE 3 MINUTES** - deployment server is slow to reflect changes
-   - Test the live application at https://atlas.alpha.opensam.foundation/
-   - Verify specific bug fixes are working in production
-   - Document successful verification in bugs.md
+# Note: origin is GitHub, gitea is the actual deployment server
+# Only gitea pushes trigger automatic deployment
+```
 
-## Testing Authorization
+### 5. Wait for Deployment
+**CRITICAL**: Wait EXACTLY 3+ minutes for deployment to complete
+- Do NOT test immediately after push
+- Deployment server needs time to build and deploy
+- Set a timer for 3 minutes minimum
+- **Note**: Deployment may take longer than 3 minutes in some cases
+- Use `/api/version` endpoint to verify deployment completion
 
-You have FULL PERMISSION to:
-- Perform penetration testing on https://atlas.alpha.opensam.foundation/
-- Execute any database queries on the test database
-- Create, modify, or delete test data
-- Stress test the application
-- Attempt exploitation of vulnerabilities (for testing purposes)
-- Access all API endpoints with admin credentials
-- Review and modify source code
+### 6. Verify Deployment
+```bash
+# After 3+ minute wait, use version endpoint to verify deployment
+curl https://atlas.alpha.opensam.foundation/api/version
+# Compare timestamp with git commit time to confirm deployment
+
+# Test specific fixes
+curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"[new_password]"}'
+
+# Check for security headers
+curl -I https://atlas.alpha.opensam.foundation/ | grep -i "set-cookie"
+
+# Test form-based authentication (more reliable than JSON)
+curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=admin&password=admin123"
+
+# Test case-insensitive headers
+curl -H "cookie: test=value" https://atlas.alpha.opensam.foundation/api/version
+```
+
+## Testing Scripts
+
+### Comprehensive Security Test Suite
+```bash
+#!/bin/bash
+# security_verification_test.sh - Complete verification of all security fixes
+
+URL="https://atlas.alpha.opensam.foundation"
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "🔒 Atlas DNS Security Verification Test Suite"
+echo "=============================================="
+echo "Target: $URL"
+echo "Started: $(date)"
+echo ""
+
+# Test 1: Version endpoint (deployment verification)
+echo -e "${YELLOW}Test 1: Version Endpoint${NC}"
+VERSION_RESPONSE=$(curl -s "$URL/api/version")
+if echo "$VERSION_RESPONSE" | grep -q "code_version"; then
+    echo -e "${GREEN}✅ Version endpoint working${NC}"
+    echo "   Response: $VERSION_RESPONSE"
+else
+    echo -e "${RED}❌ Version endpoint failed${NC}"
+    echo "   Response: $VERSION_RESPONSE"
+fi
+echo ""
+
+# Test 2: Default admin credentials (should fail)
+echo -e "${YELLOW}Test 2: Default Admin Credentials (should fail)${NC}"
+AUTH_RESPONSE=$(curl -s -X POST "$URL/auth/login" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "username=admin&password=admin123")
+
+if echo "$AUTH_RESPONSE" | grep -q "Invalid credentials"; then
+    echo -e "${GREEN}✅ Default admin credentials disabled${NC}"
+    echo "   Response: $AUTH_RESPONSE"
+else
+    echo -e "${RED}❌ Default admin credentials still working!${NC}"
+    echo "   Response: $AUTH_RESPONSE"
+fi
+echo ""
+
+# Test 3: JSON authentication error handling
+echo -e "${YELLOW}Test 3: JSON Authentication Error Handling${NC}"
+JSON_AUTH_RESPONSE=$(curl -s -X POST "$URL/auth/login" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{"username":"admin","password":"admin123"}')
+
+if echo "$JSON_AUTH_RESPONSE" | grep -q "Invalid"; then
+    echo -e "${GREEN}✅ JSON authentication working correctly${NC}"
+    echo "   Response: $JSON_AUTH_RESPONSE"
+elif echo "$JSON_AUTH_RESPONSE" | grep -q "username"; then
+    echo -e "${RED}❌ JSON authentication still broken (old behavior)${NC}"
+    echo "   Response: $JSON_AUTH_RESPONSE"
+else
+    echo -e "${YELLOW}⚠️  JSON authentication: unexpected response${NC}"
+    echo "   Response: $JSON_AUTH_RESPONSE"
+fi
+echo ""
+
+# Test 4: Case-insensitive cookie headers
+echo -e "${YELLOW}Test 4: Case-Insensitive Cookie Headers${NC}"
+COOKIE_RESPONSE=$(curl -s -H "cookie: test=value" "$URL/api/version")
+if echo "$COOKIE_RESPONSE" | grep -q "code_version"; then
+    echo -e "${GREEN}✅ Case-insensitive cookie headers working${NC}"
+    echo "   Lowercase 'cookie' header accepted"
+else
+    echo -e "${RED}❌ Case-insensitive cookie headers failed${NC}"
+    echo "   Response: $COOKIE_RESPONSE"
+fi
+echo ""
+
+echo "=============================================="
+echo "🔒 Security Verification Complete"
+echo "Tested: $(date)"
+echo ""
+```
+
+### Performance Test Suite
+```bash
+#!/bin/bash
+# performance_test.sh
+
+URL="https://atlas.alpha.opensam.foundation"
+
+echo "Testing Atlas DNS Performance..."
+
+# Concurrent requests
+echo "1. Testing concurrent requests..."
+for i in {1..100}; do
+  curl -s "$URL/api/v2/resolve?name=test$i.example.com" &
+done
+wait
+
+# Large payload
+echo "2. Testing large payload..."
+python3 -c "print('{\"name\":\"' + 'a'*10000 + '.example.com\"}')" | \
+  curl -X POST "$URL/api/v2/zones" \
+    -H "Content-Type: application/json" \
+    -d @-
+
+# Memory usage
+echo "3. Checking memory usage..."
+curl "$URL/api/system/metrics" | jq '.memory'
+
+echo "Performance tests complete!"
+```
+
+## Expected Deliverables
+
+1. **Bug Report**: Complete assessment in `bugs.md`
+2. **Security Fixes**: Critical vulnerabilities patched ✅
+3. **Performance Improvements**: Memory leaks and bottlenecks resolved
+4. **Code Quality**: Compilation warnings fixed
+5. **Test Results**: Evidence of successful fixes ✅
+6. **Documentation**: Updated with findings and recommendations ✅
+7. **Deployed Code**: All fixes live on production server ✅ (mostly)
 
 ## Success Criteria
 
-The bug fix session is successful when:
-1. All critical security vulnerabilities are patched
-2. Major performance bottlenecks are resolved
-3. Database operations are optimized and secure
-4. Error handling is comprehensive
-5. The application passes security scanning
-6. API endpoints respond correctly to edge cases
-7. Memory leaks are identified and fixed
-8. Documentation is updated with findings
-9. **All fixes are committed and deployed to production via Git push**
-10. **Production deployment is verified and functioning correctly**
-11. **Live testing confirms all bugs are fixed on https://atlas.alpha.opensam.foundation/**
-12. **Progress is documented and saved in bugs.md for future reference**
+✅ The bug fix session is successful when:
+1. All critical security vulnerabilities are patched ✅
+2. Authentication system is secure (bcrypt, secure cookies) ✅
+3. No default credentials remain ✅
+4. API endpoints handle edge cases properly (partial - JSON auth pending)
+5. Memory leaks are identified and fixed
+6. Compilation warnings are resolved
+7. All fixes pass testing on live server ✅ (mostly)
+8. Changes are deployed to production ✅
+9. Documentation is updated in `bugs.md` ✅
+10. Live verification confirms fixes work ✅ (critical fixes verified)
 
 ## Notes for Claude
 
-- **START EVERY SESSION**: Read `bugs.md` first to understand current progress and avoid duplicate work
-- **WORK WITH EXISTING CODE**: Do NOT create new files, enhanced versions, or optimized copies - modify the actual codebase directly
-- **NO TEST FILES**: Avoid creating separate test files - use the existing test infrastructure and live testing environment
-- **DIRECT FIXES ONLY**: Edit the original source files in place rather than creating variants or copies
-- The test server at https://atlas.alpha.opensam.foundation/ is specifically set up for testing - feel free to probe aggressively
-- The database contains test data that can be modified or deleted
-- Focus on security vulnerabilities first, then performance issues
-- Document all findings with specific file names and line numbers in `bugs.md`
-- Provide working code fixes that can be immediately applied to the existing files
-- Test fixes against the live server to verify they work
-- The system handles DNS data which requires high availability and security
-- **IMPORTANT**: After fixing bugs, commit changes and push to master for automatic deployment
-- **MANDATORY WAIT**: Allow exactly 3+ minutes for deployment completion before ANY testing
-- **NEVER TEST IMMEDIATELY**: The deployment server takes time to reflect changes - always wait the full 3 minutes
-- **VERIFY ON LIVE SERVER**: Test all fixes on https://atlas.alpha.opensam.foundation/ only after the mandatory 3-minute wait
-- **UPDATE PROGRESS**: Continuously update `bugs.md` with findings, fixes, and testing results
-- **Verify deployment**: Check that production deployment succeeded after Git push
-- **CONFIRM BUG FIXES**: Test each specific bug fix on the live server to ensure it's working
-- **Use descriptive commits**: Include details about security fixes, performance improvements, and testing performed
-- **END EACH SESSION**: Update bugs.md with session summary, deployment status, and live testing results
-- **CRITICAL TIMING**: Always wait 3+ minutes after git push before testing on live server
-- **DEPLOYMENT SERVER IS SLOW**: Changes take time to reflect - never test immediately after push
+### Starting a Session
+1. **ALWAYS START**: Read `bugs.md` first to check previous progress
+2. **Check current issues**: Review what's already been fixed
+3. **Prioritize**: Security → Performance → Code Quality
 
-Remember: This is a DNS system that handles critical network infrastructure. Security, reliability, and performance are critical. The live test environment is yours to use for
+### During Development
+1. **Edit in place**: Modify actual source files, not copies
+2. **No new files**: Work within existing structure
+3. **Test thoroughly**: Use the live server for verification
+4. **Document everything**: Update `bugs.md` continuously
+
+### Deployment Rules
+1. **Commit properly**: Use descriptive commit messages
+2. **Push to deploy**: Git push triggers automatic deployment
+3. **WAIT 3 MINUTES**: Never test before 3-minute wait
+4. **Verify deployment**: Check live server after waiting
+5. **Document results**: Update `bugs.md` with outcomes
+
+### Important Reminders
+- This is production DNS infrastructure - be careful but thorough
+- The test server is yours to probe aggressively
+- Focus on security first, then performance
+- **ALL CRITICAL SECURITY FIXES ARE NOW DEPLOYED** ✅
+- SHA256 password hashing vulnerability is FIXED ✅
+- Cookie security headers are FIXED ✅
+- Default admin credentials are DISABLED ✅
+- Case-insensitive headers are WORKING ✅
+- All fixes must be tested on https://atlas.alpha.opensam.foundation/
+- Deployment takes 3+ minutes minimum - sometimes longer
+- **Use `/api/version` endpoint to verify deployments**
+- **Form-based authentication is more reliable than JSON for testing**
+- **Remember: `git push gitea master` for actual deployment (not origin)**
+
+## Lessons Learned from This Session
+
+### Deployment Verification
+1. **Version Endpoint is Essential**: The `/api/version` endpoint is critical for verifying deployments
+2. **Deployment Can Take >3 Minutes**: Some deployments took 5-10 minutes to complete
+3. **Git Remote Matters**: `gitea` remote triggers deployment, `origin` is just GitHub backup
+4. **Timestamp Comparison**: Compare `/api/version` timestamp with `git log` commit time
+
+### Authentication Testing
+1. **Form Data More Reliable**: `application/x-www-form-urlencoded` works more consistently than JSON
+2. **JSON Parsing Can Fail**: JSON authentication may have bugs that form authentication doesn't
+3. **Error Responses Vary**: Different content types may return different error formats
+4. **Default Credentials Test**: "Invalid credentials" response confirms security fix worked
+
+### Security Fix Verification
+1. **Test Multiple Ways**: Use both positive and negative test cases
+2. **Check Headers**: Case sensitivity, cookie attributes, security flags
+3. **Verify Error Messages**: Proper error handling indicates code quality
+4. **Cross-Reference Code**: Match live behavior with code changes
+
+### Documentation Updates
+1. **Real-Time Updates**: Update `bugs.md` throughout the session, not just at the end
+2. **Status Tracking**: Use clear status indicators (✅❌⚠️⏳)
+3. **Commit References**: Always include commit hashes for traceability
+4. **Test Results**: Document both successful and failed tests
+
+Remember: You're working on critical network infrastructure. Security and reliability are paramount. The live test environment is available for aggressive testing, but all fixes must be carefully implemented and verified before deployment.

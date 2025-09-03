@@ -8,15 +8,14 @@
 //! - Relative and absolute domain names
 //! - @ symbol for zone apex
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::time::Duration;
 
-use crate::dns::protocol::{DnsRecord, QueryType, TransientTtl};
+use crate::dns::protocol::{DnsRecord, TransientTtl};
 use super::authority::Zone;
 
 /// Parser errors with line number information

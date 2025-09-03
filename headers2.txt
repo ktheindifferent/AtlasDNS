@@ -1,0 +1,7 @@
+HTTP/2 302 
+server: nginx
+date: Wed, 03 Sep 2025 02:13:44 GMT
+content-length: 0
+set-cookie: session_token=1be6436f-79c1-4376-b14c-0bc23b1dd0c3; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax
+location: /
+
