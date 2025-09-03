@@ -19,6 +19,82 @@
         })();
     </script>
 
+    <!-- Sentry JavaScript SDK for frontend error monitoring -->
+    <script src="https://browser.sentry-cdn.com/7.91.0/bundle.min.js" integrity="sha384-aFgSgUkfTsq3g5/RxShq7tXl1GmwCa8H3EsCFgf8DUoJrDK6dKTJW3UW9JLDm6lq" crossorigin="anonymous"></script>
+    <script>
+        // Initialize Sentry for frontend error tracking
+        // Using same DSN as backend for unified error tracking
+        Sentry.init({
+            dsn: "http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4",
+            environment: "production",
+            
+            // Session tracking for user journeys
+            integrations: [
+                new Sentry.BrowserTracing({
+                    // Track route changes in SPA-like behavior
+                    routingInstrumentation: Sentry.routingInstrumentation,
+                }),
+                new Sentry.Replay({
+                    // Capture replay sessions for debugging UI issues
+                    maskAllText: true,  // Privacy: mask sensitive text
+                    maskAllInputs: true, // Privacy: mask form inputs
+                    blockAllMedia: true, // Privacy: don't capture media
+                }),
+            ],
+            
+            // Performance monitoring
+            tracesSampleRate: 0.1, // 10% of transactions
+            
+            // Session replay for critical errors
+            replaysSessionSampleRate: 0.01, // 1% of sessions
+            replaysOnErrorSampleRate: 1.0,  // 100% of error sessions
+            
+            // Tag with frontend context
+            tags: {
+                component: "frontend",
+                service: "atlas-dns-web"
+            },
+            
+            // Set user context from page if available
+            beforeSend: function(event) {
+                // Add page-specific context
+                event.tags = event.tags || {};
+                event.tags.page = window.location.pathname;
+                event.tags.user_agent = navigator.userAgent;
+                
+                // Add theme information
+                event.extra = event.extra || {};
+                event.extra.theme = document.documentElement.getAttribute('data-bs-theme');
+                
+                return event;
+            }
+        });
+        
+        // Set user context if authentication info is available
+        {{#if user}}
+        Sentry.setUser({
+            id: "{{user.id}}",
+            username: "{{user.username}}",
+            role: "{{user.role}}"
+        });
+        {{else}}
+        Sentry.setUser({
+            id: "anonymous"
+        });
+        {{/if}}
+        
+        // Add breadcrumb for page load
+        Sentry.addBreadcrumb({
+            category: "navigation",
+            message: "Page loaded: {{#if title}}{{title}}{{else}}Atlas DNS{{/if}}",
+            level: "info",
+            data: {
+                url: window.location.href,
+                referrer: document.referrer
+            }
+        });
+    </script>
+
     <title>{{#if title}}{{title}} - {{/if}}Atlas DNS</title>
 
     <!-- Bootstrap 5.3 CSS -->
@@ -1250,28 +1326,447 @@
             }
         }
 
-        // Enhance table sorting
+        // Enhance table sorting with Sentry monitoring
         document.querySelectorAll('th[data-sortable]').forEach(header => {
             header.style.cursor = 'pointer';
             header.addEventListener('click', function() {
-                const table = this.closest('table');
-                const index = Array.from(this.parentElement.children).indexOf(this);
-                const rows = Array.from(table.querySelectorAll('tbody tr'));
-                const isAsc = this.classList.contains('asc');
-                
-                rows.sort((a, b) => {
-                    const aVal = a.children[index].textContent;
-                    const bVal = b.children[index].textContent;
-                    return isAsc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
-                });
-                
-                table.querySelector('tbody').append(...rows);
-                
-                // Update sort indicators
-                table.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
-                this.classList.add(isAsc ? 'desc' : 'asc');
+                try {
+                    // Add breadcrumb for user interaction
+                    Sentry.addBreadcrumb({
+                        category: "user_interaction",
+                        message: "Table sorting initiated",
+                        level: "info",
+                        data: {
+                            column: this.textContent.trim(),
+                            table_id: this.closest('table').id || 'unnamed_table'
+                        }
+                    });
+                    
+                    const table = this.closest('table');
+                    const index = Array.from(this.parentElement.children).indexOf(this);
+                    const rows = Array.from(table.querySelectorAll('tbody tr'));
+                    const isAsc = this.classList.contains('asc');
+                    
+                    rows.sort((a, b) => {
+                        const aVal = a.children[index].textContent;
+                        const bVal = b.children[index].textContent;
+                        return isAsc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                    });
+                    
+                    table.querySelector('tbody').append(...rows);
+                    
+                    // Update sort indicators
+                    table.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
+                    this.classList.add(isAsc ? 'desc' : 'asc');
+                    
+                } catch (error) {
+                    Sentry.captureException(error, {
+                        tags: {
+                            ui_component: "table_sorting",
+                            error_type: "ui_interaction_error"
+                        }
+                    });
+                    console.error('Table sorting error:', error);
+                }
             });
         });
+
+        // === Enhanced UI/UX Error Monitoring with Sentry ===
+        
+        // Monitor form submissions for errors
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                try {
+                    // Add breadcrumb for form submission
+                    Sentry.addBreadcrumb({
+                        category: "user_interaction",
+                        message: "Form submission initiated",
+                        level: "info",
+                        data: {
+                            form_id: this.id || 'unnamed_form',
+                            action: this.action || 'current_page',
+                            method: this.method || 'GET',
+                            fields_count: this.elements.length
+                        }
+                    });
+                    
+                    // Validate required fields
+                    const requiredFields = this.querySelectorAll('[required]');
+                    const emptyFields = [];
+                    
+                    requiredFields.forEach(field => {
+                        if (!field.value.trim()) {
+                            emptyFields.push(field.name || field.id || 'unnamed_field');
+                        }
+                    });
+                    
+                    if (emptyFields.length > 0) {
+                        // Report validation error to Sentry
+                        Sentry.captureMessage('Form validation error: empty required fields', {
+                            level: 'warning',
+                            tags: {
+                                ui_component: "form_validation",
+                                form_id: this.id || 'unnamed_form'
+                            },
+                            extra: {
+                                empty_fields: emptyFields,
+                                total_fields: this.elements.length
+                            }
+                        });
+                    }
+                    
+                } catch (error) {
+                    Sentry.captureException(error, {
+                        tags: {
+                            ui_component: "form_submission",
+                            error_type: "form_validation_error"
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Monitor AJAX requests for API errors
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            const startTime = Date.now();
+            const url = args[0];
+            
+            // Add breadcrumb for API call
+            Sentry.addBreadcrumb({
+                category: "http",
+                message: `API request: ${url}`,
+                level: "info",
+                data: {
+                    url: url,
+                    method: args[1]?.method || 'GET'
+                }
+            });
+            
+            return originalFetch.apply(this, args)
+                .then(response => {
+                    const duration = Date.now() - startTime;
+                    
+                    if (!response.ok) {
+                        // Report API errors to Sentry
+                        Sentry.captureMessage(`API Error: ${response.status} ${response.statusText}`, {
+                            level: 'error',
+                            tags: {
+                                ui_component: "api_request",
+                                http_status: response.status.toString(),
+                                error_type: "api_error"
+                            },
+                            extra: {
+                                url: url,
+                                status: response.status,
+                                statusText: response.statusText,
+                                duration: duration
+                            }
+                        });
+                    } else if (duration > 5000) {
+                        // Report slow API responses
+                        Sentry.captureMessage(`Slow API response: ${url}`, {
+                            level: 'warning',
+                            tags: {
+                                ui_component: "api_performance",
+                                performance_issue: "slow_response"
+                            },
+                            extra: {
+                                url: url,
+                                duration: duration
+                            }
+                        });
+                    }
+                    
+                    return response;
+                })
+                .catch(error => {
+                    // Report network errors to Sentry
+                    Sentry.captureException(error, {
+                        tags: {
+                            ui_component: "api_request",
+                            error_type: "network_error"
+                        },
+                        extra: {
+                            url: url,
+                            duration: Date.now() - startTime
+                        }
+                    });
+                    throw error;
+                });
+        };
+        
+        // Monitor for JavaScript errors in DOM manipulation
+        const originalQuerySelector = document.querySelector;
+        document.querySelector = function(...args) {
+            try {
+                return originalQuerySelector.apply(this, args);
+            } catch (error) {
+                Sentry.captureException(error, {
+                    tags: {
+                        ui_component: "dom_query",
+                        error_type: "dom_error"
+                    },
+                    extra: {
+                        selector: args[0]
+                    }
+                });
+                throw error;
+            }
+        };
+        
+        // Monitor for unhandled promise rejections
+        window.addEventListener('unhandledrejection', function(event) {
+            Sentry.captureException(event.reason, {
+                tags: {
+                    error_type: "unhandled_promise_rejection",
+                    ui_component: "promise_handling"
+                },
+                extra: {
+                    promise: event.promise,
+                    reason: event.reason
+                }
+            });
+        });
+        
+        // Monitor for resource loading errors
+        window.addEventListener('error', function(event) {
+            if (event.target !== window) {
+                // Resource loading error (images, scripts, stylesheets)
+                Sentry.captureMessage(`Resource loading error: ${event.target.src || event.target.href}`, {
+                    level: 'error',
+                    tags: {
+                        error_type: "resource_loading_error",
+                        ui_component: "resource_loading",
+                        resource_type: event.target.tagName.toLowerCase()
+                    },
+                    extra: {
+                        resource_url: event.target.src || event.target.href,
+                        element: event.target.outerHTML
+                    }
+                });
+            }
+        }, true);
+        
+        // Monitor for long tasks (performance issues)
+        if ('PerformanceObserver' in window) {
+            try {
+                const observer = new PerformanceObserver(list => {
+                    for (const entry of list.getEntries()) {
+                        if (entry.duration > 50) { // Tasks longer than 50ms
+                            Sentry.captureMessage(`Long task detected: ${entry.duration}ms`, {
+                                level: 'warning',
+                                tags: {
+                                    performance_issue: "long_task",
+                                    ui_component: "performance_monitoring"
+                                },
+                                extra: {
+                                    duration: entry.duration,
+                                    startTime: entry.startTime,
+                                    name: entry.name
+                                }
+                            });
+                        }
+                    }
+                });
+                
+                observer.observe({entryTypes: ['longtask']});
+                
+            } catch (error) {
+                // PerformanceObserver not supported or failed
+                console.warn('Performance monitoring not available:', error);
+            }
+        }
+        
+        // Monitor user interactions for patterns
+        let clickCount = 0;
+        let lastClickTime = 0;
+        
+        document.addEventListener('click', function(event) {
+            try {
+                const now = Date.now();
+                clickCount++;
+                
+                // Detect rapid clicking (potential UI frustration)
+                if (now - lastClickTime < 500) {
+                    if (clickCount > 5) {
+                        Sentry.captureMessage('Rapid clicking detected - possible UI issue', {
+                            level: 'warning',
+                            tags: {
+                                ui_component: "user_behavior",
+                                behavior_pattern: "rapid_clicking"
+                            },
+                            extra: {
+                                click_count: clickCount,
+                                time_window: now - lastClickTime,
+                                target_element: event.target.tagName,
+                                target_id: event.target.id,
+                                target_class: event.target.className
+                            }
+                        });
+                        clickCount = 0; // Reset counter
+                    }
+                } else {
+                    clickCount = 1; // Reset if clicks are spaced out
+                }
+                
+                lastClickTime = now;
+                
+                // Track clicks on important UI elements
+                if (event.target.matches('button, .btn, [role="button"]')) {
+                    Sentry.addBreadcrumb({
+                        category: "user_interaction",
+                        message: "Button clicked",
+                        level: "info",
+                        data: {
+                            button_text: event.target.textContent?.trim() || 'No text',
+                            button_id: event.target.id || 'no_id',
+                            button_class: event.target.className || 'no_class'
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                Sentry.captureException(error, {
+                    tags: {
+                        ui_component: "click_monitoring",
+                        error_type: "interaction_monitoring_error"
+                    }
+                });
+            }
+        });
+        
+        // Monitor page visibility changes (user leaving/returning)
+        document.addEventListener('visibilitychange', function() {
+            Sentry.addBreadcrumb({
+                category: "navigation",
+                message: document.hidden ? "Page became hidden" : "Page became visible",
+                level: "info",
+                data: {
+                    hidden: document.hidden,
+                    visibility_state: document.visibilityState
+                }
+            });
+        });
+        
+        // Monitor WebSocket connection errors (for real-time features)
+        const originalWebSocket = window.WebSocket;
+        window.WebSocket = function(...args) {
+            const ws = new originalWebSocket(...args);
+            
+            ws.addEventListener('error', function(error) {
+                Sentry.captureException(new Error('WebSocket connection error'), {
+                    tags: {
+                        ui_component: "websocket",
+                        error_type: "connection_error"
+                    },
+                    extra: {
+                        url: args[0],
+                        ready_state: ws.readyState
+                    }
+                });
+            });
+            
+            ws.addEventListener('close', function(event) {
+                if (event.code !== 1000) { // Not a normal closure
+                    Sentry.captureMessage(`WebSocket closed unexpectedly: ${event.code}`, {
+                        level: 'warning',
+                        tags: {
+                            ui_component: "websocket",
+                            error_type: "unexpected_close"
+                        },
+                        extra: {
+                            code: event.code,
+                            reason: event.reason,
+                            was_clean: event.wasClean
+                        }
+                    });
+                }
+            });
+            
+            return ws;
+        };
+        
+        // Monitor memory usage for performance issues
+        if ('memory' in performance) {
+            setInterval(() => {
+                const memory = performance.memory;
+                const usedMB = Math.round(memory.usedJSHeapSize / 1024 / 1024);
+                
+                // Alert if memory usage is high
+                if (usedMB > 100) {
+                    Sentry.captureMessage(`High memory usage detected: ${usedMB}MB`, {
+                        level: 'warning',
+                        tags: {
+                            performance_issue: "high_memory_usage",
+                            ui_component: "memory_monitoring"
+                        },
+                        extra: {
+                            used_heap_mb: usedMB,
+                            total_heap_mb: Math.round(memory.totalJSHeapSize / 1024 / 1024),
+                            heap_limit_mb: Math.round(memory.jsHeapSizeLimit / 1024 / 1024)
+                        }
+                    });
+                }
+            }, 30000); // Check every 30 seconds
+        }
+        
+        // Monitor for offline/online status changes
+        window.addEventListener('offline', function() {
+            Sentry.addBreadcrumb({
+                category: "network",
+                message: "Application went offline",
+                level: "warning"
+            });
+        });
+        
+        window.addEventListener('online', function() {
+            Sentry.addBreadcrumb({
+                category: "network",
+                message: "Application came back online",
+                level: "info"
+            });
+        });
+        
+        // Monitor for critical DNS server errors in the UI
+        function reportDNSError(errorType, details) {
+            Sentry.captureMessage(`DNS Server Error: ${errorType}`, {
+                level: 'error',
+                tags: {
+                    ui_component: "dns_monitoring",
+                    dns_error_type: errorType,
+                    service: "atlas-dns"
+                },
+                extra: details
+            });
+        }
+        
+        // Make DNS error reporting available globally
+        window.reportDNSError = reportDNSError;
+        
+        // Monitor for Bootstrap modal errors
+        document.addEventListener('show.bs.modal', function(e) {
+            try {
+                Sentry.addBreadcrumb({
+                    category: "user_interaction",
+                    message: "Modal opened",
+                    level: "info",
+                    data: {
+                        modal_id: e.target.id || 'unnamed_modal',
+                        trigger: e.relatedTarget?.tagName || 'unknown'
+                    }
+                });
+            } catch (error) {
+                Sentry.captureException(error, {
+                    tags: {
+                        ui_component: "modal_monitoring",
+                        error_type: "modal_event_error"
+                    }
+                });
+            }
+        });
+        
+        console.log('✅ Sentry UI/UX monitoring initialized successfully');
     </script>
 </body>
 </html>

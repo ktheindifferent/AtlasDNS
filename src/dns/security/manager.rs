@@ -12,7 +12,7 @@ use crate::dns::protocol::DnsPacket;
 use crate::dns::errors::DnsError;
 use super::{
     SecurityCheckResult, SecurityAction, SecurityMetrics, SecurityAlert,
-    AlertSeverity, AlertType, ThreatLevel, SecurityComponent, SecurityEvent,
+    AlertSeverity, AlertType, ThreatLevel, SecurityComponent,
     DnsFirewall, FirewallConfig,
     EnhancedRateLimiter, RateLimitConfig,
     DDoSProtection, DDoSConfig,

@@ -16,7 +16,7 @@ use prometheus::{
     GaugeVec, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec,
     register_gauge_vec, register_histogram_vec,
     register_int_counter_vec, register_int_gauge, register_int_gauge_vec,
-    Encoder, TextEncoder, Registry, Histogram,
+    Encoder, TextEncoder, Registry,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};

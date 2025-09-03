@@ -203,6 +203,30 @@ impl<'a> WebServer<'a> {
         server
     }
 
+    /// Safely create an HTTP header, returning a default on error
+    fn safe_header(header_str: &str) -> tiny_http::Header<std::borrow::Cow<'static, str>> {
+        header_str.parse().unwrap_or_else(|_| {
+            log::warn!("Failed to parse header: {}", header_str);
+            "Content-Type: text/plain".parse().expect("Default header should always parse")
+        })
+    }
+
+    /// Safely create a location header
+    fn safe_location_header(location: &str) -> tiny_http::Header<std::borrow::Cow<'static, str>> {
+        format!("Location: {}", location).parse().unwrap_or_else(|_| {
+            log::warn!("Failed to parse location header: {}", location);
+            "Location: /".parse().expect("Default location header should always parse")
+        })
+    }
+
+    /// Safely serialize JSON, returning error JSON on failure
+    fn safe_json_string<T: serde::Serialize>(value: &T) -> String {
+        serde_json::to_string(value).unwrap_or_else(|e| {
+            log::warn!("Failed to serialize JSON: {}", e);
+            "{\"error\": \"Serialization failed\"}".to_string()
+        })
+    }
+
     /// Route an HTTP request to the appropriate handler
     fn route_request(
         &self,
@@ -230,12 +254,12 @@ impl<'a> WebServer<'a> {
                 if request.json_output() {
                     return Ok(Response::from_string("{\"error\": \"Unauthorized\"}")
                         .with_status_code(401)
-                        .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                        .with_header(Self::safe_header("Content-Type: application/json"))
                         .boxed());
                 }
                 // For web requests, redirect to login
                 return Ok(Response::empty(302)
-                    .with_header::<tiny_http::Header>("Location: /auth/login".parse().unwrap())
+                    .with_header(Self::safe_location_header("/auth/login"))
                     .boxed());
             }
         }
@@ -439,10 +463,10 @@ impl<'a> WebServer<'a> {
                 let error_json = serde_json::json!({
                     "message": err.to_string(),
                 });
-                let error_string = serde_json::to_string(&error_json).unwrap();
+                let error_string = Self::safe_json_string(&error_json);
                 let size = self.calculate_response_string_size(&error_string, self.error_status_code(&err));
                 let response = Response::from_string(error_string)
-                    .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap());
+                    .with_header(Self::safe_header("Content-Type: application/json"));
                 (Some(size), request.respond(response))
             }
             Err(err) => {
@@ -534,7 +558,7 @@ impl<'a> WebServer<'a> {
                 let error_json = serde_json::json!({
                     "message": err.to_string(),
                 });
-                let error_string = serde_json::to_string(&error_json).unwrap();
+                let error_string = Self::safe_json_string(&error_json);
                 request.respond(Response::from_string(error_string))
             }
             Err(err) => {
@@ -717,7 +741,7 @@ impl<'a> WebServer<'a> {
         if request.json_output() {
             let json_string = serde_json::to_string(&data)?;
             Ok(Response::from_string(json_string)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             let html_string = self.handlebars.render(template, &data)?;
@@ -936,7 +960,7 @@ impl<'a> WebServer<'a> {
                 "expires_at": session.expires_at,
             });
             Ok(Response::from_string(serde_json::to_string(&response_data)?)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             let cookie_header = create_session_cookie(&session.token, self.ssl_enabled);
@@ -944,7 +968,7 @@ impl<'a> WebServer<'a> {
             log::debug!("Session token being set: {}", session.token);
             Ok(Response::empty(302)
                 .with_header(cookie_header)
-                .with_header::<tiny_http::Header>("Location: /".parse().unwrap())
+                .with_header(Self::safe_location_header("/"))
                 .boxed())
         }
     }
@@ -956,12 +980,12 @@ impl<'a> WebServer<'a> {
         
         if request.json_output() {
             Ok(Response::from_string("{\"success\":true}")
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             Ok(Response::empty(302)
                 .with_header(clear_session_cookie())
-                .with_header::<tiny_http::Header>("Location: /auth/login".parse().unwrap())
+                .with_header(Self::safe_location_header("/auth/login"))
                 .boxed())
         }
     }
@@ -985,11 +1009,11 @@ impl<'a> WebServer<'a> {
         if request.json_output() {
             Ok(Response::from_string(serde_json::to_string(&user)?)
                 .with_status_code(201)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             Ok(Response::empty(302)
-                .with_header::<tiny_http::Header>("Location: /users".parse().unwrap())
+                .with_header(Self::safe_location_header("/users"))
                 .boxed())
         }
     }
@@ -1028,7 +1052,7 @@ impl<'a> WebServer<'a> {
         
         if request.json_output() {
             Ok(Response::from_string(serde_json::to_string(&user)?)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             let data = serde_json::json!({
@@ -1051,7 +1075,7 @@ impl<'a> WebServer<'a> {
             .map_err(|_e| WebError::InvalidRequest)?;
         
         Ok(Response::from_string(serde_json::to_string(&user)?)
-            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     
@@ -1136,7 +1160,7 @@ impl<'a> WebServer<'a> {
             .map_err(|_e| WebError::InvalidRequest)?;
         
         Ok(Response::from_string(serde_json::to_string(&updated_user)?)
-            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     
@@ -1169,7 +1193,7 @@ impl<'a> WebServer<'a> {
             .map_err(|e| WebError::InternalError(format!("Failed to serialize response: {}", e)))?;
         
         Ok(Response::from_string(response_body)
-            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     
@@ -1194,7 +1218,7 @@ impl<'a> WebServer<'a> {
         });
         
         Ok(Response::from_string(serde_json::to_string(&response_data)?)
-            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     
@@ -1637,7 +1661,7 @@ impl<'a> WebServer<'a> {
             .map_err(|e| WebError::InternalError(format!("Failed to add firewall rule: {}", e)))?;
         
         Ok(Response::empty(201)
-            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     
@@ -1718,7 +1742,7 @@ impl<'a> WebServer<'a> {
         if request.json_output() {
             let json_string = serde_json::to_string(&data)?;
             Ok(Response::from_string(json_string)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             self.response_from_media_type(request, "security_metrics", data)
@@ -1736,7 +1760,7 @@ impl<'a> WebServer<'a> {
         if request.json_output() {
             let json_string = serde_json::to_string(&data)?;
             Ok(Response::from_string(json_string)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             self.response_from_media_type(request, "security_alerts", data)
@@ -1754,7 +1778,7 @@ impl<'a> WebServer<'a> {
         if request.json_output() {
             let json_string = serde_json::to_string(&data)?;
             Ok(Response::from_string(json_string)
-                .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         } else {
             self.response_from_media_type(request, "security_events", data)

@@ -8,7 +8,6 @@
 //! - Relative and absolute domain names
 //! - @ symbol for zone apex
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::{Ipv4Addr, Ipv6Addr};
