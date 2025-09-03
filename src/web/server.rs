@@ -1648,6 +1648,15 @@ impl<'a> WebServer<'a> {
             0
         };
         
+        // Get list of zones for DNSSEC wizard
+        let all_zones = self.context.authority.list_zones();
+        let unsigned_zones: Vec<serde_json::Value> = all_zones.iter()
+            .map(|zone_name| serde_json::json!({
+                "zone_id": zone_name,
+                "zone_name": zone_name
+            }))
+            .collect();
+        
         let data = serde_json::json!({
             "title": "DNSSEC Management",
             "total_zones": total_zones,
@@ -1661,6 +1670,7 @@ impl<'a> WebServer<'a> {
             "validation_failures": dnssec_stats["validation_failures"].as_u64().unwrap_or(0),
             "avg_signing_time_ms": dnssec_stats["avg_signing_time_ms"].as_f64().unwrap_or(0.0),
             "dnssec_enabled": self.context.dnssec_enabled,
+            "unsigned_zones": unsigned_zones,
         });
         self.response_from_media_type(request, "dnssec", data)
     }
