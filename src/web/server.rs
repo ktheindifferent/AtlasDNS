@@ -746,7 +746,7 @@ impl<'a> WebServer<'a> {
         } else {
             let html_string = self.handlebars.render(template, &data)?;
             Ok(Response::from_string(html_string)
-                .with_header::<tiny_http::Header>("Content-Type: text/html".parse().unwrap())
+                .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/html"))
                 .boxed())
         }
     }
@@ -791,11 +791,9 @@ impl<'a> WebServer<'a> {
 
         let zone = authority::zone_create(&self.context, zone_create_request)?;
 
-        let location_header = format!("Location: /authority/{}", zone.domain);
-
         Ok(
             Response::empty(if request.json_output() { 201 } else { 302 })
-                .with_header::<tiny_http::Header>(location_header.parse().unwrap())
+                .with_header::<tiny_http::Header>(Self::safe_location_header(&format!("/authority/{}", zone.domain)))
                 .boxed(),
         )
     }
@@ -810,10 +808,9 @@ impl<'a> WebServer<'a> {
 
         authority::record_create(&self.context, zone, record_request)?;
 
-        let location_header = format!("Location: /authority/{}", zone);
         Ok(
             Response::empty(if request.json_output() { 201 } else { 302 })
-                .with_header::<tiny_http::Header>(location_header.parse().unwrap())
+                .with_header::<tiny_http::Header>(Self::safe_location_header(&format!("/authority/{}", zone)))
                 .boxed(),
         )
     }
@@ -828,10 +825,9 @@ impl<'a> WebServer<'a> {
 
         authority::record_delete(&self.context, zone, record_request)?;
 
-        let location_header = format!("Location: /authority/{}", zone);
         Ok(
             Response::empty(if request.json_output() { 201 } else { 302 })
-                .with_header::<tiny_http::Header>(location_header.parse().unwrap())
+                .with_header::<tiny_http::Header>(Self::safe_location_header(&format!("/authority/{}", zone)))
                 .boxed(),
         )
     }
@@ -851,7 +847,7 @@ impl<'a> WebServer<'a> {
             .map_err(|e| WebError::InternalError(format!("Failed to export metrics: {}", e)))?;
         
         Ok(Response::from_string(metrics_output)
-            .with_header::<tiny_http::Header>("Content-Type: text/plain; version=0.0.4; charset=utf-8".parse().unwrap())
+            .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/plain; version=0.0.4; charset=utf-8"))
             .boxed())
     }
 
@@ -1166,7 +1162,7 @@ impl<'a> WebServer<'a> {
     
     fn graphql_playground(&self, _request: &Request) -> Result<ResponseBox> {
         Ok(Response::from_string(graphql_playground())
-            .with_header::<tiny_http::Header>("Content-Type: text/html; charset=utf-8".parse().unwrap())
+            .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/html; charset=utf-8"))
             .boxed())
     }
     
