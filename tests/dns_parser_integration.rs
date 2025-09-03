@@ -15,7 +15,7 @@ fn parse_dns_packet(data: &[u8]) -> Result<DnsPacket, Box<dyn std::error::Error>
     }
     buffer.pos = 0;
     
-    DnsPacket::read(&mut buffer).map_err(|e| e.into())
+    DnsPacket::from_buffer(&mut buffer).map_err(|e| e.into())
 }
 
 #[test]
@@ -465,10 +465,10 @@ fn test_edns0_opt_record() {
     
     let packet = parse_dns_packet(&packet_data).expect("Failed to parse packet");
     assert_eq!(packet.answers.len(), 1);
-    assert_eq!(packet.additional.len(), 1);
+    assert_eq!(packet.resources.len(), 1);
     
     // Check OPT record
-    if let DnsRecord::Opt { packet_len, flags, .. } = &packet.additional[0] {
+    if let DnsRecord::Opt { packet_len, flags, .. } = &packet.resources[0] {
         assert_eq!(*packet_len, 4096);
         assert_eq!(*flags, 0);
     } else {

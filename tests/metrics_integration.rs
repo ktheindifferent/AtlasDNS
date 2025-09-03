@@ -20,16 +20,16 @@ fn create_sample_queries() -> Vec<DnsQueryMetric> {
     
     for i in 0..100 {
         queries.push(DnsQueryMetric {
-            timestamp: now - Duration::from_secs(i * 60),
+            timestamp: now - Duration::from_secs((i * 60) as u64),
             domain: domains[i % domains.len()].to_string(),
             query_type: query_types[i % query_types.len()].to_string(),
             client_ip: client_ips[i % client_ips.len()].to_string(),
             response_code: response_codes[i % response_codes.len()].to_string(),
-            response_time_ms: 10.0 + (i as f64 % 50.0),
-            cache_hit: i % 3 != 0,
-            protocol: if i % 2 == 0 { "UDP" } else { "TCP" }.to_string(),
-            upstream_server: if i % 5 == 0 { Some("8.8.8.8".to_string()) } else { None },
-            dnssec_validated: if i % 4 == 0 { Some(true) } else { None },
+            response_time_ms: 10.0 + ((i % 50) as f64),
+            cache_hit: (i % 3) != 0,
+            protocol: if (i % 2) == 0 { "UDP" } else { "TCP" }.to_string(),
+            upstream_server: if (i % 5) == 0 { Some("8.8.8.8".to_string()) } else { None },
+            dnssec_validated: if (i % 4) == 0 { Some(true) } else { None },
         });
     }
     

@@ -700,7 +700,7 @@ mod tests {
             annotations: HashMap::new(),
             value: 100.0,
             threshold: 50.0,
-            started_at: Instant::now(),
+            started_at: chrono::Utc::now(),
             resolved_at: None,
             fingerprint: "test".to_string(),
             runbook_url: None,

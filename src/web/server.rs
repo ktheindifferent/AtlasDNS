@@ -20,6 +20,7 @@ use crate::web::{
     users::{UserManager, LoginRequest, CreateUserRequest, UpdateUserRequest, UserRole},
     sessions::{SessionMiddleware, create_session_cookie, clear_session_cookie},
     util::{parse_formdata, FormDataDecodable},
+    api_v2::ApiV2Handler,
     Result, WebError,
 };
 
@@ -62,6 +63,7 @@ pub struct WebServer<'a> {
     pub activity_logger: Arc<ActivityLogger>,
     pub graphql_schema: async_graphql::Schema<crate::web::graphql::QueryRoot, crate::web::graphql::MutationRoot, crate::web::graphql::SubscriptionRoot>,
     pub doh_server: Arc<DohServer>,
+    pub api_v2_handler: Arc<ApiV2Handler>,
     pub ssl_enabled: bool,
 }
 
@@ -148,6 +150,9 @@ impl<'a> WebServer<'a> {
         };
         let doh_server = Arc::new(DohServer::new(context.clone(), doh_config));
         
+        // Initialize API v2 handler
+        let api_v2_handler = Arc::new(ApiV2Handler::new(context.clone()));
+        
         let mut server = WebServer {
             context,
             handlebars,
@@ -157,6 +162,7 @@ impl<'a> WebServer<'a> {
             activity_logger,
             graphql_schema,
             doh_server,
+            api_v2_handler,
             ssl_enabled: false,
         };
 
@@ -339,6 +345,19 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["dns-query"]) => self.doh_handler(request),
             (Method::Post, ["dns-query"]) => self.doh_handler(request),
             (Method::Get, ["api", "version"]) => self.version_handler(request),
+            (Method::Post, ["api", "resolve"]) => self.resolve_handler(request),
+            (Method::Post, ["cache", "clear"]) => self.cache_clear_handler(request),
+            
+            // API v2 routes
+            (_, url_parts) if url_parts.len() >= 2 && url_parts[0] == "api" && url_parts[1] == "v2" => {
+                match self.api_v2_handler.handle_request(request) {
+                    Ok(response) => {
+                        // Convert Response<Cursor<Vec<u8>>> to Response<Box<dyn Read + Send>>
+                        Ok(response.boxed())
+                    },
+                    Err(e) => Err(e)
+                }
+            },
             
             // New UI routes
             (Method::Get, ["analytics"]) => self.analytics_page(request),
@@ -1272,6 +1291,39 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
     
+    /// Handle DNS resolution requests
+    fn resolve_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // TODO: Implement DNS resolution API endpoint
+        let response_data = serde_json::json!({
+            "error": "DNS resolve endpoint not yet implemented",
+            "status": "under_development"
+        });
+        
+        Ok(Response::from_string(serde_json::to_string(&response_data)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .with_status_code(501) // Not Implemented
+            .boxed())
+    }
+    
+    /// Handle cache clear requests
+    fn cache_clear_handler(&self, _request: &mut Request) -> Result<ResponseBox> {
+        // Clear the DNS cache
+        let response_data = match self.context.cache.clear() {
+            Ok(()) => serde_json::json!({
+                "message": "DNS cache cleared successfully",
+                "status": "success"
+            }),
+            Err(_) => serde_json::json!({
+                "error": "Failed to clear DNS cache",
+                "status": "error"
+            })
+        };
+        
+        Ok(Response::from_string(serde_json::to_string(&response_data)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+    
     // New page handlers
     fn analytics_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get real statistics from backend
@@ -1919,7 +1971,7 @@ mod tests {
         assert_eq!(server.error_status_code(&WebError::ZoneNotFound), 404);
         
         // Test generic error -> 500
-        let generic_error = WebError::DatabaseError("test".into());
+        let generic_error = WebError::InternalError("test".into());
         assert_eq!(server.error_status_code(&generic_error), 500);
     }
     

@@ -473,6 +473,16 @@ impl SynchronizedCache {
 
         Ok(())
     }
+    
+    /// Clear all cache entries
+    pub fn clear(&self) -> Result<()> {
+        let mut cache = self.cache.write().map_err(|_| CacheError::PoisonedLock)?;
+        
+        // Clear the domain entries HashMap
+        cache.domain_entries.clear();
+        
+        Ok(())
+    }
 }
 
 #[cfg(test)]

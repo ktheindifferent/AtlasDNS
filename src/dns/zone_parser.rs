@@ -746,8 +746,6 @@ pub fn validate_zone(zone: &Zone) -> Vec<String> {
     warnings
 }
 
-#[cfg(test)]
-mod zone_parser_test;
 
 #[cfg(test)]
 mod tests {

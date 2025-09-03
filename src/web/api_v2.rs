@@ -41,8 +41,6 @@ fn safe_unix_timestamp() -> u64 {
 pub struct ApiV2Handler {
     /// Server context
     context: Arc<ServerContext>,
-    /// Authority manager
-    authority: Arc<Authority>,
 }
 
 /// API response wrapper
@@ -196,10 +194,9 @@ pub struct QueryParams {
 
 impl ApiV2Handler {
     /// Create new API v2 handler
-    pub fn new(context: Arc<ServerContext>, authority: Arc<Authority>) -> Self {
+    pub fn new(context: Arc<ServerContext>) -> Self {
         Self {
             context,
-            authority,
         }
     }
 
@@ -272,7 +269,7 @@ impl ApiV2Handler {
         let page = params.page.unwrap_or(1);
         let per_page = params.per_page.unwrap_or(20).min(100);
         
-        let zones = self.authority.list_zones();
+        let zones = self.context.authority.list_zones();
         let total = zones.len();
         
         // Pagination
@@ -309,12 +306,12 @@ impl ApiV2Handler {
         }
 
         // Check if zone already exists
-        if self.authority.zone_exists(&zone_req.name) {
+        if self.context.authority.zone_exists(&zone_req.name) {
             return self.error_response("Zone already exists", StatusCode(409));
         }
 
         // Create zone with default SOA values
-        self.authority.create_zone(
+        self.context.authority.create_zone(
             &zone_req.name,
             &format!("ns1.{}", &zone_req.name),
             &format!("admin.{}", &zone_req.name)
@@ -322,7 +319,7 @@ impl ApiV2Handler {
 
         // Add SOA if provided
         if let Some(soa) = zone_req.soa {
-            self.authority.add_soa_record(
+            self.context.authority.add_soa_record(
                 &zone_req.name,
                 &soa.mname,
                 &soa.rname,
@@ -337,7 +334,7 @@ impl ApiV2Handler {
         // Add nameservers if provided
         if let Some(nameservers) = zone_req.nameservers {
             for ns in nameservers {
-                self.authority.add_ns_record(&zone_req.name, &ns)?;
+                self.context.authority.add_ns_record(&zone_req.name, &ns)?;
             }
         }
 
@@ -355,7 +352,7 @@ impl ApiV2Handler {
 
     /// Get zone details
     fn get_zone(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -373,7 +370,7 @@ impl ApiV2Handler {
 
     /// Update zone
     fn update_zone(&self, zone_name: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -382,7 +379,7 @@ impl ApiV2Handler {
         // Update SOA if provided
         if let Some(soa) = zone_req.soa {
             // Update the SOA serial number only 
-            self.authority.update_soa_record(
+            self.context.authority.update_soa_record(
                 zone_name,
                 soa.serial,
             )?;
@@ -402,11 +399,11 @@ impl ApiV2Handler {
 
     /// Delete zone
     fn delete_zone(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
-        self.authority.delete_zone(zone_name)?;
+        self.context.authority.delete_zone(zone_name)?;
         
         let response = ApiResponse::<()> {
             success: true,
@@ -420,12 +417,12 @@ impl ApiV2Handler {
 
     /// List records in zone
     fn list_records(&self, zone_name: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
         let params = self.parse_query_params(request);
-        let records = self.authority.get_zone_records(zone_name)
+        let records = self.context.authority.get_zone_records(zone_name)
             .ok_or_else(|| WebError::ZoneNotFound)?;
         
         let record_list: Vec<Record> = records
@@ -451,7 +448,7 @@ impl ApiV2Handler {
 
     /// Create record in zone
     fn create_record(&self, zone_name: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -462,7 +459,7 @@ impl ApiV2Handler {
             "A" => {
                 let addr = record_req.value.parse()
                     .map_err(|_| WebError::InvalidRequest)?;
-                self.authority.add_a_record(
+                self.context.authority.add_a_record(
                     zone_name,
                     &record_req.name,
                     addr,
@@ -472,7 +469,7 @@ impl ApiV2Handler {
             "AAAA" => {
                 let addr = record_req.value.parse()
                     .map_err(|_| WebError::InvalidRequest)?;
-                self.authority.add_aaaa_record(
+                self.context.authority.add_aaaa_record(
                     zone_name,
                     &record_req.name,
                     addr,
@@ -480,7 +477,7 @@ impl ApiV2Handler {
                 )?;
             }
             "CNAME" => {
-                self.authority.add_cname_record(
+                self.context.authority.add_cname_record(
                     zone_name,
                     &record_req.name,
                     &record_req.value,
@@ -488,7 +485,7 @@ impl ApiV2Handler {
                 )?;
             }
             "MX" => {
-                self.authority.add_mx_record(
+                self.context.authority.add_mx_record(
                     zone_name,
                     &record_req.name,
                     record_req.priority.unwrap_or(10),
@@ -497,7 +494,7 @@ impl ApiV2Handler {
                 )?;
             }
             "TXT" => {
-                self.authority.add_txt_record(
+                self.context.authority.add_txt_record(
                     zone_name,
                     &record_req.name,
                     &record_req.value,
@@ -505,7 +502,7 @@ impl ApiV2Handler {
                 )?;
             }
             "NS" => {
-                self.authority.add_ns_record(
+                self.context.authority.add_ns_record(
                     zone_name,
                     &record_req.value,
                 )?;
@@ -543,12 +540,12 @@ impl ApiV2Handler {
 
     /// Get specific record
     fn get_record(&self, zone_name: &str, record_id: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
         // Parse record ID and find record
-        let records = self.authority.get_zone_records(zone_name)
+        let records = self.context.authority.get_zone_records(zone_name)
             .ok_or_else(|| WebError::ZoneNotFound)?;
         
         // Simple ID matching (would be more sophisticated in production)
@@ -570,7 +567,7 @@ impl ApiV2Handler {
 
     /// Update record
     fn update_record(&self, zone_name: &str, record_id: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -606,7 +603,7 @@ impl ApiV2Handler {
 
     /// Delete record
     fn delete_record(&self, zone_name: &str, _record_id: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -679,7 +676,7 @@ impl ApiV2Handler {
 
     /// Verify zone configuration
     fn verify_zone(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
@@ -708,11 +705,11 @@ impl ApiV2Handler {
 
     /// Export zone in standard format
     fn export_zone(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        if !self.authority.zone_exists(zone_name) {
+        if !self.context.authority.zone_exists(zone_name) {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
-        let zone_file = self.authority.export_zone(zone_name)?;
+        let zone_file = self.context.authority.export_zone(zone_name)?;
         
         let response = ApiResponse {
             success: true,
@@ -735,7 +732,7 @@ impl ApiV2Handler {
             .ok_or(WebError::InvalidRequest)?;
 
         // Parse and import zone file
-        self.authority.import_zone(zone_name, content)?;
+        self.context.authority.import_zone(zone_name, content)?;
         
         let zone = self.zone_to_resource(zone_name);
         
@@ -755,7 +752,7 @@ impl ApiV2Handler {
             "status": "healthy",
             "version": "2.0",
             "uptime": 0,  // Would calculate actual uptime
-            "zones": self.authority.list_zones().len(),
+            "zones": self.context.authority.list_zones().len(),
         });
 
         let response = ApiResponse {
@@ -832,7 +829,7 @@ impl ApiV2Handler {
 
     /// Convert zone to API resource
     fn zone_to_resource(&self, zone_name: &str) -> Zone {
-        let records = self.authority.get_zone_records(zone_name)
+        let records = self.context.authority.get_zone_records(zone_name)
             .unwrap_or_default();
         
         Zone {
@@ -921,7 +918,7 @@ impl ApiV2Handler {
 
     /// Enable DNSSEC for a zone
     fn enable_dnssec(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        match self.authority.enable_dnssec(zone_name) {
+        match self.context.authority.enable_dnssec(zone_name) {
             Ok(_) => {
                 let response = ApiResponse {
                     success: true,
@@ -941,7 +938,7 @@ impl ApiV2Handler {
 
     /// Disable DNSSEC for a zone
     fn disable_dnssec(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        match self.authority.disable_dnssec(zone_name) {
+        match self.context.authority.disable_dnssec(zone_name) {
             Ok(_) => {
                 let response = ApiResponse {
                     success: true,
@@ -961,7 +958,7 @@ impl ApiV2Handler {
 
     /// Get DNSSEC status for a zone
     fn get_dnssec_status(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        match self.authority.get_dnssec_status(zone_name) {
+        match self.context.authority.get_dnssec_status(zone_name) {
             Some(enabled) => {
                 let response = ApiResponse {
                     success: true,
@@ -981,7 +978,7 @@ impl ApiV2Handler {
 
     /// Get DS records for a zone
     fn get_ds_records(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        match self.authority.get_ds_records(zone_name) {
+        match self.context.authority.get_ds_records(zone_name) {
             Some(records) => {
                 let ds_records: Vec<Value> = records.iter().map(|r| {
                     if let DnsRecord::Ds { key_tag, algorithm, digest_type, digest, .. } = r {
@@ -1025,7 +1022,7 @@ impl ApiV2Handler {
 
     /// Rollover DNSSEC keys for a zone
     fn rollover_keys(&self, zone_name: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        match self.authority.rollover_dnssec_keys(zone_name) {
+        match self.context.authority.rollover_dnssec_keys(zone_name) {
             Ok(_) => {
                 let response = ApiResponse {
                     success: true,
@@ -1045,7 +1042,7 @@ impl ApiV2Handler {
 
     /// Get global DNSSEC statistics
     fn get_dnssec_stats(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        let stats = self.authority.get_dnssec_stats();
+        let stats = self.context.authority.get_dnssec_stats();
         
         let response = ApiResponse {
             success: true,

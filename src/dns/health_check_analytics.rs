@@ -753,7 +753,7 @@ mod tests {
         // Record successful check
         handler.record_result(HealthCheckResult {
             endpoint_id: "test".to_string(),
-            timestamp: Instant::now(),
+            timestamp: chrono::Utc::now(),
             success: true,
             response_time: Duration::from_millis(50),
             status_code: None,
@@ -782,7 +782,7 @@ mod tests {
         let history = vec![
             HealthCheckResult {
                 endpoint_id: "test".to_string(),
-                timestamp: Instant::now(),
+                timestamp: chrono::Utc::now(),
                 success: false,
                 response_time: Duration::from_millis(100),
                 status_code: None,
@@ -791,7 +791,7 @@ mod tests {
             },
             HealthCheckResult {
                 endpoint_id: "test".to_string(),
-                timestamp: Instant::now(),
+                timestamp: chrono::Utc::now(),
                 success: true,
                 response_time: Duration::from_millis(50),
                 status_code: None,
@@ -800,7 +800,7 @@ mod tests {
             },
             HealthCheckResult {
                 endpoint_id: "test".to_string(),
-                timestamp: Instant::now(),
+                timestamp: chrono::Utc::now(),
                 success: false,
                 response_time: Duration::from_millis(100),
                 status_code: None,
