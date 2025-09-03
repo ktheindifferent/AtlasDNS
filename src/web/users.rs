@@ -3,7 +3,9 @@ use std::sync::{Arc, RwLock};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, Duration};
+use rand::{Rng, distributions::Alphanumeric};
 use sha2::{Sha256, Digest};
+use bcrypt::{hash, verify, DEFAULT_COST};
 use crate::web::util::FormDataDecodable;
 use crate::web::WebError;
 
@@ -123,19 +125,28 @@ impl UserManager {
     }
     
     fn create_default_admin(&mut self) {
+        // Generate a secure random password
+        let random_password: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(16)
+            .map(char::from)
+            .collect();
+            
         let admin_user = User {
             id: Uuid::new_v4().to_string(),
             username: "admin".to_string(),
             email: "admin@localhost".to_string(),
-            password_hash: Self::hash_password("admin123"),
+            password_hash: Self::hash_password(&random_password),
             role: UserRole::Admin,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             is_active: true,
         };
         
+        log::warn!("🔐 IMPORTANT: Generated admin password: {}", random_password);
+        log::warn!("🔐 Please log in with username 'admin' and change this password immediately!");
+        log::warn!("🔐 This password will not be shown again.");
         log::info!("Creating default admin user with username: admin");
-        log::debug!("Admin password hash: {}", admin_user.password_hash);
         
         if let Ok(mut users) = self.users.write() {
             users.insert(admin_user.id.clone(), admin_user.clone());
@@ -146,13 +157,22 @@ impl UserManager {
     }
     
     pub fn hash_password(password: &str) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(password.as_bytes());
-        format!("{:x}", hasher.finalize())
+        hash(password, DEFAULT_COST)
+            .expect("Failed to hash password")
     }
     
     pub fn verify_password(password: &str, hash: &str) -> bool {
-        Self::hash_password(password) == hash
+        // Handle legacy SHA256 hashes during migration
+        if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
+            log::warn!("Legacy SHA256 hash detected, please update password");
+            let mut hasher = Sha256::new();
+            hasher.update(password.as_bytes());
+            let legacy_hash = format!("{:x}", hasher.finalize());
+            return legacy_hash == hash;
+        }
+        
+        // Use bcrypt for new hashes
+        verify(password, hash).unwrap_or(false)
     }
     
     pub fn create_user(&self, request: CreateUserRequest) -> Result<User, String> {

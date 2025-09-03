@@ -62,6 +62,7 @@ pub struct WebServer<'a> {
     pub activity_logger: Arc<ActivityLogger>,
     pub graphql_schema: async_graphql::Schema<crate::web::graphql::QueryRoot, crate::web::graphql::MutationRoot, crate::web::graphql::SubscriptionRoot>,
     pub doh_server: Arc<DohServer>,
+    pub ssl_enabled: bool,
 }
 
 impl<'a> WebServer<'a> {
@@ -156,6 +157,7 @@ impl<'a> WebServer<'a> {
             activity_logger,
             graphql_schema,
             doh_server,
+            ssl_enabled: false,
         };
 
         let mut register_template = |name, data: &str| {
@@ -516,8 +518,9 @@ impl<'a> WebServer<'a> {
         }
     }
 
-    pub fn run_webserver(self, use_ssl: bool) {
-        if use_ssl && self.context.ssl_config.enabled {
+    pub fn run_webserver(mut self, use_ssl: bool) {
+        self.ssl_enabled = use_ssl && self.context.ssl_config.enabled;
+        if self.ssl_enabled {
             self.run_ssl_webserver();
         } else {
             self.run_http_webserver();
@@ -904,7 +907,7 @@ impl<'a> WebServer<'a> {
                 .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
                 .boxed())
         } else {
-            let cookie_header = create_session_cookie(&session.token);
+            let cookie_header = create_session_cookie(&session.token, self.ssl_enabled);
             log::debug!("Setting session cookie: {} = {}", cookie_header.field, cookie_header.value);
             log::debug!("Session token being set: {}", session.token);
             Ok(Response::empty(302)

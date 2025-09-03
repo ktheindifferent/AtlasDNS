@@ -113,14 +113,24 @@ impl SessionMiddleware {
     }
 }
 
-pub fn create_session_cookie(token: &str) -> Header {
-    let cookie_value = format!(
-        "session_token={}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax",
+pub fn create_session_cookie(token: &str, secure: bool) -> Header {
+    let mut cookie_value = format!(
+        "session_token={}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict",
         token
     );
+    
+    if secure {
+        cookie_value.push_str("; Secure");
+    }
+    
     log::debug!("Creating cookie: {}", cookie_value);
     Header::from_bytes(&b"Set-Cookie"[..], cookie_value.as_bytes())
         .expect("Failed to create session cookie header")
+}
+
+// Backward compatibility function
+pub fn create_session_cookie_legacy(token: &str) -> Header {
+    create_session_cookie(token, false)
 }
 
 pub fn clear_session_cookie() -> Header {
