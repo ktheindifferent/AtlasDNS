@@ -140,9 +140,9 @@
 - [ ] **DoQ (DNS-over-QUIC)** - Implement QUIC protocol support
 
 #### Analytics & Logging
-- [ ] **Query Logging Storage** - Implement persistent query log (currently empty array)
+- [x] **Query Logging Storage** - Implement persistent query log (currently empty array) ✅ (2025-09-03 - 8a12b2a51)
 - [x] **GraphQL Metrics** - Connect to real data sources (currently returns mock data) ✅ (2025-09-03 - 28853b682)
-- [ ] **Log File Management** - Calculate actual log sizes (currently "N/A")
+- [x] **Log File Management** - Calculate actual log sizes (currently "N/A") ✅ (2025-09-03 - 8a12b2a51)
 - [ ] **Alert System** - Build actual alert manager (UI exists, no backend)
 
 #### API & Integration
