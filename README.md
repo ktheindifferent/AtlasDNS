@@ -220,9 +220,9 @@ Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port map
    In the CapRover web interface, navigate to your `atlas-dns` app and configure:
    
    - **Container HTTP Port**: 5380 (for web interface)
-   - **Additional Port Mappings**:
-     - `53:53/tcp` - DNS TCP port
-     - `53:53/udp` - DNS UDP port
+   - **Additional Port Mappings** (⚠️ See DNS Port Conflict Warning below):
+     - For Testing: `5353:53/tcp` and `5353:53/udp` - DNS on non-standard port
+     - For Production: `53:53/tcp` and `53:53/udp` - DNS on standard port (requires systemd-resolved disabled)
      - `5343:5343/tcp` - HTTPS web interface (if SSL enabled)
 
 3. **Set Environment Variables**
@@ -310,6 +310,54 @@ Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port map
   ```
 - **No Session Token**: If login redirects back, verify credentials and check logs
 - **Web Interface Access**: Ensure port 5380 is accessible through CapRover
+
+##### ⚠️ CRITICAL: DNS Port 53 Conflict Warning
+
+**Problem**: Mapping port 53 on the host can break DNS resolution for Docker and the host system itself, as it conflicts with systemd-resolved (which listens on 127.0.0.53:53).
+
+**Symptoms**: 
+- Docker cannot pull images: `dial tcp: lookup registry-1.docker.io on 127.0.0.53:53: i/o timeout`
+- Host system cannot resolve domain names
+- CapRover deployment failures
+
+**Solutions**:
+
+1. **Option A: Use Non-Standard Port (Recommended for Testing)**
+   - Map a different port like `5353:53/udp` and `5353:53/tcp`
+   - Test DNS queries with: `dig @your-server-ip -p 5353 example.com`
+   - This allows testing without breaking system DNS
+
+2. **Option B: Disable systemd-resolved (Production)**
+   ```bash
+   # Stop and disable systemd-resolved
+   sudo systemctl stop systemd-resolved
+   sudo systemctl disable systemd-resolved
+   
+   # Remove symlink and create new resolv.conf
+   sudo rm /etc/resolv.conf
+   echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+   
+   # Then you can safely use port 53
+   ```
+
+3. **Option C: Use External Server (Recommended for Production)**
+   - Deploy Atlas DNS on a dedicated server or VM
+   - Configure your main server to use the Atlas DNS server as its resolver
+   - This separates DNS infrastructure from application infrastructure
+
+4. **Option D: Bridge Network Mode (Advanced)**
+   - Run the container with `--network host` mode (requires manual Docker setup)
+   - This bypasses Docker's network stack but requires careful configuration
+
+**Recovery if DNS is Broken**:
+```bash
+# If you've already mapped port 53 and broke DNS:
+# 1. Remove the port mapping in CapRover web interface
+# 2. Restart Docker service:
+sudo systemctl restart docker
+# 3. Restart systemd-resolved:
+sudo systemctl restart systemd-resolved
+```
 
 #### Advanced CapRover Configuration
 
