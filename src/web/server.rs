@@ -861,7 +861,13 @@ impl<'a> WebServer<'a> {
     
     fn login(&self, request: &mut Request) -> Result<ResponseBox> {
         let login_request: LoginRequest = if request.json_input() {
-            serde_json::from_reader(request.as_reader())?
+            match serde_json::from_reader(request.as_reader()) {
+                Ok(req) => req,
+                Err(e) => {
+                    log::warn!("JSON parsing failed for login request: {}", e);
+                    return Err(WebError::InvalidInput(format!("Invalid JSON format: {}", e)));
+                }
+            }
         } else {
             parse_formdata(&mut request.as_reader())
                 .and_then(LoginRequest::from_formdata)?
