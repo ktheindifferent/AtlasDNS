@@ -218,7 +218,8 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["auth", "login"]) |
             (Method::Post, ["auth", "login"]) |
             (Method::Get, ["dns-query"]) |
-            (Method::Post, ["dns-query"])
+            (Method::Post, ["dns-query"]) |
+            (Method::Get, ["api", "version"])
         );
 
         // Check authentication for protected routes
@@ -268,6 +269,7 @@ impl<'a> WebServer<'a> {
             (Method::Post, ["graphql"]) => self.graphql_handler(request),
             (Method::Get, ["dns-query"]) => self.doh_handler(request),
             (Method::Post, ["dns-query"]) => self.doh_handler(request),
+            (Method::Get, ["api", "version"]) => self.version_handler(request),
             
             // New UI routes
             (Method::Get, ["analytics"]) => self.analytics_page(request),
@@ -1152,6 +1154,18 @@ impl<'a> WebServer<'a> {
         })?;
         
         Ok(response)
+    }
+    
+    fn version_handler(&self, _request: &mut Request) -> Result<ResponseBox> {
+        // Generate version string with current timestamp
+        let version = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let response_data = serde_json::json!({
+            "code_version": version
+        });
+        
+        Ok(Response::from_string(serde_json::to_string(&response_data)?)
+            .with_header::<tiny_http::Header>("Content-Type: application/json".parse().unwrap())
+            .boxed())
     }
     
     // New page handlers
