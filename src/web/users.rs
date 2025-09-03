@@ -134,8 +134,14 @@ impl UserManager {
             is_active: true,
         };
         
+        log::info!("Creating default admin user with username: admin");
+        log::debug!("Admin password hash: {}", admin_user.password_hash);
+        
         if let Ok(mut users) = self.users.write() {
-            users.insert(admin_user.id.clone(), admin_user);
+            users.insert(admin_user.id.clone(), admin_user.clone());
+            log::info!("Default admin user created successfully: {}", admin_user.username);
+        } else {
+            log::error!("Failed to create default admin user - could not acquire lock");
         }
     }
     
@@ -175,12 +181,38 @@ impl UserManager {
     pub fn authenticate(&self, username: &str, password: &str) -> Result<User, String> {
         let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
         
-        users
+        log::debug!("Authentication attempt for username: {}", username);
+        log::debug!("Total users in database: {}", users.len());
+        
+        // List all users for debugging
+        for user in users.values() {
+            log::debug!("User in DB: {} (active: {})", user.username, user.is_active);
+        }
+        
+        let user = users
             .values()
-            .find(|u| u.username == username && u.is_active)
-            .filter(|u| Self::verify_password(password, &u.password_hash))
-            .cloned()
-            .ok_or_else(|| "Invalid credentials".to_string())
+            .find(|u| u.username == username && u.is_active);
+            
+        match user {
+            Some(u) => {
+                log::debug!("User found: {}", u.username);
+                let password_hash = Self::hash_password(password);
+                log::debug!("Provided password hash: {}", password_hash);
+                log::debug!("Stored password hash: {}", u.password_hash);
+                
+                if Self::verify_password(password, &u.password_hash) {
+                    log::info!("Authentication successful for user: {}", username);
+                    Ok(u.clone())
+                } else {
+                    log::warn!("Authentication failed for user: {} - incorrect password", username);
+                    Err("Invalid credentials".to_string())
+                }
+            },
+            None => {
+                log::warn!("Authentication failed - user not found: {}", username);
+                Err("Invalid credentials".to_string())
+            }
+        }
     }
     
     pub fn create_session(&self, user_id: String, ip_address: Option<String>, user_agent: Option<String>) -> Result<Session, String> {

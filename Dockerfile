@@ -1,8 +1,8 @@
 # Build stage
 FROM rust:bookworm AS builder
 
-# Cache bust: 2025-01-02-v4
-ARG CACHE_BUST=4
+# Cache bust: 2025-01-02-v5
+ARG CACHE_BUST=5
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -45,6 +45,10 @@ COPY --from=builder /usr/src/atlas/target/release/atlas /usr/local/bin/atlas
 # Create entrypoint script while still root
 RUN echo '#!/bin/bash\n\
 set -e\n\
+\n\
+# Set default RUST_LOG if not provided\n\
+RUST_LOG=${RUST_LOG:-debug}\n\
+export RUST_LOG\n\
 \n\
 # Build command arguments\n\
 ARGS=""\n\
