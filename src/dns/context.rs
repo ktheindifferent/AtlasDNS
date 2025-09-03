@@ -15,6 +15,7 @@ use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 use crate::dns::security::{SecurityManager, SecurityConfig};
+use crate::dns::api_keys::ApiKeyManager;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -98,6 +99,7 @@ pub struct ServerContext {
     pub query_log_storage: Arc<QueryLogStorage>,
     pub connection_pool: Option<Arc<ConnectionPoolManager>>,
     pub security_manager: Arc<SecurityManager>,
+    pub api_key_manager: Arc<ApiKeyManager>,
 }
 
 impl Default for ServerContext {
@@ -145,6 +147,7 @@ impl ServerContext {
             query_log_storage: query_log_storage.clone(),
             connection_pool: None,
             security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
+            api_key_manager: Arc::new(ApiKeyManager::new()),
         })
     }
 

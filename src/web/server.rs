@@ -13,6 +13,7 @@ use crate::dns::acme::AcmeCertificateManager;
 use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{CorrelationContext, HttpRequestLog};
 use crate::dns::doh::{DohServer, DohConfig};
+use crate::dns::api_keys::{ApiPermission, ApiKey, ApiKeyStatus};
 use crate::web::graphql::{create_schema, graphql_playground};
 use crate::web::{
     activity::ActivityLogger,
@@ -348,6 +349,12 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "version"]) => self.version_handler(request),
             (Method::Post, ["api", "resolve"]) => self.resolve_handler(request),
             (Method::Post, ["cache", "clear"]) => self.cache_clear_handler(request),
+            
+            // API Key management routes
+            (Method::Post, ["api", "keys"]) => self.create_api_key(request),
+            (Method::Get, ["api", "keys"]) => self.list_api_keys(request),
+            (Method::Delete, ["api", "keys", key_id]) => self.delete_api_key(request, key_id),
+            (Method::Post, ["api", "keys", key_id, "revoke"]) => self.revoke_api_key(request, key_id),
             
             // API v2 routes
             (_, url_parts) if url_parts.len() >= 2 && url_parts[0] == "api" && url_parts[1] == "v2" => {
@@ -792,7 +799,29 @@ impl<'a> WebServer<'a> {
         }
     }
 
-
+    /// Format API keys for template rendering
+    fn format_api_keys_for_template(&self) -> Vec<serde_json::Value> {
+        self.context.api_key_manager.list_keys()
+            .into_iter()
+            .map(|key| {
+                let permissions: Vec<String> = key.permissions.iter()
+                    .map(|p| p.as_str().to_string())
+                    .collect();
+                    
+                serde_json::json!({
+                    "id": key.id,
+                    "name": key.name,
+                    "description": key.description,
+                    "key_preview": key.key_preview,
+                    "permissions": permissions,
+                    "last_used": key.last_used.map(|t| t.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_else(|| "Never".to_string()),
+                    "created_at": key.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                    "status": key.status.as_str(),
+                    "request_count": key.request_count
+                })
+            })
+            .collect()
+    }
 
     fn response_from_media_type<R>(
         &self,
@@ -1325,6 +1354,140 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
     
+    /// Handle API key creation
+    fn create_api_key(&self, request: &mut Request) -> Result<ResponseBox> {
+        #[derive(serde::Deserialize)]
+        struct CreateApiKeyRequest {
+            name: String,
+            description: String,
+            permissions: Vec<String>,
+        }
+        
+        let req: CreateApiKeyRequest = serde_json::from_reader(request.as_reader())?;
+        
+        // Convert permission strings to ApiPermission enum
+        let permissions: std::result::Result<Vec<ApiPermission>, String> = req.permissions.iter()
+            .map(|p| match p.as_str() {
+                "read" => Ok(ApiPermission::Read),
+                "write" => Ok(ApiPermission::Write),
+                "admin" => Ok(ApiPermission::Admin),
+                "metrics" => Ok(ApiPermission::Metrics),
+                "cache" => Ok(ApiPermission::Cache),
+                "users" => Ok(ApiPermission::Users),
+                _ => Err(format!("Invalid permission: {}", p)),
+            })
+            .collect();
+            
+        let permissions = match permissions {
+            Ok(perms) => perms,
+            Err(e) => {
+                let response_data = serde_json::json!({
+                    "error": e,
+                    "status": "error"
+                });
+                return Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                .with_header(Self::safe_header("Content-Type: application/json"))
+                .with_status_code(400)
+                .boxed());
+            }
+        };
+        
+        // Generate the API key
+        match self.context.api_key_manager.generate_key(req.name, req.description, permissions) {
+            Ok((key_id, raw_key)) => {
+                let response_data = serde_json::json!({
+                    "message": "API key created successfully",
+                    "status": "success",
+                    "key_id": key_id,
+                    "api_key": raw_key,
+                    "warning": "This is the only time you will see the full API key. Please store it securely."
+                });
+                
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            },
+            Err(e) => {
+                let response_data = serde_json::json!({
+                    "error": e,
+                    "status": "error"
+                });
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                .with_header(Self::safe_header("Content-Type: application/json"))
+                .with_status_code(500)
+                .boxed())
+            }
+        }
+    }
+    
+    /// Handle API key listing
+    fn list_api_keys(&self, _request: &Request) -> Result<ResponseBox> {
+        let keys = self.context.api_key_manager.list_keys();
+        let formatted_keys = self.format_api_keys_for_template();
+        
+        let response_data = serde_json::json!({
+            "status": "success",
+            "api_keys": formatted_keys,
+            "total": keys.len()
+        });
+        
+        Ok(Response::from_string(serde_json::to_string(&response_data)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+    
+    /// Handle API key deletion
+    fn delete_api_key(&self, _request: &Request, key_id: &str) -> Result<ResponseBox> {
+        match self.context.api_key_manager.delete_key(key_id) {
+            Ok(()) => {
+                let response_data = serde_json::json!({
+                    "message": "API key deleted successfully",
+                    "status": "success"
+                });
+                
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            },
+            Err(e) => {
+                let response_data = serde_json::json!({
+                    "error": e,
+                    "status": "error"
+                });
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                .with_header(Self::safe_header("Content-Type: application/json"))
+                .with_status_code(404)
+                .boxed())
+            }
+        }
+    }
+    
+    /// Handle API key revocation
+    fn revoke_api_key(&self, _request: &Request, key_id: &str) -> Result<ResponseBox> {
+        match self.context.api_key_manager.revoke_key(key_id) {
+            Ok(()) => {
+                let response_data = serde_json::json!({
+                    "message": "API key revoked successfully",
+                    "status": "success"
+                });
+                
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            },
+            Err(e) => {
+                let response_data = serde_json::json!({
+                    "error": e,
+                    "status": "error"
+                });
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                .with_header(Self::safe_header("Content-Type: application/json"))
+                .with_status_code(404)
+                .boxed())
+            }
+        }
+    }
+    
     // New page handlers
     fn analytics_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get real statistics from backend
@@ -1729,8 +1892,8 @@ impl<'a> WebServer<'a> {
             "doh_enabled": self.doh_server.is_enabled(),
             "active_users": user_count,
             "active_sessions": session_count,
-            // TODO: Implement API key management
-            "api_keys": 0,
+            "api_keys": self.context.api_key_manager.get_active_count(),
+            "api_keys_list": self.format_api_keys_for_template(),
             // TODO: Track API request metrics
             "requests_today": 0,
             "avg_response_time": 0,

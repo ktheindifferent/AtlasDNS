@@ -177,5 +177,8 @@ pub mod zone_templates;
 /// DNS Views for conditional responses based on client attributes
 pub mod dns_views;
 
+/// API Key Management for secure API access control
+pub mod api_keys;
+
 #[cfg(test)]
 mod cache_test;
