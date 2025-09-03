@@ -129,13 +129,21 @@ impl UserManager {
         let force_admin = std::env::var("FORCE_ADMIN").unwrap_or_default().to_lowercase() == "true";
         let admin_password = std::env::var("ADMIN_PASSWORD").ok();
 
-        let password = if force_admin && admin_password.is_some() {
-            let dev_password = admin_password.unwrap();
-            log::warn!("🚨 DEVELOPMENT MODE: Using ADMIN_PASSWORD environment variable");
-            log::warn!("🚨 FORCE_ADMIN=true detected - admin password is FIXED and cannot be changed");
-            log::warn!("🚨 This should ONLY be used in development environments!");
-            log::info!("Creating admin user with fixed development password");
-            dev_password
+        let password = if force_admin {
+            if let Some(dev_password) = admin_password {
+                log::warn!("🚨 DEVELOPMENT MODE: Using ADMIN_PASSWORD environment variable");
+                log::warn!("🚨 FORCE_ADMIN=true detected - admin password is FIXED and cannot be changed");
+                log::warn!("🚨 This should ONLY be used in development environments!");
+                log::info!("Creating admin user with fixed development password");
+                dev_password
+            } else {
+                log::warn!("🚨 FORCE_ADMIN=true but ADMIN_PASSWORD not set, generating random password");
+                rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(16)
+                    .map(char::from)
+                    .collect()
+            }
         } else {
             // Generate a secure random password for production
             let random_password: String = rand::thread_rng()

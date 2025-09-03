@@ -24,6 +24,17 @@ use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use uuid::Uuid;
 
+/// Get current unix timestamp safely, returning 0 on error
+fn safe_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_else(|e| {
+            log::warn!("Failed to get system time: {}, using 0", e);
+            0
+        })
+}
+
 /// Webhook configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebhookConfig {
@@ -287,7 +298,10 @@ impl WebhookHandler {
         let client = reqwest::Client::builder()
             .timeout(config.request_timeout)
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| {
+                log::error!("Failed to create HTTP client for webhooks: {}, using default", e);
+                reqwest::Client::new()
+            });
         
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -423,11 +437,23 @@ impl WebhookHandler {
         
         // Prepare payload
         let payload = if delivery.events.len() == 1 {
-            serde_json::to_string(&delivery.events[0]).unwrap()
+            match serde_json::to_string(&delivery.events[0]) {
+                Ok(json) => json,
+                Err(e) => {
+                    log::error!("Failed to serialize single event: {}", e);
+                    return;
+                }
+            }
         } else {
-            serde_json::to_string(&json!({
+            match serde_json::to_string(&json!({
                 "events": delivery.events
-            })).unwrap()
+            })) {
+                Ok(json) => json,
+                Err(e) => {
+                    log::error!("Failed to serialize event batch: {}", e);
+                    return;
+                }
+            }
         };
         
         // Calculate signature
@@ -538,7 +564,13 @@ impl WebhookHandler {
     fn calculate_signature(&self, payload: &str, secret: &str) -> String {
         type HmacSha256 = Hmac<Sha256>;
         
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("Failed to create HMAC with secret: {}", e);
+                return String::new();
+            }
+        };
         mac.update(payload.as_bytes());
         
         let result = mac.finalize();
@@ -707,7 +739,7 @@ impl WebhookHandler {
         let test_event = DnsEvent {
             id: Uuid::new_v4().to_string(),
             event_type: EventType::Custom("test".to_string()),
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: safe_unix_timestamp(),
             resource_type: "test".to_string(),
             resource_id: "test".to_string(),
             action: EventAction::Custom("test".to_string()),
@@ -771,7 +803,7 @@ mod tests {
         let event = DnsEvent {
             id: Uuid::new_v4().to_string(),
             event_type: EventType::ZoneCreated,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: safe_unix_timestamp(),
             resource_type: "zone".to_string(),
             resource_id: "example.com".to_string(),
             action: EventAction::Create,

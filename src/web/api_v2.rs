@@ -16,6 +16,7 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
 use tiny_http::{Request, Response, Header, Method, StatusCode};
@@ -24,6 +25,17 @@ use crate::dns::authority::Authority;
 use crate::dns::protocol::{DnsRecord, QueryType, TransientTtl};
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
+
+/// Get current unix timestamp safely, returning 0 on error
+fn safe_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_else(|e| {
+            log::warn!("Failed to get system time: {}, using 0", e);
+            0
+        })
+}
 
 /// API v2 routes handler
 pub struct ApiV2Handler {
@@ -515,14 +527,8 @@ impl ApiV2Handler {
             weight: record_req.weight,
             port: record_req.port,
             enabled: record_req.enabled.unwrap_or(true),
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            updated_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            created_at: safe_unix_timestamp(),
+            updated_at: safe_unix_timestamp(),
         };
 
         let response = ApiResponse {
@@ -585,10 +591,7 @@ impl ApiV2Handler {
             port: record_req.port,
             enabled: record_req.enabled.unwrap_or(true),
             created_at: 0,
-            updated_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            updated_at: safe_unix_timestamp(),
         };
 
         let response = ApiResponse {
