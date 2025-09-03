@@ -176,7 +176,110 @@ This command enables Claude to automatically detect, analyze, and fix bugs in th
    - Missing integration tests for API
    - No security test suite
 
+## Sentry Integration Details
+
+### Error Monitoring System
+- **Sentry DSN**: `http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4`
+- **Dashboard**: https://sentry.alpha.opensam.foundation/organizations/sam-international/issues/
+- **Service Tags**: atlas-dns, version tracking, component-based categorization
+- **Error Categories**: Error (critical), Warning (security), Info (operational)
+
+### Sentry API Integration
+```bash
+# Sentry API Base URL
+SENTRY_API="https://sentry.alpha.opensam.foundation/api/0"
+SENTRY_TOKEN="your_auth_token_here"  # Replace with actual token
+
+# Get recent issues
+curl -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=24h&query=is:unresolved"
+
+# Get issue details
+curl -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/issues/{ISSUE_ID}/"
+
+# Get issue events
+curl -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/issues/{ISSUE_ID}/events/"
+```
+
 ## Bug Detection Checklist
+
+### Phase 0: Sentry Issue Analysis (NEW)
+**Priority**: Run FIRST to identify real-world production issues
+```bash
+# 1. Query recent unresolved issues
+echo "=== Fetching Recent Sentry Issues ==="
+ISSUES=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=24h&query=is:unresolved" | \
+  jq -r '.[] | "\(.id): \(.title) (\(.count) occurrences)"')
+
+echo "$ISSUES"
+
+# 2. Get top error patterns
+echo "=== Top Error Patterns ==="
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=7d&sort=freq" | \
+  jq -r '.[] | select(.count > 10) | "\(.count)x: \(.title) - \(.culprit)"' | head -10
+
+# 3. Check for new panic events
+echo "=== Recent Panic Events ==="
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=event.type:error%20level:fatal" | \
+  jq -r '.[] | "\(.firstSeen): \(.title)"' | head -5
+
+# 4. Security-related errors
+echo "=== Security Events ==="
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=tag:error_type:authentication_error%20OR%20tag:error_type:authorization_error" | \
+  jq -r '.[] | "\(.count)x: \(.title)"'
+
+# 5. DNS operation errors
+echo "=== DNS Operation Errors ==="
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=tag:component:dns%20OR%20tag:dns_operation:forward" | \
+  jq -r '.[] | "\(.count)x: \(.title) - DNS: \(.tags.dns_operation // "N/A")"'
+```
+
+**Actions Based on Sentry Data**:
+1. **High Frequency Errors (>50 occurrences/day)**: Immediate fix required
+2. **Panic Events**: Critical - investigate stack traces and fix root cause
+3. **Authentication Errors**: May indicate brute force attacks or credential issues
+4. **DNS Forwarding Errors**: Check upstream server connectivity
+5. **New Error Types**: Investigate recent code changes or environmental factors
+
+**Sentry-Guided Bug Prioritization**:
+```bash
+# Get issue details with context
+get_issue_details() {
+  ISSUE_ID=$1
+  echo "=== Issue Details: $ISSUE_ID ==="
+  
+  # Basic issue info
+  curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+    "$SENTRY_API/issues/$ISSUE_ID/" | \
+    jq -r '{"title": .title, "count": .count, "level": .level, "status": .status, "firstSeen": .firstSeen, "lastSeen": .lastSeen}'
+  
+  # Get recent events with stack traces
+  echo "=== Recent Events ==="
+  curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+    "$SENTRY_API/issues/$ISSUE_ID/events/" | \
+    jq -r '.[] | {"timestamp": .dateCreated, "message": .message, "tags": .tags, "user": .user, "request": .request}'
+  
+  # Get stack trace for latest event
+  LATEST_EVENT=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+    "$SENTRY_API/issues/$ISSUE_ID/events/" | jq -r '.[0].id')
+    
+  if [ "$LATEST_EVENT" != "null" ]; then
+    echo "=== Stack Trace ==="
+    curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+      "$SENTRY_API/events/$LATEST_EVENT/" | \
+      jq -r '.entries[] | select(.type == "exception") | .data.values[].stacktrace.frames[] | "\(.filename):\(.lineNo) in \(.function)"'
+  fi
+}
+
+# Usage: get_issue_details "12345"
+```
 
 ### Phase 1: Security Audit
 ```rust
@@ -188,51 +291,202 @@ This command enables Claude to automatically detect, analyze, and fix bugs in th
 // Check for XSS in web templates
 ```
 
-### Phase 2: API Testing
+### Phase 2: API Testing (Enhanced with Sentry Monitoring)
 ```bash
-# Test authentication
+# Before API testing - capture baseline error count
+echo "=== Baseline Error Count ==="
+BASELINE_ERRORS=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=1h" | jq -r 'length')
+echo "Current unresolved issues: $BASELINE_ERRORS"
+
+# Test authentication (should generate Sentry events for failures)
+echo "=== Testing Authentication ==="
 curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin123"}'
 
+# Trigger authentication errors intentionally
+curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"baduser","password":"badpass"}'
+
 # Test zone creation
+echo "=== Testing Zone Management ==="
 curl -X POST https://atlas.alpha.opensam.foundation/api/v2/zones \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"name":"test.example.com","type":"master"}'
 
-# Test DNS resolution
+# Test invalid zone creation (should generate errors)
+curl -X POST https://atlas.alpha.opensam.foundation/api/v2/zones \
+  -H "Content-Type: application/json" \
+  -d '{"invalid": "data"}'
+
+# Test DNS resolution (generates breadcrumbs)
+echo "=== Testing DNS Resolution ==="
 curl https://atlas.alpha.opensam.foundation/api/v2/resolve?name=example.com&type=A
 
+# Test invalid DNS queries
+curl https://atlas.alpha.opensam.foundation/api/v2/resolve?name=invalid..domain&type=INVALID
+
 # Test cache operations
+echo "=== Testing Cache Operations ==="
 curl https://atlas.alpha.opensam.foundation/cache
 curl -X POST https://atlas.alpha.opensam.foundation/cache/clear
+
+# Wait for Sentry to process events (2-3 minutes)
+echo "=== Waiting for Sentry Processing ==="
+sleep 180
+
+# Check for new errors after testing
+echo "=== Post-Test Error Analysis ==="
+NEW_ERRORS=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=1h" | jq -r 'length')
+echo "New unresolved issues: $((NEW_ERRORS - BASELINE_ERRORS))"
+
+# Get any new high-frequency errors
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=1h&sort=freq" | \
+  jq -r '.[] | select(.count > 5) | "HIGH FREQ: \(.count)x \(.title) - \(.culprit)"'
 ```
 
-### Phase 3: Performance Testing
+### Phase 3: Performance Testing (Enhanced with Sentry Monitoring)
 ```bash
-# Concurrent DNS queries
+# Capture performance baseline
+echo "=== Performance Test Baseline ==="
+PERF_BASELINE=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=tag:dns_operation:forward" | jq -r 'length')
+echo "DNS operation errors before test: $PERF_BASELINE"
+
+# Concurrent DNS queries (may trigger rate limiting or timeouts)
+echo "=== Concurrent DNS Load Test ==="
 for i in {1..100}; do
   curl "https://atlas.alpha.opensam.foundation/api/v2/resolve?name=test$i.example.com" &
 done
+wait
 
-# Large zone import
+# Large payload test (may trigger memory or parsing errors)  
+echo "=== Large Payload Test ==="
+# Create large test data
+cat > /tmp/large_zone.txt << EOF
+testzone.example.com.	300	IN	A	1.2.3.4
+EOF
+
+# Repeat the record 1000 times
+for i in {1..1000}; do
+  echo "record$i.testzone.example.com.	300	IN	A	1.2.3.$((i % 255))" >> /tmp/large_zone.txt
+done
+
+# Test large zone import
 curl -X POST https://atlas.alpha.opensam.foundation/api/v2/zones/bulk \
-  -H "Content-Type: application/json" \
-  -F "file=@large_zone.txt"
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/tmp/large_zone.txt"
 
 # Memory monitoring
+echo "=== Memory and System Monitoring ==="
 curl https://atlas.alpha.opensam.foundation/api/system/metrics
+
+# Stress test with rapid-fire requests (may trigger errors)
+echo "=== Rapid Request Stress Test ==="
+for i in {1..50}; do
+  curl -s https://atlas.alpha.opensam.foundation/api/version > /dev/null &
+  curl -s https://atlas.alpha.opensam.foundation/cache > /dev/null &
+  curl -s https://atlas.alpha.opensam.foundation/api/v2/resolve?name=stress$i.test &
+done
+wait
+
+# Wait for Sentry processing
+echo "=== Waiting for Performance Test Results ==="
+sleep 180
+
+# Analyze performance-related errors
+echo "=== Performance Error Analysis ==="
+PERF_AFTER=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=tag:dns_operation:forward" | jq -r 'length')
+echo "DNS operation errors after test: $((PERF_AFTER - PERF_BASELINE))"
+
+# Check for timeout/memory/rate limit errors
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=30m&query=level:error" | \
+  jq -r '.[] | select(.count > 3) | "PERFORMANCE ISSUE: \(.count)x \(.title) - \(.tags.error_type // "unknown")"'
+
+# Check for new panic events (memory exhaustion, etc.)
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=30m&query=level:fatal" | \
+  jq -r '.[] | "CRITICAL: \(.title) - First seen: \(.firstSeen)"'
+
+# Clean up
+rm -f /tmp/large_zone.txt
 ```
 
-### Phase 4: UI Testing
-- Dashboard loading and data display
-- Zone management interface
-- User management pages
-- Cache viewer functionality
-- Login/logout flow
-- Session persistence
-- Mobile responsiveness
+### Phase 4: UI Testing (Enhanced with Sentry JavaScript Integration)
+```bash
+# UI testing with browser automation and Sentry monitoring
+echo "=== UI Testing with Error Monitoring ==="
+
+# Check for JavaScript errors in Sentry (if browser SDK is integrated)
+curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?query=platform:javascript" | \
+  jq -r '.[] | "JS ERROR: \(.title) - \(.count) occurrences"'
+
+# Manual UI testing checklist
+echo "Manual UI Testing (check browser console and Sentry dashboard):"
+echo "1. Dashboard loading: https://atlas.alpha.opensam.foundation/"
+echo "2. Zone management: https://atlas.alpha.opensam.foundation/zones"  
+echo "3. User management: https://atlas.alpha.opensam.foundation/users"
+echo "4. Cache viewer: https://atlas.alpha.opensam.foundation/cache"
+echo "5. Login flow: Test authentication with invalid credentials"
+echo "6. Session persistence: Check session timeout behavior"
+echo "7. Mobile responsiveness: Test on different screen sizes"
+```
+
+### Phase 5: Sentry-Driven Issue Resolution (NEW)
+**Priority**: Use Sentry data to guide bug fixes
+```bash
+# Automated issue triage and resolution workflow
+sentry_guided_bug_fix() {
+  echo "=== Sentry-Guided Bug Fix Workflow ==="
+  
+  # 1. Get high-priority issues
+  HIGH_PRIORITY=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+    "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=7d&sort=freq&query=is:unresolved" | \
+    jq -r '.[:5] | .[] | "\(.id)|\(.title)|\(.count)|\(.level)|\(.culprit)"')
+  
+  echo "=== Top 5 Issues Requiring Attention ==="
+  echo "$HIGH_PRIORITY" | while IFS='|' read -r id title count level culprit; do
+    echo "Priority: $count occurrences - $level"
+    echo "Issue: $title"  
+    echo "Location: $culprit"
+    echo "Sentry URL: https://sentry.alpha.opensam.foundation/organizations/sam-international/issues/$id/"
+    echo "---"
+  done
+  
+  # 2. Get detailed context for top issue
+  TOP_ISSUE_ID=$(echo "$HIGH_PRIORITY" | head -1 | cut -d'|' -f1)
+  if [ -n "$TOP_ISSUE_ID" ]; then
+    echo "=== Analyzing Top Issue: $TOP_ISSUE_ID ==="
+    get_issue_details "$TOP_ISSUE_ID"
+    
+    # Suggest file locations to investigate
+    echo "=== Suggested Investigation ==="
+    curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+      "$SENTRY_API/issues/$TOP_ISSUE_ID/events/" | \
+      jq -r '.[0].entries[] | select(.type == "exception") | .data.values[].stacktrace.frames[] | .filename' | \
+      sort -u | head -5 | while read -r file; do
+        echo "Investigate: $file"
+      done
+  fi
+  
+  # 3. Check for regression patterns
+  echo "=== Regression Analysis ==="
+  curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+    "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=24h&query=is:unresolved%20firstSeen:>$(date -d '24 hours ago' --iso-8601)" | \
+    jq -r '.[] | "NEW ISSUE: \(.title) - First seen: \(.firstSeen)"'
+}
+
+# Usage in bug fixing session
+sentry_guided_bug_fix
+```
 
 ## Fix Priority Guidelines
 
@@ -368,9 +622,55 @@ curl https://atlas.alpha.opensam.foundation/api/system/metrics
 - [Date/Time] - Commit: [hash] - Description
 ```
 
+## Enhanced Workflow with Sentry Integration
+
+### Starting a Sentry-Guided Bug Fix Session
+
+**ALWAYS START WITH SENTRY ANALYSIS** - This is now Phase 0, run before any manual testing:
+
+```bash
+# 1. Run automated Sentry bug detection
+./sentry_bug_detection.sh
+
+# 2. Export Sentry token for API access
+export SENTRY_AUTH_TOKEN="your_sentry_auth_token_here"
+
+# 3. Review generated bug report
+cat /tmp/sentry_bug_report.md
+
+# 4. Identify top priority issues from Sentry dashboard
+# https://sentry.alpha.opensam.foundation/organizations/sam-international/issues/
+```
+
+**Decision Tree Based on Sentry Data:**
+
+1. **If Fatal Errors (Panics) Found**: 
+   - Priority: CRITICAL - Fix immediately
+   - Focus: Stack traces, investigate crash causes
+   - Files: Usually in src/dns/ or src/web/
+
+2. **If High-Frequency Errors (>50/week)**:
+   - Priority: HIGH - Fix within session
+   - Focus: Root cause analysis of repeated failures
+   - Approach: Add proper error handling, validation
+
+3. **If New Issues (first seen <24h)**:
+   - Priority: MEDIUM - May indicate regression
+   - Focus: Recent code changes, deployment issues
+   - Approach: Review recent commits, rollback if needed
+
+4. **If Authentication/Authorization Errors**:
+   - Priority: SECURITY - Investigate for attacks
+   - Focus: Login patterns, IP analysis
+   - Files: src/web/users.rs, src/web/sessions.rs
+
+**Sentry-Guided Testing Scripts Available:**
+- `sentry_bug_detection.sh` - Automated issue analysis
+- `sentry_integration_test.sh` - Error generation for testing
+
 ## Deployment Process
 
-### 1. Fix Bugs in Place
+### 1. Fix Bugs in Place (Enhanced with Sentry Confirmation)
 ```bash
 # Edit actual source files
 vim src/web/users.rs  # Fix password hashing
@@ -418,11 +718,16 @@ git push gitea master
 - **Note**: Deployment may take longer than 3 minutes in some cases
 - Use `/api/version` endpoint to verify deployment completion
 
-### 6. Verify Deployment
+### 6. Verify Deployment (Enhanced with Sentry Monitoring)
 ```bash
 # After 3+ minute wait, use version endpoint to verify deployment
 curl https://atlas.alpha.opensam.foundation/api/version
 # Compare timestamp with git commit time to confirm deployment
+
+# Capture pre-fix error baseline from Sentry
+BASELINE_ERRORS=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=1h" | jq -r 'length')
+echo "Baseline errors before testing: $BASELINE_ERRORS"
 
 # Test specific fixes
 curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
@@ -439,6 +744,38 @@ curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
 
 # Test case-insensitive headers
 curl -H "cookie: test=value" https://atlas.alpha.opensam.foundation/api/version
+
+# Intentionally trigger errors to test Sentry reporting
+echo "Testing Sentry error reporting..."
+curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"nonexistent","password":"testing"}'
+
+# Wait for Sentry processing
+sleep 120
+
+# Verify fix effectiveness in Sentry
+echo "=== Post-Fix Sentry Analysis ==="
+AFTER_ERRORS=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=1h" | jq -r 'length')
+echo "Errors after testing: $AFTER_ERRORS"
+
+# Check if specific error types were reduced (example for authentication errors)
+CURRENT_AUTH_ERRORS=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=24h&query=tag:error_type:authentication_error" | \
+  jq -r 'map(select(.count > 10)) | length')
+echo "High-frequency auth errors (>10 occurrences): $CURRENT_AUTH_ERRORS"
+
+# Confirm no new critical errors were introduced
+NEW_CRITICAL=$(curl -s -H "Authorization: Bearer $SENTRY_TOKEN" \
+  "$SENTRY_API/projects/sam-international/4/issues/?statsPeriod=30m&query=level:fatal" | \
+  jq -r 'length')
+if [ "$NEW_CRITICAL" -gt 0 ]; then
+  echo "⚠️  WARNING: $NEW_CRITICAL new critical errors detected!"
+  echo "Review: https://sentry.alpha.opensam.foundation/organizations/sam-international/issues/"
+else
+  echo "✅ No new critical errors introduced"
+fi
 ```
 
 ## Testing Scripts
@@ -639,4 +976,53 @@ echo "Performance tests complete!"
 3. **Commit References**: Always include commit hashes for traceability
 4. **Test Results**: Document both successful and failed tests
 
-Remember: You're working on critical network infrastructure. Security and reliability are paramount. The live test environment is available for aggressive testing, but all fixes must be carefully implemented and verified before deployment.
+## Summary: Enhanced Sentry-Driven Bug Fix Workflow
+
+### 🔄 **New Workflow Order**
+1. **Phase 0**: Sentry Issue Analysis (ALWAYS START HERE)
+2. **Phase 1**: Security Audit (guided by Sentry security events)
+3. **Phase 2**: API Testing (enhanced with Sentry monitoring)
+4. **Phase 3**: Performance Testing (with error rate monitoring)
+5. **Phase 4**: UI Testing (with JavaScript error tracking)
+6. **Phase 5**: Sentry-Driven Resolution (automated issue triage)
+
+### 📊 **Sentry Integration Benefits**
+- **Real-world Issue Detection**: Focus on actual production problems
+- **Error Frequency Analysis**: Prioritize fixes by impact
+- **Stack Trace Guidance**: Know exactly which files to investigate
+- **Regression Detection**: Identify new issues from recent changes
+- **Fix Verification**: Confirm error rates decrease after deployment
+- **Performance Monitoring**: Track DNS operation failures
+
+### 🛠 **Available Tools**
+- `sentry_bug_detection.sh` - Automated Sentry analysis and bug prioritization
+- `sentry_integration_test.sh` - Comprehensive error testing for Sentry validation
+- Sentry Dashboard: https://sentry.alpha.opensam.foundation/organizations/sam-international/issues/
+- Sentry API: Full programmatic access to error data and analytics
+
+### 🎯 **Success Criteria (Enhanced)**
+A bug fix session is successful when:
+✅ All critical Sentry issues (fatal level) are resolved
+✅ High-frequency errors (>50/week) are addressed
+✅ No new critical errors introduced during testing
+✅ Error rates decrease in Sentry monitoring post-deployment
+✅ All fixes pass both manual testing AND Sentry confirmation
+✅ Documentation updated with Sentry-guided findings
+
+### ⚡ **Quick Start for Bug Fix Session**
+```bash
+# 1. Set up Sentry access
+export SENTRY_AUTH_TOKEN="your_sentry_token"
+
+# 2. Run automated analysis
+./sentry_bug_detection.sh
+
+# 3. Review priorities
+cat /tmp/sentry_bug_report.md
+
+# 4. Focus on top issues from Sentry dashboard
+
+# 5. Fix -> Deploy -> Verify in Sentry -> Repeat
+```
+
+**Remember**: You're working on critical network infrastructure. Security and reliability are paramount. The live test environment is available for aggressive testing, but all fixes must be carefully implemented and verified before deployment. **With Sentry integration, you now have production error data to guide your bug fixing efforts and confirm fix effectiveness.**
