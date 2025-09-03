@@ -204,7 +204,7 @@ impl<'a> WebServer<'a> {
     }
 
     /// Safely create an HTTP header, returning a default on error
-    fn safe_header(header_str: &str) -> tiny_http::Header<std::borrow::Cow<'static, str>> {
+    fn safe_header(header_str: &str) -> tiny_http::Header {
         header_str.parse().unwrap_or_else(|_| {
             log::warn!("Failed to parse header: {}", header_str);
             "Content-Type: text/plain".parse().expect("Default header should always parse")
@@ -212,7 +212,7 @@ impl<'a> WebServer<'a> {
     }
 
     /// Safely create a location header
-    fn safe_location_header(location: &str) -> tiny_http::Header<std::borrow::Cow<'static, str>> {
+    fn safe_location_header(location: &str) -> tiny_http::Header {
         format!("Location: {}", location).parse().unwrap_or_else(|_| {
             log::warn!("Failed to parse location header: {}", location);
             "Location: /".parse().expect("Default location header should always parse")
