@@ -6,6 +6,7 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
+extern crate sentry;
 
 use crate::dns::protocol::DnsPacket;
 use crate::dns::errors::DnsError;
@@ -409,6 +410,27 @@ impl RateLimitAlgorithmImpl for AdaptiveRateLimiter {
     }
 }
 
+/// Helper function to safely get Unix timestamp
+fn safe_unix_timestamp() -> u64 {
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs(),
+        Err(e) => {
+            // Report system time error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "security");
+                scope.set_tag("operation", "get_unix_timestamp");
+                scope.set_tag("error_type", "system_time_error");
+            });
+            sentry::capture_message(
+                &format!("System time error in rate limiter: {}", e),
+                sentry::Level::Error
+            );
+            // Fallback to epoch time (0) - this should never happen in practice
+            0
+        }
+    }
+}
+
 impl EnhancedRateLimiter {
     /// Create a new enhanced rate limiter
     pub fn new(config: RateLimitConfig) -> Self {
@@ -495,7 +517,7 @@ impl EnhancedRateLimiter {
                     threat_level: ThreatLevel::High,
                     events: vec![SecurityEvent::ClientBanned {
                         client_ip,
-                        until: banned_until.duration_since(std::time::Instant::now()).as_secs() + std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        until: banned_until.duration_since(std::time::Instant::now()).as_secs() + safe_unix_timestamp(),
                     }],
                 };
             } else {
@@ -516,7 +538,7 @@ impl EnhancedRateLimiter {
                     threat_level: ThreatLevel::Medium,
                     events: vec![SecurityEvent::ClientThrottled {
                         client_ip,
-                        until: throttled_until.duration_since(std::time::Instant::now()).as_secs() + std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        until: throttled_until.duration_since(std::time::Instant::now()).as_secs() + safe_unix_timestamp(),
                     }],
                 };
             } else {
@@ -541,7 +563,7 @@ impl EnhancedRateLimiter {
                     threat_level: ThreatLevel::High,
                     events: vec![SecurityEvent::ClientBanned {
                         client_ip,
-                        until: client_limiter.banned_until.unwrap().duration_since(std::time::Instant::now()).as_secs() + std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        until: client_limiter.banned_until.unwrap().duration_since(std::time::Instant::now()).as_secs() + safe_unix_timestamp(),
                     }],
                 };
             }

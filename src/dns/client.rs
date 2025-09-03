@@ -11,6 +11,7 @@ use std::time::Duration as SleepDuration;
 
 use chrono::*;
 use derive_more::{Display, Error, From};
+extern crate sentry;
 
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, StreamPacketBuffer};
 use crate::dns::netutil::{read_packet_length, write_packet_length};
@@ -153,7 +154,23 @@ impl DnsNetworkClient {
         let mut req_buffer = BytePacketBuffer::new();
         packet.write(&mut req_buffer, 0xFFFF)?;
 
-        let mut socket = TcpStream::connect(server)?;
+        let mut socket = TcpStream::connect(server).map_err(|e| {
+            // Report DNS client connection error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "dns_client");
+                scope.set_tag("operation", "tcp_connect");
+                scope.set_tag("protocol", "tcp");
+                scope.set_tag("server", &format!("{}:{}", server.0, server.1));
+                scope.set_tag("query_name", qname);
+                scope.set_tag("query_type", &format!("{:?}", qtype));
+                scope.set_extra("recursive", recursive.into());
+            });
+            sentry::capture_message(
+                &format!("Failed to connect to DNS server {}:{} for query {}: {}", server.0, server.1, qname, e),
+                sentry::Level::Warning
+            );
+            e
+        })?;
 
         write_packet_length(&mut socket, req_buffer.pos())?;
         socket.write_all(&req_buffer.buf[0..req_buffer.pos])?;

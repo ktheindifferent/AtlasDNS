@@ -5,6 +5,7 @@ use std::sync::Arc;
 use openssl::pkey::{PKey, Private};
 use openssl::x509::X509;
 use serde_derive::{Deserialize, Serialize};
+extern crate sentry;
 
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsRecord, TransientTtl};
@@ -91,14 +92,74 @@ impl AcmeCertificateManager {
     }
     
     pub fn load_certificate(&self) -> Result<X509, Box<dyn std::error::Error>> {
-        let cert_pem = fs::read_to_string(&self.config.cert_path)?;
-        let cert = X509::from_pem(cert_pem.as_bytes())?;
+        let cert_pem = fs::read_to_string(&self.config.cert_path).map_err(|e| {
+            // Report certificate loading error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "acme");
+                scope.set_tag("operation", "load_certificate");
+                scope.set_tag("provider", &format!("{:?}", self.config.provider));
+                scope.set_extra("cert_path", self.config.cert_path.display().to_string().into());
+                scope.set_extra("error_type", "file_read_error".into());
+            });
+            sentry::capture_message(
+                &format!("Failed to load certificate from {}: {}", self.config.cert_path.display(), e),
+                sentry::Level::Error
+            );
+            e
+        })?;
+        
+        let cert = X509::from_pem(cert_pem.as_bytes()).map_err(|e| {
+            // Report certificate parsing error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "acme");
+                scope.set_tag("operation", "parse_certificate");
+                scope.set_tag("provider", &format!("{:?}", self.config.provider));
+                scope.set_extra("cert_path", self.config.cert_path.display().to_string().into());
+                scope.set_extra("error_type", "certificate_parse_error".into());
+            });
+            sentry::capture_message(
+                &format!("Failed to parse certificate from {}: {}", self.config.cert_path.display(), e),
+                sentry::Level::Error
+            );
+            e
+        })?;
+        
         Ok(cert)
     }
     
     pub fn load_private_key(&self) -> Result<PKey<Private>, Box<dyn std::error::Error>> {
-        let key_pem = fs::read_to_string(&self.config.key_path)?;
-        let key = PKey::private_key_from_pem(key_pem.as_bytes())?;
+        let key_pem = fs::read_to_string(&self.config.key_path).map_err(|e| {
+            // Report private key loading error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "acme");
+                scope.set_tag("operation", "load_private_key");
+                scope.set_tag("provider", &format!("{:?}", self.config.provider));
+                scope.set_extra("key_path", self.config.key_path.display().to_string().into());
+                scope.set_extra("error_type", "file_read_error".into());
+            });
+            sentry::capture_message(
+                &format!("Failed to load private key from {}: {}", self.config.key_path.display(), e),
+                sentry::Level::Error
+            );
+            e
+        })?;
+        
+        let key = PKey::private_key_from_pem(key_pem.as_bytes()).map_err(|e| {
+            // Report private key parsing error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "acme");
+                scope.set_tag("operation", "parse_private_key");
+                scope.set_tag("provider", &format!("{:?}", self.config.provider));
+                scope.set_extra("key_path", self.config.key_path.display().to_string().into());
+                scope.set_extra("error_type", "private_key_parse_error".into());
+            });
+            sentry::capture_message(
+                &format!("Failed to parse private key from {}: {}", self.config.key_path.display(), e),
+                sentry::Level::Error
+            );
+            e
+        })?;
+        
         Ok(key)
     }
     
