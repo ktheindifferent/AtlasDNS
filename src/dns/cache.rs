@@ -44,6 +44,7 @@ use std::sync::{Arc, RwLock};
 use chrono::*;
 use derive_more::{Display, Error, From};
 use serde_derive::{Deserialize, Serialize};
+extern crate sentry;
 
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
 use crate::dns::metrics::{DNS_CACHE_OPERATIONS, DNS_CACHE_SIZE};
@@ -383,18 +384,84 @@ impl SynchronizedCache {
     }
 
     pub fn lookup(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
+        let start_time = std::time::Instant::now();
+        
         let mut cache = match self.cache.write() {
             Ok(x) => x,
-            Err(_) => return None,
+            Err(e) => {
+                // Report cache lock error to Sentry
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("component", "dns_cache");
+                    scope.set_tag("operation", "lookup");
+                    scope.set_tag("error_type", "poisoned_lock");
+                    scope.set_tag("qname", qname);
+                    scope.set_tag("qtype", &format!("{:?}", qtype));
+                });
+                sentry::capture_message(
+                    &format!("DNS Cache poisoned lock error during lookup of {} {:?}", qname, qtype),
+                    sentry::Level::Error
+                );
+                return None;
+            }
         };
 
-        cache.lookup(qname, qtype)
+        let result = cache.lookup(qname, qtype);
+        
+        // Add performance monitoring for cache lookups
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > 5 {  // Cache lookups should be very fast
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "dns_cache");
+                scope.set_tag("slow_operation", "true");
+                scope.set_extra("cache_lookup_duration_ms", (elapsed.as_millis() as u64).into());
+                scope.set_tag("qname", qname);
+                scope.set_tag("qtype", &format!("{:?}", qtype));
+                scope.set_extra("cache_hit", result.is_some().into());
+            });
+            sentry::capture_message(
+                &format!("Slow DNS cache lookup: {}ms for {} {:?}", elapsed.as_millis(), qname, qtype),
+                sentry::Level::Warning
+            );
+        }
+
+        result
     }
 
     pub fn store(&self, records: &[DnsRecord]) -> Result<()> {
-        let mut cache = self.cache.write().map_err(|_| CacheError::PoisonedLock)?;
+        let start_time = std::time::Instant::now();
+        let record_count = records.len();
+        
+        let mut cache = self.cache.write().map_err(|e| {
+            // Report cache lock error to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "dns_cache");
+                scope.set_tag("operation", "store");
+                scope.set_tag("error_type", "poisoned_lock");
+                scope.set_extra("record_count", record_count.into());
+            });
+            sentry::capture_message(
+                &format!("DNS Cache poisoned lock error during store of {} records", record_count),
+                sentry::Level::Error
+            );
+            CacheError::PoisonedLock
+        })?;
 
         cache.store(records);
+
+        // Add performance monitoring for cache operations
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > 10 {  // Cache operations should be very fast
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "dns_cache");
+                scope.set_tag("slow_operation", "true");
+                scope.set_extra("cache_store_duration_ms", (elapsed.as_millis() as u64).into());
+                scope.set_extra("record_count", record_count.into());
+            });
+            sentry::capture_message(
+                &format!("Slow DNS cache store: {}ms for {} records", elapsed.as_millis(), record_count),
+                sentry::Level::Warning
+            );
+        }
 
         Ok(())
     }

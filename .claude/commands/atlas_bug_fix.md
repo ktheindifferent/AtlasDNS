@@ -3,6 +3,14 @@
 ## Command Purpose
 This command enables Claude to automatically detect, analyze, and fix bugs in the Atlas DNS system by working directly with the existing Rust codebase. The agent has full access to test the live deployment to identify issues and implement fixes in the actual source files without creating duplicates or enhanced versions.
 
+## Automatic Version Management
+The command includes automatic version timestamping for deployment tracking:
+- **Format**: `ARG CODE_VERSION=YYYYMMDD_HHMMSS` (e.g., `20250903_081246`)
+- **Location**: Dockerfile build and runtime stages, before source code copy
+- **Script**: `./update_version.sh` automatically updates version timestamps
+- **API Endpoint**: `/api/version` reflects the deployed version for verification
+- **Integration**: Version updates are automatically included in deployment workflow
+
 ## Live Test Environment Details
 
 ### Web Application
@@ -51,6 +59,11 @@ This command enables Claude to automatically detect, analyze, and fix bugs in th
 - **Metrics**: `src/metrics/` - Real-time analytics and monitoring
 - **Kubernetes**: `src/k8s/` - Kubernetes operator support
 - **Privilege**: `src/privilege_escalation.rs` - Port 53 binding
+
+#### Version Management
+- **Update Script**: `update_version.sh` - Automatic version timestamp generation
+- **Dockerfile**: Version arguments for build and runtime stages
+- **Version API**: `/api/version` endpoint in `src/web/server.rs` - Returns current code version
 
 ### In-Memory Data Structures
 - **User Database**: `HashMap<String, User>` with RwLock
@@ -703,6 +716,13 @@ Tested: https://atlas.alpha.opensam.foundation/"
 
 ### 4. Deploy to Production
 ```bash
+# Update version timestamp in Dockerfile
+./update_version.sh
+
+# Commit version update
+git add Dockerfile
+git commit -m "chore: update version to $(date +%Y%m%d_%H%M%S)"
+
 # Push to gitea (CapRover deployment server) - THIS IS CRITICAL
 git push gitea master
 
@@ -722,6 +742,7 @@ git push gitea master
 ```bash
 # After 3+ minute wait, use version endpoint to verify deployment
 curl https://atlas.alpha.opensam.foundation/api/version
+# Should return: {"code_version":"YYYYMMDD_HHMMSS","package_version":"0.0.1"}
 # Compare timestamp with git commit time to confirm deployment
 
 # Capture pre-fix error baseline from Sentry
@@ -930,10 +951,11 @@ echo "Performance tests complete!"
 
 ### Deployment Rules
 1. **Commit properly**: Use descriptive commit messages
-2. **Push to deploy**: Git push triggers automatic deployment
-3. **WAIT 3 MINUTES**: Never test before 3-minute wait
-4. **Verify deployment**: Check live server after waiting
-5. **Document results**: Update `bugs.md` with outcomes
+2. **Update version**: Run `./update_version.sh` before deployment
+3. **Push to deploy**: Git push triggers automatic deployment
+4. **WAIT 3 MINUTES**: Never test before 3-minute wait
+5. **Verify deployment**: Check `/api/version` endpoint after waiting
+6. **Document results**: Update `bugs.md` with outcomes
 
 ### Important Reminders
 - This is production DNS infrastructure - be careful but thorough
@@ -949,6 +971,7 @@ echo "Performance tests complete!"
 - **Use `/api/version` endpoint to verify deployments**
 - **Form-based authentication is more reliable than JSON for testing**
 - **Remember: `git push gitea master` for actual deployment (not origin)**
+- **Always run `./update_version.sh` before deployment for version tracking**
 
 ## Lessons Learned from This Session
 
@@ -1026,3 +1049,4 @@ cat /tmp/sentry_bug_report.md
 ```
 
 **Remember**: You're working on critical network infrastructure. Security and reliability are paramount. The live test environment is available for aggressive testing, but all fixes must be carefully implemented and verified before deployment. **With Sentry integration, you now have production error data to guide your bug fixing efforts and confirm fix effectiveness.**
+````

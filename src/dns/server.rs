@@ -11,6 +11,7 @@ use std::thread::Builder;
 
 use derive_more::{Display, Error, From};
 use rand::random;
+extern crate sentry;
 
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::context::ServerContext;
@@ -32,8 +33,15 @@ macro_rules! return_or_report {
     ( $x:expr, $message:expr ) => {
         match $x {
             Ok(res) => res,
-            Err(_) => {
+            Err(e) => {
                 log::info!($message);
+                // Report DNS server error to Sentry
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("component", "dns_server");
+                    scope.set_tag("operation", "server_operation");
+                    scope.set_extra("error_details", format!("{:?}", e).into());
+                });
+                sentry::capture_message(&format!("DNS Server: {}", $message), sentry::Level::Warning);
                 return;
             }
         }
@@ -44,8 +52,15 @@ macro_rules! ignore_or_report {
     ( $x:expr, $message:expr ) => {
         match $x {
             Ok(_) => {}
-            Err(_) => {
+            Err(e) => {
                 log::info!($message);
+                // Report DNS server error to Sentry
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("component", "dns_server");
+                    scope.set_tag("operation", "server_operation");
+                    scope.set_extra("error_details", format!("{:?}", e).into());
+                });
+                sentry::capture_message(&format!("DNS Server: {}", $message), sentry::Level::Info);
                 return;
             }
         };
@@ -214,6 +229,8 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
 
 /// Execute query with client IP for security checks
 pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, client_ip: Option<std::net::IpAddr>) -> DnsPacket {
+    let start_time = std::time::Instant::now();
+    
     // Create correlation context for this DNS query
     let mut ctx = CorrelationContext::new("dns_server", "execute_query");
     
@@ -231,6 +248,26 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
     ctx = ctx.with_metadata("domain", &domain)
            .with_metadata("query_type", &query_type)
            .with_metadata("query_id", &request.header.id.to_string());
+
+    // Add Sentry breadcrumb for DNS query processing
+    sentry::add_breadcrumb(sentry::Breadcrumb {
+        ty: "dns".to_string(),
+        category: Some("dns.query.start".to_string()),
+        message: Some(format!("Processing DNS query for {} ({})", domain, query_type)),
+        level: sentry::Level::Info,
+        timestamp: chrono::Utc::now(),
+        data: {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("domain".to_string(), domain.clone().into());
+            map.insert("query_type".to_string(), query_type.clone().into());
+            map.insert("query_id".to_string(), request.header.id.into());
+            if let Some(ip) = client_ip {
+                map.insert("client_ip".to_string(), ip.to_string().into());
+            }
+            map
+        },
+        ..Default::default()
+    });
     
     // Perform security checks first if client IP is available
     if let Some(ip) = client_ip {
@@ -249,6 +286,21 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 SecurityAction::Sinkhole(_) => ResultCode::NOERROR,
                 _ => ResultCode::REFUSED,
             };
+            
+            // Report security block to Sentry
+            sentry::configure_scope(|scope| {
+                scope.set_tag("component", "dns_server");
+                scope.set_tag("event_type", "security_block");
+                scope.set_tag("security_action", &format!("{:?}", security_result.action));
+                scope.set_tag("domain", &domain);
+                scope.set_tag("query_type", &query_type);
+                scope.set_extra("client_ip", ip.to_string().into());
+                scope.set_extra("block_reason", format!("{:?}", security_result.reason).into());
+            });
+            sentry::capture_message(
+                &format!("DNS Security Block: {} from {} ({})", domain, ip, format!("{:?}", security_result.reason)),
+                sentry::Level::Warning
+            );
             
             // Log security block
             let query_log = DnsQueryLog {
@@ -272,6 +324,13 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             );
             
             log::info!("Security blocked query from {:?}: {:?}", ip, security_result.reason);
+            
+            // Add performance monitoring for security blocked queries
+            let elapsed = start_time.elapsed();
+            sentry::configure_scope(|scope| {
+                scope.set_extra("query_duration_ms", (elapsed.as_millis() as u64).into());
+            });
+            
             return packet;
         }
     }
@@ -281,6 +340,22 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
 
     if let Some(error_code) = validate_request(&context, request) {
         packet.header.rescode = error_code;
+        
+        // Report validation error to Sentry
+        sentry::configure_scope(|scope| {
+            scope.set_tag("component", "dns_server");
+            scope.set_tag("event_type", "validation_error");
+            scope.set_tag("error_code", &format!("{:?}", error_code));
+            scope.set_tag("domain", &domain);
+            scope.set_tag("query_type", &query_type);
+            if let Some(ip) = client_ip {
+                scope.set_extra("client_ip", ip.to_string().into());
+            }
+        });
+        sentry::capture_message(
+            &format!("DNS Validation Error: {} - {} ({})", format!("{:?}", error_code), domain, query_type),
+            sentry::Level::Warning
+        );
         
         // Log error response
         let query_log = DnsQueryLog {
@@ -361,6 +436,41 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         &query_type,
         cache_hit
     );
+
+    // Add performance monitoring to Sentry
+    let elapsed = start_time.elapsed();
+    sentry::configure_scope(|scope| {
+        scope.set_tag("query_result", "success");
+        scope.set_extra("query_duration_ms", (elapsed.as_millis() as u64).into());
+        scope.set_extra("cache_hit", cache_hit.into());
+        if elapsed.as_millis() > 100 {
+            scope.set_tag("slow_query", "true");
+        }
+    });
+    
+    // Report slow queries as warnings
+    if elapsed.as_millis() > 500 {
+        sentry::capture_message(
+            &format!("Slow DNS Query: {} took {}ms ({})", domain, elapsed.as_millis(), query_type),
+            sentry::Level::Warning
+        );
+    }
+    
+    // Add success breadcrumb
+    sentry::add_breadcrumb(sentry::Breadcrumb {
+        ty: "dns".to_string(),
+        category: Some("dns.query.complete".to_string()),
+        message: Some(format!("DNS query completed: {} ({}ms)", domain, elapsed.as_millis())),
+        level: sentry::Level::Info,
+        timestamp: chrono::Utc::now(),
+        data: {
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("duration_ms".to_string(), (elapsed.as_millis() as u64).into());
+            map.insert("cache_hit".to_string(), cache_hit.into());
+            map
+        },
+        ..Default::default()
+    });
 
     packet
 }
