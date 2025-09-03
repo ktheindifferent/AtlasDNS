@@ -1,4 +1,3 @@
-use derive_more::Display;
 
 pub mod activity;
 pub mod authority;
@@ -14,7 +13,7 @@ pub mod api_v2;
 pub mod bulk_operations;
 pub mod webhooks;
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum WebError {
     Authority(crate::dns::authority::AuthorityError),
     Io(std::io::Error),
@@ -30,6 +29,27 @@ pub enum WebError {
     SessionExpired,
     UserNotFound,
     InternalError(String),
+}
+
+impl std::fmt::Display for WebError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WebError::Authority(e) => write!(f, "Authority error: {}", e),
+            WebError::Io(e) => write!(f, "IO error: {}", e),
+            WebError::MissingField(field) => write!(f, "Missing required field: {}", field),
+            WebError::Serialization(e) => write!(f, "Serialization error: {}", e),
+            WebError::Template(e) => write!(f, "Template error: {}", e),
+            WebError::ZoneNotFound => write!(f, "Zone not found"),
+            WebError::LockError => write!(f, "Lock error"),
+            WebError::InvalidRequest => write!(f, "Invalid request"),
+            WebError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+            WebError::AuthenticationError(msg) => write!(f, "Authentication error: {}", msg),
+            WebError::AuthorizationError(msg) => write!(f, "Authorization error: {}", msg),
+            WebError::SessionExpired => write!(f, "Session expired"),
+            WebError::UserNotFound => write!(f, "User not found"),
+            WebError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+        }
+    }
 }
 
 impl From<crate::dns::authority::AuthorityError> for WebError {
