@@ -32,7 +32,7 @@ impl MediaType for Request {
     fn json_input(&self) -> bool {
         self.headers()
             .iter()
-            .find(|x| x.field.as_str() == "Content-Type")
+            .find(|x| x.field.as_str().to_ascii_lowercase() == "content-type")
             .map(|x| {
                 let value: String = x.value.clone().into();
                 value.contains("application/json")
@@ -43,7 +43,7 @@ impl MediaType for Request {
     fn json_output(&self) -> bool {
         self.headers()
             .iter()
-            .find(|x| x.field.as_str() == "Accept")
+            .find(|x| x.field.as_str().to_ascii_lowercase() == "accept")
             .map(|x| {
                 let value: String = x.value.clone().into();
                 value.contains("application/json")
