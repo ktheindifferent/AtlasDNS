@@ -280,7 +280,7 @@ Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port map
    
    Default credentials:
    - Username: `admin`
-   - Password: `admin` (change immediately after first login)
+   - Password: `admin123` (change immediately after first login)
 
 2. **Configure DNS Zones**
    
@@ -300,13 +300,16 @@ Atlas DNS Server now fully supports deployment on CapRover with TCP/UDP port map
 
 #### Troubleshooting CapRover Deployment
 
+- **Login Issues**: Default credentials are `admin` / `admin123` (not just "admin")
 - **Port Binding Issues**: Ensure no other services are using port 53 on the host
-- **Permission Errors**: The container runs with sudo privileges for port 53 binding
+- **Permission Errors**: The container runs as root for port 53 binding
 - **DNS Not Responding**: Check CapRover's port mapping configuration
 - **Logs**: View logs in CapRover web interface or via CLI:
   ```bash
   caprover logs -a atlas-dns
   ```
+- **No Session Token**: If login redirects back, verify credentials and check logs
+- **Web Interface Access**: Ensure port 5380 is accessible through CapRover
 
 #### Advanced CapRover Configuration
 
