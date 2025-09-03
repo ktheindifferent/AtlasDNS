@@ -180,8 +180,15 @@ impl UserManager {
     }
     
     pub fn hash_password(password: &str) -> String {
-        hash(password, DEFAULT_COST)
-            .expect("Failed to hash password")
+        match hash(password, DEFAULT_COST) {
+            Ok(hashed) => hashed,
+            Err(e) => {
+                log::error!("Critical: Password hashing failed: {}", e);
+                // Return a fallback hash that will never match but won't crash
+                // This allows the system to continue running while logging the error
+                format!("HASH_ERROR_{}", chrono::Utc::now().timestamp())
+            }
+        }
     }
     
     pub fn verify_password(password: &str, hash: &str) -> bool {

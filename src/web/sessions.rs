@@ -125,7 +125,16 @@ pub fn create_session_cookie(token: &str, secure: bool) -> Header {
     
     log::debug!("Creating cookie: {}", cookie_value);
     Header::from_bytes(&b"Set-Cookie"[..], cookie_value.as_bytes())
-        .expect("Failed to create session cookie header")
+        .unwrap_or_else(|e| {
+            log::error!("Failed to create session cookie header: {}", e);
+            // Fallback to a minimal working cookie
+            Header::from_bytes(&b"Set-Cookie"[..], b"session_token=error; Path=/")
+                .unwrap_or_else(|_| {
+                    log::error!("Critical: Unable to create any session cookie");
+                    // Create a minimal header as last resort
+                    Header::from_bytes(&b"X-Error"[..], b"cookie-failed").unwrap()
+                })
+        })
 }
 
 // Backward compatibility function
@@ -137,5 +146,14 @@ pub fn clear_session_cookie() -> Header {
     Header::from_bytes(
         &b"Set-Cookie"[..],
         b"session_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict"
-    ).expect("Failed to create clear session cookie header")
+    ).unwrap_or_else(|e| {
+        log::error!("Failed to create clear session cookie header: {}", e);
+        // Fallback to basic clear cookie
+        Header::from_bytes(&b"Set-Cookie"[..], b"session_token=; Path=/")
+            .unwrap_or_else(|_| {
+                log::error!("Critical: Unable to create clear cookie");
+                // Last resort header
+                Header::from_bytes(&b"Cache-Control"[..], b"no-cache").unwrap()
+            })
+    })
 }

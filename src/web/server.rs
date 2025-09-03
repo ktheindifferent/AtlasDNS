@@ -205,18 +205,52 @@ impl<'a> WebServer<'a> {
 
     /// Safely create an HTTP header, returning a default on error
     fn safe_header(header_str: &str) -> tiny_http::Header {
-        header_str.parse().unwrap_or_else(|_| {
-            log::warn!("Failed to parse header: {}", header_str);
-            "Content-Type: text/plain".parse().expect("Default header should always parse")
-        })
+        // Try to parse the requested header
+        if let Ok(header) = header_str.parse() {
+            return header;
+        }
+        
+        log::warn!("Failed to parse header '{}', using fallback", header_str);
+        
+        // Try primary fallback
+        if let Ok(header) = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]) {
+            return header;
+        }
+        
+        // Try secondary fallback
+        if let Ok(header) = tiny_http::Header::from_bytes(&b"Server"[..], &b"Atlas"[..]) {
+            log::error!("Using server header as last resort fallback");
+            return header;
+        }
+        
+        // Last resort: create a minimal working header
+        log::error!("All header creation methods failed, creating minimal header");
+        tiny_http::Header::from_bytes(&b"X-Status"[..], &b"OK"[..])
+            .unwrap_or_else(|_| {
+                log::error!("Critical system failure: unable to create any HTTP header");
+                // This should theoretically never fail, but if it does, we have bigger problems
+                std::process::exit(1);
+            })
     }
 
     /// Safely create a location header
     fn safe_location_header(location: &str) -> tiny_http::Header {
-        format!("Location: {}", location).parse().unwrap_or_else(|_| {
-            log::warn!("Failed to parse location header: {}", location);
-            "Location: /".parse().expect("Default location header should always parse")
-        })
+        // Try to create the requested location header
+        let location_header = format!("Location: {}", location);
+        if let Ok(header) = location_header.parse() {
+            return header;
+        }
+        
+        log::warn!("Failed to parse location header: {}", location);
+        
+        // Try fallback with safe root location
+        if let Ok(header) = tiny_http::Header::from_bytes(&b"Location"[..], &b"/"[..]) {
+            return header;
+        }
+        
+        // If that fails, use the safe_header method as ultimate fallback
+        log::error!("Location header creation failed, using generic header");
+        Self::safe_header("Cache-Control: no-cache")
     }
 
     /// Safely serialize JSON, returning error JSON on failure
