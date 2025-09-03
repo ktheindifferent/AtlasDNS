@@ -3,6 +3,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 
 use getopts::Options;
+extern crate sentry;
 
 use atlas::dns::protocol::{DnsRecord, TransientTtl};
 use atlas::dns::context::{ResolveStrategy, ServerContext};
@@ -18,7 +19,52 @@ fn print_usage(program: &str, opts: Options) {
 
 /// Main entry point for the Atlas DNS server
 fn main() {
+    // Initialize Sentry for error tracking and monitoring
+    let _guard = sentry::init("http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4");
+    
+    // Set up Sentry context
+    sentry::configure_scope(|scope| {
+        scope.set_tag("service", "atlas-dns");
+        scope.set_tag("version", env!("CARGO_PKG_VERSION"));
+        scope.set_context("application", sentry::protocol::Context::Other({
+            let mut map = std::collections::BTreeMap::new();
+            map.insert("name".to_string(), "Atlas DNS Server".into());
+            map.insert("version".to_string(), env!("CARGO_PKG_VERSION").into());
+            map
+        }));
+    });
+    
+    // Set up panic handler to report to Sentry
+    std::panic::set_hook(Box::new(|panic_info| {
+        sentry::integrations::panic::panic_handler(panic_info);
+        
+        // Also log to stderr for local debugging
+        eprintln!("PANIC: {}", panic_info);
+        
+        // Add some context about the panic
+        sentry::configure_scope(|scope| {
+            scope.set_tag("event_type", "panic");
+            
+            if let Some(location) = panic_info.location() {
+                scope.set_tag("panic_file", location.file());
+                scope.set_tag("panic_line", &location.line().to_string());
+            }
+        });
+        
+        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+        
+        sentry::capture_message(&format!("Panic: {}", message), sentry::Level::Fatal);
+    }));
+    
     simple_logger::init().expect("Failed to initialize logger");
+    
+    log::info!("Atlas DNS Server starting with Sentry monitoring enabled");
 
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();

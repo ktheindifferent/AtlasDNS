@@ -52,6 +52,68 @@ impl std::fmt::Display for WebError {
     }
 }
 
+impl WebError {
+    /// Report this error to Sentry with appropriate context and severity
+    pub fn report_to_sentry(&self) {
+        let level = match self {
+            WebError::Authority(_) | WebError::Io(_) | WebError::Serialization(_) 
+            | WebError::Template(_) | WebError::LockError | WebError::InternalError(_) => sentry::Level::Error,
+            WebError::AuthenticationError(_) | WebError::AuthorizationError(_) 
+            | WebError::InvalidRequest | WebError::InvalidInput(_) => sentry::Level::Warning,
+            WebError::MissingField(_) | WebError::ZoneNotFound | WebError::SessionExpired 
+            | WebError::UserNotFound => sentry::Level::Info,
+        };
+        
+        sentry::configure_scope(|scope| {
+            scope.set_tag("error_type", match self {
+                WebError::Authority(_) => "authority_error",
+                WebError::Io(_) => "io_error",
+                WebError::MissingField(_) => "missing_field",
+                WebError::Serialization(_) => "serialization_error",
+                WebError::Template(_) => "template_error",
+                WebError::ZoneNotFound => "zone_not_found",
+                WebError::LockError => "lock_error",
+                WebError::InvalidRequest => "invalid_request",
+                WebError::InvalidInput(_) => "invalid_input",
+                WebError::AuthenticationError(_) => "authentication_error",
+                WebError::AuthorizationError(_) => "authorization_error",
+                WebError::SessionExpired => "session_expired",
+                WebError::UserNotFound => "user_not_found",
+                WebError::InternalError(_) => "internal_error",
+            });
+            
+            scope.set_tag("component", "web");
+            
+            // Add specific context based on error type
+            match self {
+                WebError::MissingField(field) => {
+                    scope.set_extra("field", (*field).into());
+                }
+                WebError::InvalidInput(msg) | WebError::AuthenticationError(msg) 
+                | WebError::AuthorizationError(msg) | WebError::InternalError(msg) => {
+                    scope.set_extra("message", msg.clone().into());
+                }
+                WebError::Authority(err) => {
+                    scope.set_extra("authority_error", format!("{:?}", err).into());
+                }
+                WebError::Io(err) => {
+                    scope.set_extra("io_error", err.to_string().into());
+                    scope.set_extra("io_kind", format!("{:?}", err.kind()).into());
+                }
+                WebError::Serialization(err) => {
+                    scope.set_extra("serde_error", err.to_string().into());
+                }
+                WebError::Template(err) => {
+                    scope.set_extra("template_error", err.to_string().into());
+                }
+                _ => {}
+            }
+        });
+        
+        sentry::capture_message(&self.to_string(), level);
+    }
+}
+
 impl From<crate::dns::authority::AuthorityError> for WebError {
     fn from(err: crate::dns::authority::AuthorityError) -> Self {
         WebError::Authority(err)

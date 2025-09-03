@@ -40,7 +40,22 @@ pub trait DnsResolver {
     /// 
     /// A DNS packet containing the response, or an error if resolution fails
     fn resolve(&mut self, qname: &str, qtype: QueryType, recursive: bool) -> Result<DnsPacket> {
-
+        // Add Sentry breadcrumb for DNS resolution
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            ty: "dns".to_string(),
+            category: Some("dns.resolve".to_string()),
+            message: Some(format!("Resolving {} {:?} (recursive: {})", qname, qtype, recursive)),
+            level: sentry::Level::Info,
+            timestamp: chrono::Utc::now(),
+            data: {
+                let mut map = std::collections::BTreeMap::new();
+                map.insert("qname".to_string(), qname.into());
+                map.insert("qtype".to_string(), format!("{:?}", qtype).into());
+                map.insert("recursive".to_string(), recursive.into());
+                map
+            },
+            ..Default::default()
+        });
 
         log::info!("attempting to resolve: {:?}", qname);
 
@@ -107,12 +122,71 @@ impl DnsResolver for ForwardingDnsResolver {
 
     fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
         let &(ref host, port) = &self.server;
+        
+        // Add breadcrumb for forwarding query
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            ty: "dns".to_string(),
+            category: Some("dns.forward".to_string()),
+            message: Some(format!("Forwarding query to {}:{}", host, port)),
+            level: sentry::Level::Info,
+            timestamp: chrono::Utc::now(),
+            data: {
+                let mut map = std::collections::BTreeMap::new();
+                map.insert("qname".to_string(), qname.into());
+                map.insert("qtype".to_string(), format!("{:?}", qtype).into());
+                map.insert("forward_host".to_string(), host.clone().into());
+                map.insert("forward_port".to_string(), port.into());
+                map
+            },
+            ..Default::default()
+        });
+        
         let result = self
             .context
             .client
-            .send_query(qname, qtype, (host.as_str(), port), true)?;
+            .send_query(qname, qtype, (host.as_str(), port), true)
+            .map_err(|e| {
+                // Report forwarding error to Sentry
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("dns_operation", "forward");
+                    scope.set_tag("qname", qname);
+                    scope.set_tag("qtype", &format!("{:?}", qtype));
+                    scope.set_tag("forward_server", &format!("{}:{}", host, port));
+                });
+                sentry::capture_message(
+                    &format!("DNS forwarding failed for {} {:?}: {}", qname, qtype, e), 
+                    sentry::Level::Error
+                );
+                e
+            })?;
 
-        self.context.cache.store(&result.answers)?;
+        // Success breadcrumb
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            ty: "dns".to_string(),
+            category: Some("dns.forward.success".to_string()),
+            message: Some(format!("Successfully forwarded query for {}", qname)),
+            level: sentry::Level::Info,
+            timestamp: chrono::Utc::now(),
+            data: {
+                let mut map = std::collections::BTreeMap::new();
+                map.insert("answer_count".to_string(), result.answers.len().into());
+                map
+            },
+            ..Default::default()
+        });
+
+        if let Err(e) = self.context.cache.store(&result.answers) {
+            // Report cache storage error
+            sentry::configure_scope(|scope| {
+                scope.set_tag("dns_operation", "cache_store");
+            });
+            sentry::capture_message(
+                &format!("Failed to cache DNS answers: {}", e), 
+                sentry::Level::Warning
+            );
+            // Don't fail the query due to cache issues, just log and continue
+            log::warn!("Failed to cache DNS answers: {}", e);
+        }
 
         Ok(result)
     }

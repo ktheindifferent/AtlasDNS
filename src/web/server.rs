@@ -424,6 +424,18 @@ impl<'a> WebServer<'a> {
             }
             Err(err) if request.json_output() => {
                 log::info!("Request failed: {:?}", err);
+                
+                // Report error to Sentry with request context
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("request_type", "json");
+                    scope.set_tag("method", request.method().as_str());
+                    scope.set_tag("path", request.url());
+                    if let Some(content_length) = request.body_length() {
+                        scope.set_extra("content_length", content_length.into());
+                    }
+                });
+                err.report_to_sentry();
+                
                 let error_json = serde_json::json!({
                     "message": err.to_string(),
                 });
@@ -435,6 +447,18 @@ impl<'a> WebServer<'a> {
             }
             Err(err) => {
                 log::info!("Request failed: {:?}", err);
+                
+                // Report error to Sentry with request context
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("request_type", "html");
+                    scope.set_tag("method", request.method().as_str());
+                    scope.set_tag("path", request.url());
+                    if let Some(content_length) = request.body_length() {
+                        scope.set_extra("content_length", content_length.into());
+                    }
+                });
+                err.report_to_sentry();
+                
                 let error_string = err.to_string();
                 let size = self.calculate_response_string_size(&error_string, self.error_status_code(&err));
                 let response = Response::from_string(error_string)
