@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 use regex::Regex;

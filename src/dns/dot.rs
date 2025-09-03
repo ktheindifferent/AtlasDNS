@@ -14,14 +14,14 @@
 
 use std::sync::Arc;
 use std::net::{TcpListener, TcpStream, SocketAddr};
-use std::io::{Read, Write, BufReader, BufWriter};
+use std::io::{Read, Write};
 use std::time::Duration;
 use openssl::ssl::{SslAcceptor, SslMethod, SslStream, SslFiletype, SslVerifyMode};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, ResultCode};
 use crate::dns::buffer::BytePacketBuffer;
 use crate::dns::resolve::{DnsResolver, RecursiveDnsResolver};
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};

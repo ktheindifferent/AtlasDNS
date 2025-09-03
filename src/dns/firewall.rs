@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use parking_lot::RwLock;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 use regex::Regex;
 

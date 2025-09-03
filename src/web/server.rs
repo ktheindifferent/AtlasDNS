@@ -486,7 +486,7 @@ impl<'a> WebServer<'a> {
                 let error_string = err.to_string();
                 let size = self.calculate_response_string_size(&error_string, self.error_status_code(&err));
                 let response = Response::from_string(error_string)
-                    .with_header::<tiny_http::Header>("Content-Type: text/plain".parse().unwrap());
+                    .with_header(Self::safe_header("Content-Type: text/plain"));
                 (Some(size), request.respond(response))
             }
         }
@@ -713,7 +713,7 @@ impl<'a> WebServer<'a> {
                             );
                             
                             let response = Response::empty(301)
-                                .with_header(tiny_http::Header::from_bytes(&b"Location"[..], redirect_url.as_bytes()).unwrap());
+                                .with_header(Self::safe_location_header(&redirect_url));
                             
                             let _ = request.respond(response);
                         }
