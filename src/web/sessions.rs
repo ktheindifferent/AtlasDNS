@@ -34,7 +34,7 @@ impl SessionMiddleware {
         let cookie_result = request
             .headers()
             .iter()
-            .find(|h| h.field.as_str().eq_ignore_ascii_case("cookie"))
+            .find(|h| h.field.as_str().to_lowercase() == "cookie")
             .and_then(|h| {
                 let value: String = h.value.clone().into();
                 log::debug!("Cookie header value: '{}'", value);
