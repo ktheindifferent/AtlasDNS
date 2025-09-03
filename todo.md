@@ -117,9 +117,9 @@
 ### Core Functionality - Replace Placeholders with Real Implementation
 
 #### Dashboard & Monitoring
-- [ ] **Recent Activity Tracking** - Implement actual activity logging (currently empty placeholder)
-- [ ] **Cache Hit Rate Calculation** - Replace hardcoded 75% with real metrics
-- [ ] **Active Users Tracking** - Replace placeholder "1" with actual session counting
+- [x] **Recent Activity Tracking** - Implement actual activity logging (currently empty placeholder) ✅ (2025-09-03 - aec9a3ee9)
+- [x] **Cache Hit Rate Calculation** - Replace hardcoded 75% with real metrics ✅ (2025-09-03 - 28853b682)
+- [x] **Active Users Tracking** - Replace placeholder "1" with actual session counting ✅ (2025-09-03 - aec9a3ee9)
 - [ ] **Real-time Dashboard Updates** - Implement WebSocket/SSE for live data instead of simulated refresh
 
 #### DNS Security Features (Currently UI-only)
@@ -141,7 +141,7 @@
 
 #### Analytics & Logging
 - [ ] **Query Logging Storage** - Implement persistent query log (currently empty array)
-- [ ] **GraphQL Metrics** - Connect to real data sources (currently returns mock data)
+- [x] **GraphQL Metrics** - Connect to real data sources (currently returns mock data) ✅ (2025-09-03 - 28853b682)
 - [ ] **Log File Management** - Calculate actual log sizes (currently "N/A")
 - [ ] **Alert System** - Build actual alert manager (UI exists, no backend)
 
