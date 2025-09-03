@@ -125,27 +125,42 @@ impl UserManager {
     }
     
     fn create_default_admin(&mut self) {
-        // Generate a secure random password
-        let random_password: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(16)
-            .map(char::from)
-            .collect();
+        // Check for development mode environment variables
+        let force_admin = std::env::var("FORCE_ADMIN").unwrap_or_default().to_lowercase() == "true";
+        let admin_password = std::env::var("ADMIN_PASSWORD").ok();
+
+        let password = if force_admin && admin_password.is_some() {
+            let dev_password = admin_password.unwrap();
+            log::warn!("🚨 DEVELOPMENT MODE: Using ADMIN_PASSWORD environment variable");
+            log::warn!("🚨 FORCE_ADMIN=true detected - admin password is FIXED and cannot be changed");
+            log::warn!("🚨 This should ONLY be used in development environments!");
+            log::info!("Creating admin user with fixed development password");
+            dev_password
+        } else {
+            // Generate a secure random password for production
+            let random_password: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(16)
+                .map(char::from)
+                .collect();
+            
+            log::warn!("🔐 IMPORTANT: Generated admin password: {}", random_password);
+            log::warn!("🔐 Please log in with username 'admin' and change this password immediately!");
+            log::warn!("🔐 This password will not be shown again.");
+            random_password
+        };
             
         let admin_user = User {
             id: Uuid::new_v4().to_string(),
             username: "admin".to_string(),
             email: "admin@localhost".to_string(),
-            password_hash: Self::hash_password(&random_password),
+            password_hash: Self::hash_password(&password),
             role: UserRole::Admin,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             is_active: true,
         };
         
-        log::warn!("🔐 IMPORTANT: Generated admin password: {}", random_password);
-        log::warn!("🔐 Please log in with username 'admin' and change this password immediately!");
-        log::warn!("🔐 This password will not be shown again.");
         log::info!("Creating default admin user with username: admin");
         
         if let Ok(mut users) = self.users.write() {
@@ -289,10 +304,20 @@ impl UserManager {
         
         let user = users.get_mut(user_id).ok_or_else(|| "User not found".to_string())?;
         
+        // Check for development mode restrictions
+        let force_admin = std::env::var("FORCE_ADMIN").unwrap_or_default().to_lowercase() == "true";
+        let admin_password_env = std::env::var("ADMIN_PASSWORD").is_ok();
+        
         if let Some(email) = request.email {
             user.email = email;
         }
         if let Some(password) = request.password {
+            // Prevent password changes for admin in development mode
+            if force_admin && admin_password_env && user.username == "admin" {
+                log::warn!("🚨 DEVELOPMENT MODE: Password change blocked for admin user");
+                log::warn!("🚨 Admin password is fixed via ADMIN_PASSWORD environment variable");
+                return Err("Password cannot be changed for admin user in development mode".to_string());
+            }
             user.password_hash = Self::hash_password(&password);
         }
         if let Some(role) = request.role {
