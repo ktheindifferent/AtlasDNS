@@ -22,7 +22,7 @@ use regex::Regex;
 
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode, DnsRecord, TransientTtl};
 use crate::dns::context::ServerContext;
-use crate::dns::logging::{CorrelationContext, SecurityEventLog, RateLimitLog};
+use crate::dns::logging::{CorrelationContext, SecurityEventLog};
 
 /// Firewall action to take on matched queries
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

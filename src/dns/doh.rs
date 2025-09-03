@@ -20,7 +20,7 @@ use serde::{Serialize, Deserialize};
 use serde_json;
 
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, QueryType, ResultCode, DnsQuestion};
+use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
 use crate::dns::buffer::BytePacketBuffer;
 use crate::dns::resolve::{DnsResolver, RecursiveDnsResolver};
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};

@@ -125,8 +125,8 @@ pub fn create_session_cookie(token: &str, secure: bool) -> Header {
     
     log::debug!("Creating cookie: {}", cookie_value);
     Header::from_bytes(&b"Set-Cookie"[..], cookie_value.as_bytes())
-        .unwrap_or_else(|e| {
-            log::error!("Failed to create session cookie header: {}", e);
+        .unwrap_or_else(|_| {
+            log::error!("Failed to create session cookie header");
             // Fallback to a minimal working cookie
             Header::from_bytes(&b"Set-Cookie"[..], b"session_token=error; Path=/")
                 .unwrap_or_else(|_| {
@@ -146,8 +146,8 @@ pub fn clear_session_cookie() -> Header {
     Header::from_bytes(
         &b"Set-Cookie"[..],
         b"session_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict"
-    ).unwrap_or_else(|e| {
-        log::error!("Failed to create clear session cookie header: {}", e);
+    ).unwrap_or_else(|_| {
+        log::error!("Failed to create clear session cookie header");
         // Fallback to basic clear cookie
         Header::from_bytes(&b"Set-Cookie"[..], b"session_token=; Path=/")
             .unwrap_or_else(|_| {
