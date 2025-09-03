@@ -30,11 +30,14 @@ impl SessionMiddleware {
             return auth_result;
         }
         
-        // Then try Cookie header (case-insensitive)
+        // Then try Cookie header (case-insensitive - HeaderField already does case-insensitive comparison)
         let cookie_result = request
             .headers()
             .iter()
-            .find(|h| h.field.as_str().to_lowercase() == "cookie")
+            .find(|h| {
+                let field_str: &str = h.field.as_str().as_ref();
+                field_str.eq_ignore_ascii_case("cookie")
+            })
             .and_then(|h| {
                 let value: String = h.value.clone().into();
                 log::debug!("Cookie header value: '{}'", value);
