@@ -3,6 +3,14 @@
 ## Command Purpose
 This command enables Claude to automatically detect, analyze, and fix bugs in the Atlas DNS system by working directly with the existing Rust codebase. The agent has full access to test the live deployment to identify issues and implement fixes in the actual source files without creating duplicates or enhanced versions.
 
+## Automatic Version Management
+The command includes automatic version timestamping for deployment tracking:
+- **Format**: `ARG CODE_VERSION=YYYYMMDD_HHMMSS` (e.g., `20250903_081246`)
+- **Location**: Dockerfile build and runtime stages, before source code copy
+- **Script**: `./update_version.sh` automatically updates version timestamps
+- **API Endpoint**: `/api/version` reflects the deployed version for verification
+- **Integration**: Version updates are automatically included in deployment workflow
+
 ## Live Test Environment Details
 
 ### Web Application
@@ -51,6 +59,11 @@ This command enables Claude to automatically detect, analyze, and fix bugs in th
 - **Metrics**: `src/metrics/` - Real-time analytics and monitoring
 - **Kubernetes**: `src/k8s/` - Kubernetes operator support
 - **Privilege**: `src/privilege_escalation.rs` - Port 53 binding
+
+#### Version Management
+- **Update Script**: `update_version.sh` - Automatic version timestamp generation
+- **Dockerfile**: Version arguments for build and runtime stages
+- **Version API**: `/api/version` endpoint in `src/web/server.rs` - Returns current code version
 
 ### In-Memory Data Structures
 - **User Database**: `HashMap<String, User>` with RwLock
@@ -392,8 +405,15 @@ Security: High priority fixes for production
 Tested: https://atlas.alpha.opensam.foundation/"
 ```
 
-### 4. Deploy to Production
+### 4. Update Version and Deploy to Production
 ```bash
+# Update version timestamp in Dockerfile
+./update_version.sh
+
+# Commit version update
+git add Dockerfile
+git commit -m "chore: update version to $(date +%Y%m%d_%H%M%S)"
+
 # Push to trigger automatic deployment
 git push origin master
 git push gitea master  # If using dual remotes
@@ -405,10 +425,14 @@ git push gitea master  # If using dual remotes
 - Deployment server needs time to build and deploy
 - Set a timer for 3 minutes minimum
 
-### 6. Verify Deployment
+### 6. Verify Deployment and Version
 ```bash
 # After 3+ minute wait
 curl -I https://atlas.alpha.opensam.foundation/
+
+# Verify version deployment
+curl https://atlas.alpha.opensam.foundation/api/version
+# Should return: {"code_version":"YYYYMMDD_HHMMSS","package_version":"0.0.1"}
 
 # Test specific fixes
 curl -X POST https://atlas.alpha.opensam.foundation/auth/login \
