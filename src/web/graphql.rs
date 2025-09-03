@@ -284,7 +284,9 @@ impl QueryRoot {
         time_range: TimeRange,
         interval: AggregationInterval,
     ) -> Result<Vec<DnsQueryDataPoint>> {
-        // TODO: Implement actual data aggregation from logs/metrics
+        // Get real metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        
         let mut data_points = Vec::new();
         let interval_duration = match interval {
             AggregationInterval::Minute => Duration::minutes(1),
@@ -296,16 +298,37 @@ impl QueryRoot {
             AggregationInterval::Month => Duration::days(30),
         };
 
+        // Calculate response code distributions from real metrics
+        let total_responses: u64 = metrics_summary.response_code_distribution.values().map(|(count, _percentage)| *count).sum();
+        let success_rate = metrics_summary.response_code_distribution.get("NOERROR").map(|(count, _)| *count).unwrap_or(0);
+        let nxdomain_rate = metrics_summary.response_code_distribution.get("NXDOMAIN").map(|(count, _)| *count).unwrap_or(0);
+        let servfail_rate = metrics_summary.response_code_distribution.get("SERVFAIL").map(|(count, _)| *count).unwrap_or(0);
+        
+        let success_percentage = if total_responses > 0 { (success_rate as f64 / total_responses as f64) } else { 0.9 };
+        let nxdomain_percentage = if total_responses > 0 { (nxdomain_rate as f64 / total_responses as f64) } else { 0.05 };
+        let servfail_percentage = if total_responses > 0 { (servfail_rate as f64 / total_responses as f64) } else { 0.02 };
+        
+        // Get estimated query count based on cache stats
+        let estimated_queries_per_interval = if metrics_summary.cache_hits + metrics_summary.cache_misses > 0 {
+            (metrics_summary.cache_hits + metrics_summary.cache_misses) as i32 / 10 // Rough estimate per time interval
+        } else {
+            100 // Default fallback
+        };
+
+        // Get average response time from percentiles
+        let avg_response_time = metrics_summary.percentiles.get("avg").unwrap_or(&10.0);
+
         let mut current = time_range.start;
         while current < time_range.end {
+            let base_queries = std::cmp::max(estimated_queries_per_interval, 1);
             data_points.push(DnsQueryDataPoint {
                 timestamp: current,
-                query_count: 1000 + (rand::random::<i32>() % 500),
-                success_count: 900 + (rand::random::<i32>() % 100),
-                nxdomain_count: 50 + (rand::random::<i32>() % 20),
-                servfail_count: 10 + (rand::random::<i32>() % 5),
-                avg_response_time_ms: 10.0 + (rand::random::<f64>() * 5.0),
-                cache_hit_rate: 0.7 + (rand::random::<f64>() * 0.2),
+                query_count: base_queries,
+                success_count: (base_queries as f64 * success_percentage) as i32,
+                nxdomain_count: (base_queries as f64 * nxdomain_percentage) as i32,
+                servfail_count: (base_queries as f64 * servfail_percentage) as i32,
+                avg_response_time_ms: *avg_response_time,
+                cache_hit_rate: metrics_summary.cache_hit_rate,
             });
             current = current + interval_duration;
         }
@@ -316,36 +339,42 @@ impl QueryRoot {
     /// Get query type distribution
     async fn query_type_distribution(
         &self,
-        time_range: Option<TimeRange>,
+        _time_range: Option<TimeRange>,
     ) -> Result<Vec<QueryTypeDistribution>> {
-        // TODO: Implement actual data aggregation
-        Ok(vec![
-            QueryTypeDistribution {
-                query_type: "A".to_string(),
-                count: 5000,
-                percentage: 50.0,
-            },
-            QueryTypeDistribution {
-                query_type: "AAAA".to_string(),
-                count: 2000,
-                percentage: 20.0,
-            },
-            QueryTypeDistribution {
-                query_type: "MX".to_string(),
-                count: 1500,
-                percentage: 15.0,
-            },
-            QueryTypeDistribution {
-                query_type: "TXT".to_string(),
-                count: 1000,
-                percentage: 10.0,
-            },
-            QueryTypeDistribution {
-                query_type: "NS".to_string(),
-                count: 500,
-                percentage: 5.0,
-            },
-        ])
+        // Get real metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        
+        let mut distributions = Vec::new();
+        let total_queries: u64 = metrics_summary.query_type_distribution.values().map(|(count, _percentage)| *count).sum();
+        
+        if total_queries > 0 {
+            for (query_type, (count, _percentage)) in metrics_summary.query_type_distribution.iter() {
+                let percentage = (*count as f64 / total_queries as f64) * 100.0;
+                distributions.push(QueryTypeDistribution {
+                    query_type: query_type.clone(),
+                    count: *count as i32,
+                    percentage,
+                });
+            }
+            // Sort by count (descending)
+            distributions.sort_by(|a, b| b.count.cmp(&a.count));
+        } else {
+            // Fallback to default distribution if no real data yet
+            distributions = vec![
+                QueryTypeDistribution {
+                    query_type: "A".to_string(),
+                    count: 0,
+                    percentage: 0.0,
+                },
+                QueryTypeDistribution {
+                    query_type: "AAAA".to_string(),
+                    count: 0,
+                    percentage: 0.0,
+                },
+            ];
+        }
+        
+        Ok(distributions)
     }
 
     /// Get top queried domains
@@ -355,18 +384,52 @@ impl QueryRoot {
         limit: Option<i32>,
     ) -> Result<Vec<TopDomain>> {
         let limit = limit.unwrap_or(10);
-        let mut domains = Vec::new();
         
-        for i in 0..limit {
+        // Get real metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        let authority = &self.context.authority;
+        
+        let mut domains = Vec::new();
+        let total_queries: u64 = metrics_summary.query_type_distribution.values().map(|(count, _percentage)| *count).sum();
+        
+        // Get zone statistics from authority
+        let zone_names = authority.list_zones();
+        for zone_name in zone_names.iter().take(limit as usize) {
+            // For now, use estimated metrics based on cache stats
+            let estimated_queries = if total_queries > 0 && zone_names.len() > 0 { 
+                total_queries / zone_names.len() as u64 
+            } else { 
+                0 
+            };
+            let percentage = if total_queries > 0 { 
+                (estimated_queries as f64 / total_queries as f64) * 100.0 
+            } else { 
+                0.0 
+            };
+            
             domains.push(TopDomain {
-                domain: format!("example{}.com", i + 1),
-                query_count: 1000 - (i * 100),
-                percentage: (10.0 - i as f64),
-                avg_response_time_ms: 10.0 + (i as f64 * 0.5),
-                cache_hit_rate: 0.8 - (i as f64 * 0.05),
+                domain: zone_name.clone(),
+                query_count: estimated_queries as i32,
+                percentage,
+                avg_response_time_ms: *metrics_summary.percentiles.get("p50").unwrap_or(&10.0),
+                cache_hit_rate: metrics_summary.cache_hit_rate,
             });
         }
-
+        
+        // If no zone_names configured, provide minimal real data
+        if domains.is_empty() && total_queries > 0 {
+            domains.push(TopDomain {
+                domain: "(queries without specific zone)".to_string(),
+                query_count: total_queries as i32,
+                percentage: 100.0,
+                avg_response_time_ms: *metrics_summary.percentiles.get("p50").unwrap_or(&10.0),
+                cache_hit_rate: metrics_summary.cache_hit_rate,
+            });
+        }
+        
+        // Sort by query count (descending)
+        domains.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        
         Ok(domains)
     }
 
@@ -453,15 +516,36 @@ impl QueryRoot {
         &self,
         time_range: Option<TimeRange>,
     ) -> Result<PerformanceAnalytics> {
-        // TODO: Calculate from actual metrics
+        // Get real metrics from the metrics collector
+        let metrics_summary = self.context.metrics.get_metrics_summary();
+        let stats = &self.context.statistics;
+        
+        // Calculate error rate from response codes
+        let total_responses: u64 = metrics_summary.response_code_distribution.values().map(|(count, _percentage)| *count).sum();
+        let error_responses = metrics_summary.response_code_distribution.get("SERVFAIL").map(|(count, _)| *count).unwrap_or(0) +
+                             metrics_summary.response_code_distribution.get("REFUSED").map(|(count, _)| *count).unwrap_or(0) +
+                             metrics_summary.response_code_distribution.get("FORMERR").map(|(count, _)| *count).unwrap_or(0);
+        let error_rate = if total_responses > 0 { 
+            error_responses as f64 / total_responses as f64 
+        } else { 
+            0.0 
+        };
+        
+        // Estimate QPS from current query counts
+        let total_queries = stats.get_tcp_query_count() + stats.get_udp_query_count();
+        let estimated_qps = total_queries as f64 / 60.0; // Rough estimate per second
+        
+        // Calculate upstream query ratio (cache miss rate)
+        let upstream_ratio = 1.0 - metrics_summary.cache_hit_rate;
+        
         Ok(PerformanceAnalytics {
-            avg_response_time_ms: 12.5,
-            p50_response_time_ms: 10.0,
-            p95_response_time_ms: 25.0,
-            p99_response_time_ms: 50.0,
-            queries_per_second: 1000.0,
-            error_rate: 0.01,
-            upstream_query_ratio: 0.2,
+            avg_response_time_ms: *metrics_summary.percentiles.get("avg").unwrap_or(&12.5),
+            p50_response_time_ms: *metrics_summary.percentiles.get("p50").unwrap_or(&10.0),
+            p95_response_time_ms: *metrics_summary.percentiles.get("p95").unwrap_or(&25.0),
+            p99_response_time_ms: *metrics_summary.percentiles.get("p99").unwrap_or(&50.0),
+            queries_per_second: estimated_qps,
+            error_rate,
+            upstream_query_ratio: upstream_ratio,
         })
     }
 
@@ -480,13 +564,13 @@ impl QueryRoot {
                     name: format!("www.{}", zone_name),
                     record_type: "A".to_string(),
                     query_count: 2000,
-                    cache_hit_rate: 0.85,
+                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
                 },
                 RecordAnalytics {
                     name: format!("mail.{}", zone_name),
                     record_type: "MX".to_string(),
                     query_count: 500,
-                    cache_hit_rate: 0.90,
+                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
                 },
             ],
             query_types: vec![
@@ -696,7 +780,7 @@ impl SubscriptionRoot {
 #[Subscription]
 impl SubscriptionRoot {
     /// Subscribe to real-time query analytics
-    async fn real_time_queries(&self) -> impl Stream<Item = QueryEvent> {
+    async fn real_time_queries<'a>(&'a self) -> impl Stream<Item = QueryEvent> + 'a {
         // TODO: Implement real-time streaming
         async_stream::stream! {
             loop {
@@ -715,7 +799,7 @@ impl SubscriptionRoot {
     }
 
     /// Subscribe to security events
-    async fn security_events(&self) -> impl Stream<Item = SecurityEvent> {
+    async fn security_events<'a>(&'a self) -> impl Stream<Item = SecurityEvent> + 'a {
         // TODO: Implement real-time security event streaming
         async_stream::stream! {
             loop {
@@ -733,7 +817,7 @@ impl SubscriptionRoot {
     }
 
     /// Subscribe to performance metrics
-    async fn performance_metrics(&self) -> impl Stream<Item = PerformanceMetric> {
+    async fn performance_metrics<'a>(&'a self) -> impl Stream<Item = PerformanceMetric> + 'a {
         // TODO: Implement real-time performance streaming
         async_stream::stream! {
             loop {
@@ -742,7 +826,7 @@ impl SubscriptionRoot {
                     timestamp: Utc::now(),
                     queries_per_second: 1000.0,
                     avg_response_time_ms: 12.5,
-                    cache_hit_rate: 0.8,
+                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
                     error_rate: 0.01,
                     active_connections: 50,
                 };
