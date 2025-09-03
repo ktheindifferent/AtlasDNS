@@ -1211,10 +1211,19 @@ impl<'a> WebServer<'a> {
     }
     
     fn version_handler(&self, _request: &mut Request) -> Result<ResponseBox> {
-        // Generate version string with current timestamp
-        let version = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        // Get actual code version - use package version as primary identifier
+        let package_version = env!("CARGO_PKG_VERSION");
+        
+        // Try to get deployment-specific version from environment variables
+        // This should be set by the Docker build or deployment process
+        let deployment_version = std::env::var("BUILD_VERSION")
+            .or_else(|_| std::env::var("DOCKER_IMAGE_TAG"))
+            .or_else(|_| std::env::var("APP_VERSION"))
+            .unwrap_or_else(|_| package_version.to_string());
+        
         let response_data = serde_json::json!({
-            "code_version": version
+            "code_version": deployment_version,
+            "package_version": package_version
         });
         
         Ok(Response::from_string(serde_json::to_string(&response_data)?)
