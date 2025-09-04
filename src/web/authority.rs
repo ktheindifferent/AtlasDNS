@@ -11,6 +11,10 @@ use crate::dns::protocol::{DnsRecord, TransientTtl};
 use crate::web::cache::CacheRecordEntry;
 use crate::web::util::FormDataDecodable;
 use crate::web::{Result, WebError};
+use crate::web::validation::{
+    validate_dns_name, validate_record_type, validate_ipv4_address, 
+    validate_ipv6_address, validate_ttl, validate_cname_target, sanitize_log
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZoneCreateRequest {
@@ -79,37 +83,59 @@ impl FormDataDecodable<RecordRequest> for RecordRequest {
 }
 
 impl RecordRequest {
-    fn into_resourcerecord(self) -> Option<DnsRecord> {
-        log::info!("{:?}", self);
-        match self.recordtype.as_str() {
+    fn into_resourcerecord(self) -> Result<DnsRecord> {
+        log::info!("{:?}", sanitize_log(&format!("{:?}", self)));
+        
+        // Validate domain name
+        let domain = validate_dns_name(&self.domain)
+            .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+        
+        // Validate TTL
+        let ttl = validate_ttl(self.ttl)
+            .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+        
+        // Validate and create record based on type
+        let record_type = validate_record_type(&self.recordtype)
+            .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+        
+        match record_type.as_str() {
             "A" => {
-                let addr = self.host.and_then(|x| x.parse::<Ipv4Addr>().ok())?;
+                let host = self.host.ok_or_else(|| 
+                    WebError::InvalidInput("A record requires host IP address".to_string()))?;
+                let addr = validate_ipv4_address(&host)
+                    .map_err(|e| WebError::InvalidInput(e.to_string()))?;
 
-                Some(DnsRecord::A {
-                    domain: self.domain,
+                Ok(DnsRecord::A {
+                    domain,
                     addr,
-                    ttl: TransientTtl(self.ttl),
+                    ttl: TransientTtl(ttl),
                 })
             }
             "AAAA" => {
-                let addr = self.host.and_then(|x| x.parse::<Ipv6Addr>().ok())?;
+                let host = self.host.ok_or_else(|| 
+                    WebError::InvalidInput("AAAA record requires host IPv6 address".to_string()))?;
+                let addr = validate_ipv6_address(&host)
+                    .map_err(|e| WebError::InvalidInput(e.to_string()))?;
 
-                Some(DnsRecord::Aaaa {
-                    domain: self.domain,
+                Ok(DnsRecord::Aaaa {
+                    domain,
                     addr,
-                    ttl: TransientTtl(self.ttl),
+                    ttl: TransientTtl(ttl),
                 })
             }
-            "Cname" => {
-                let host = self.host?;
+            "CNAME" => {
+                let host = self.host.ok_or_else(|| 
+                    WebError::InvalidInput("CNAME record requires target hostname".to_string()))?;
+                let validated_host = validate_cname_target(&host)
+                    .map_err(|e| WebError::InvalidInput(e.to_string()))?;
 
-                Some(DnsRecord::Cname {
-                    domain: self.domain,
-                    host,
-                    ttl: TransientTtl(self.ttl),
+                Ok(DnsRecord::Cname {
+                    domain,
+                    host: validated_host,
+                    ttl: TransientTtl(ttl),
                 })
             }
-            _ => None,
+            _ => Err(WebError::InvalidInput(format!("Unsupported record type: {}", record_type)))
         }
     }
 }
@@ -140,17 +166,38 @@ pub fn zone_list(context: &ServerContext) -> Result<serde_json::Value> {
 }
 
 pub fn zone_create(context: &ServerContext, request: ZoneCreateRequest) -> Result<Zone> {
+    // Validate domain names
+    let domain = validate_dns_name(&request.domain)
+        .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    let m_name = validate_dns_name(&request.m_name)
+        .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    let r_name = validate_dns_name(&request.r_name)
+        .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    
+    // Validate TTL values
+    let refresh = request.refresh.unwrap_or(3600);
+    let retry = request.retry.unwrap_or(3600);
+    let expire = request.expire.unwrap_or(3600);
+    let minimum = request.minimum.unwrap_or(3600);
+    
+    validate_ttl(refresh).map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    validate_ttl(retry).map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    validate_ttl(expire).map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    validate_ttl(minimum).map_err(|e| WebError::InvalidInput(e.to_string()))?;
+
     let mut zones = context.authority.write().map_err(|_| WebError::LockError)?;
 
-    let mut zone = Zone::new(request.domain, request.m_name, request.r_name);
+    let mut zone = Zone::new(domain.clone(), m_name, r_name);
     zone.serial = 0;
-    zone.refresh = request.refresh.unwrap_or(3600);
-    zone.retry = request.retry.unwrap_or(3600);
-    zone.expire = request.expire.unwrap_or(3600);
-    zone.minimum = request.minimum.unwrap_or(3600);
+    zone.refresh = refresh;
+    zone.retry = retry;
+    zone.expire = expire;
+    zone.minimum = minimum;
     zones.add_zone(zone.clone());
 
     zones.save(&context.zones_dir)?;
+    
+    log::info!("Zone created: {}", sanitize_log(&domain));
 
     Ok(zone)
 }
@@ -176,29 +223,41 @@ pub fn zone_view(context: &ServerContext, zone: &str) -> Result<serde_json::Valu
 }
 
 pub fn record_create(context: &ServerContext, zone: &str, request: RecordRequest) -> Result<()> {
-    let rr = request
-        .into_resourcerecord().ok_or(WebError::InvalidRequest)?;
+    // Validate zone name
+    let zone_name = validate_dns_name(zone)
+        .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    
+    // Convert and validate the record request
+    let rr = request.into_resourcerecord()?;
 
     let mut zones = context.authority.write().map_err(|_| WebError::LockError)?;
     let zone = zones
-        .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
+        .get_zone_mut(&zone_name).ok_or(WebError::ZoneNotFound)?;
     zone.add_record(&rr);
 
     zones.save(&context.zones_dir)?;
+    
+    log::info!("Record created in zone {}: {:?}", sanitize_log(&zone_name), rr);
 
     Ok(())
 }
 
 pub fn record_delete(context: &ServerContext, zone: &str, request: RecordRequest) -> Result<()> {
-    let rr = request
-        .into_resourcerecord().ok_or(WebError::InvalidRequest)?;
+    // Validate zone name
+    let zone_name = validate_dns_name(zone)
+        .map_err(|e| WebError::InvalidInput(e.to_string()))?;
+    
+    // Convert and validate the record request
+    let rr = request.into_resourcerecord()?;
 
     let mut zones = context.authority.write().map_err(|_| WebError::LockError)?;
     let zone = zones
-        .get_zone_mut(zone).ok_or(WebError::ZoneNotFound)?;
+        .get_zone_mut(&zone_name).ok_or(WebError::ZoneNotFound)?;
     zone.delete_record(&rr);
 
     zones.save(&context.zones_dir)?;
+    
+    log::info!("Record deleted from zone {}: {:?}", sanitize_log(&zone_name), rr);
 
     Ok(())
 }

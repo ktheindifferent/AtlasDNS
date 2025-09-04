@@ -28,14 +28,14 @@ lazy_static! {
         "atlas_dns_queries_total",
         "Total number of DNS queries received",
         &["protocol", "query_type", "zone"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// DNS response counters by response code
     pub static ref DNS_RESPONSES_TOTAL: IntCounterVec = register_int_counter_vec!(
         "atlas_dns_responses_total", 
         "Total number of DNS responses sent",
         &["response_code", "protocol", "query_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// DNS query duration histogram
     pub static ref DNS_QUERY_DURATION: HistogramVec = register_histogram_vec!(
@@ -43,63 +43,63 @@ lazy_static! {
         "DNS query processing duration in seconds",
         &["protocol", "query_type", "cache_hit"],
         vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Cache hit/miss counters
     pub static ref DNS_CACHE_OPERATIONS: IntCounterVec = register_int_counter_vec!(
         "atlas_dns_cache_operations_total",
         "DNS cache operations (hit/miss/eviction)",
         &["operation", "record_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Cache size gauge
     pub static ref DNS_CACHE_SIZE: IntGaugeVec = register_int_gauge_vec!(
         "atlas_dns_cache_size",
         "Current number of entries in DNS cache",
         &["cache_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Active connections gauge
     pub static ref ACTIVE_CONNECTIONS: IntGaugeVec = register_int_gauge_vec!(
         "atlas_active_connections",
         "Current number of active connections",
         &["protocol", "connection_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Rate limiting counters
     pub static ref RATE_LIMIT_EVENTS: IntCounterVec = register_int_counter_vec!(
         "atlas_rate_limit_events_total",
         "Rate limiting events",
         &["action", "client_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Security threat counters
     pub static ref SECURITY_EVENTS: IntCounterVec = register_int_counter_vec!(
         "atlas_security_events_total",
         "Security events detected",
         &["event_type", "severity", "action"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Memory usage gauges
     pub static ref MEMORY_USAGE: GaugeVec = register_gauge_vec!(
         "atlas_memory_usage_bytes",
         "Memory usage by component",
         &["component"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Zone statistics
     pub static ref ZONE_STATS: IntGaugeVec = register_int_gauge_vec!(
         "atlas_zones",
         "Zone statistics",
         &["metric"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Upstream DNS server metrics
     pub static ref UPSTREAM_QUERIES: IntCounterVec = register_int_counter_vec!(
         "atlas_upstream_queries_total",
         "Queries sent to upstream DNS servers",
         &["upstream", "status"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Upstream response times
     pub static ref UPSTREAM_DURATION: HistogramVec = register_histogram_vec!(
@@ -107,48 +107,48 @@ lazy_static! {
         "Upstream DNS query duration",
         &["upstream"],
         vec![0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// DNSSEC operations
     pub static ref DNSSEC_OPERATIONS: IntCounterVec = register_int_counter_vec!(
         "atlas_dnssec_operations_total",
         "DNSSEC validation operations",
         &["operation", "result"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Health check metrics
     pub static ref HEALTH_CHECKS: IntCounterVec = register_int_counter_vec!(
         "atlas_health_checks_total",
         "Health check results",
         &["check_type", "status"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Server uptime
     pub static ref SERVER_UPTIME: IntGauge = register_int_gauge!(
         "atlas_server_uptime_seconds",
         "Server uptime in seconds"
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Configuration reload events
     pub static ref CONFIG_RELOADS: IntCounterVec = register_int_counter_vec!(
         "atlas_config_reloads_total",
         "Configuration reload events",
         &["status"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Error counters by component
     pub static ref ERRORS_TOTAL: IntCounterVec = register_int_counter_vec!(
         "atlas_errors_total",
         "Total errors by component and type",
         &["component", "error_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Web interface metrics
     pub static ref WEB_REQUESTS: IntCounterVec = register_int_counter_vec!(
         "atlas_web_requests_total",
         "Web interface HTTP requests",
         &["method", "endpoint", "status_code"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Web request duration
     pub static ref WEB_REQUEST_DURATION: HistogramVec = register_histogram_vec!(
@@ -156,40 +156,40 @@ lazy_static! {
         "Web request processing duration",
         &["method", "endpoint"],
         vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// User sessions
     pub static ref USER_SESSIONS: IntGaugeVec = register_int_gauge_vec!(
         "atlas_user_sessions",
         "Active user sessions",
         &["role"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
     /// Unique clients gauge
     pub static ref UNIQUE_CLIENTS: IntGauge = register_int_gauge!(
         "atlas_unique_clients_total",
         "Total number of unique clients"
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Response time percentiles
     pub static ref RESPONSE_TIME_PERCENTILES: GaugeVec = register_gauge_vec!(
         "atlas_response_time_percentiles_ms",
         "Response time percentiles in milliseconds",
         &["percentile"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Protocol usage counters
     pub static ref PROTOCOL_USAGE: IntCounterVec = register_int_counter_vec!(
         "atlas_protocol_usage_total",
         "Total queries by protocol (DoH, DoT, DoQ, standard)",
         &["protocol_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Cache hit rate gauge
     pub static ref CACHE_HIT_RATE: GaugeVec = register_gauge_vec!(
         "atlas_cache_hit_rate",
         "Cache hit rate percentage",
         &["window"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
     
     /// Web request size in bytes
     pub static ref WEB_REQUEST_SIZE: HistogramVec = register_histogram_vec!(
@@ -197,7 +197,7 @@ lazy_static! {
         "Web request size in bytes",
         &["method", "endpoint"],
         vec![100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
     
     /// Web response size in bytes
     pub static ref WEB_RESPONSE_SIZE: HistogramVec = register_histogram_vec!(
@@ -205,35 +205,35 @@ lazy_static! {
         "Web response size in bytes",
         &["method", "endpoint"],
         vec![100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Thread pool statistics gauges
     pub static ref THREAD_POOL_THREADS: IntGaugeVec = register_int_gauge_vec!(
         "atlas_thread_pool_threads",
         "Number of threads in thread pools",
         &["pool_type", "status"]  // status: total, active, idle
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Thread pool queue size gauge
     pub static ref THREAD_POOL_QUEUE_SIZE: IntGaugeVec = register_int_gauge_vec!(
         "atlas_thread_pool_queue_size",
         "Number of queued tasks in thread pools",
         &["pool_type"]  // pool_type: udp_dns, tcp_dns
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Thread pool task counters
     pub static ref THREAD_POOL_TASKS: IntCounterVec = register_int_counter_vec!(
         "atlas_thread_pool_tasks_total",
         "Total number of tasks processed by thread pools",
         &["pool_type", "status"]  // status: completed, failed, timeout
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 
     /// Thread pool utilization gauge
     pub static ref THREAD_POOL_UTILIZATION: GaugeVec = register_gauge_vec!(
         "atlas_thread_pool_utilization_ratio",
         "Thread pool utilization ratio (0.0 to 1.0)",
         &["pool_type"]
-    ).unwrap();
+    ).expect("Failed to register Prometheus metric - check metric server configuration");
 }
 
 /// Comprehensive metrics summary structure
@@ -364,7 +364,7 @@ impl MetricsTracker {
         
         if let Ok(mut times) = self.response_times.write() {
             if !times.is_empty() {
-                times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 
                 let p50_idx = (times.len() as f64 * 0.50) as usize;
                 let p90_idx = (times.len() as f64 * 0.90) as usize;
