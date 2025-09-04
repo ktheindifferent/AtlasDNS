@@ -123,10 +123,10 @@
 - [x] **Real-time Dashboard Updates** - Implement WebSocket/SSE for live data instead of simulated refresh ✅ (2025-09-03 - SSE streaming endpoint)
 
 #### DNS Security Features (Currently UI-only)
-- [ ] **DNSSEC Implementation** - Backend currently returns "Not implemented" 
-- [ ] **DNS Firewall Rules** - Create actual rule engine (UI exists but no backend)
-- [ ] **DDoS Protection** - Implement real protection logic (currently just UI)
-- [ ] **Response Policy Zones** - Build RPZ engine to match UI capabilities
+- [x] **DNSSEC Implementation** - Backend currently returns "Not implemented" ✅ (2025-09-04 - Full implementation with ECDSA P-256)
+- [x] **DNS Firewall Rules** - Create actual rule engine (UI exists but no backend) ✅ (2025-09-04 - Enhanced firewall with advanced filtering)
+- [x] **DDoS Protection** - Implement real protection logic (currently just UI) ✅ (2025-09-04 - Advanced DDoS protection integrated)
+- [x] **Response Policy Zones** - Build RPZ engine to match UI capabilities ✅ (2025-09-04 - RPZ manager fully implemented)
 
 #### Advanced DNS Features (UI Present, Backend Missing)
 - [ ] **GeoDNS Manager** - Implement geographic routing backend
@@ -135,21 +135,21 @@
 - [ ] **Endpoint Health Monitoring** - Implement real health check probes
 
 #### Protocol Support (Partial Implementation)
-- [ ] **DoH (DNS-over-HTTPS)** - Complete RFC 8484 implementation
-- [ ] **DoT (DNS-over-TLS)** - Finish RFC 7858 support
-- [ ] **DoQ (DNS-over-QUIC)** - Implement QUIC protocol support
+- [x] **DoH (DNS-over-HTTPS)** - Complete RFC 8484 implementation ✅ (2025-09-04 - Full RFC 8484 with HTTP/2 support)
+- [x] **DoT (DNS-over-TLS)** - Finish RFC 7858 support ✅ (2025-09-04 - Complete TLS 1.3 implementation)
+- [x] **DoQ (DNS-over-QUIC)** - Implement QUIC protocol support ✅ (2025-09-04 - QUIC protocol support implemented)
 
 #### Analytics & Logging
 - [x] **Query Logging Storage** - Implement persistent query log (currently empty array) ✅ (2025-09-03 - 8a12b2a51)
 - [x] **GraphQL Metrics** - Connect to real data sources (currently returns mock data) ✅ (2025-09-03 - 28853b682)
 - [x] **Log File Management** - Calculate actual log sizes (currently "N/A") ✅ (2025-09-03 - 8a12b2a51)
-- [ ] **Alert System** - Build actual alert manager (UI exists, no backend)
+- [x] **Alert System** - Build actual alert manager (UI exists, no backend) ✅ (2025-09-04 - Full alert management system with notifications)
 
 #### API & Integration
 - [x] **API Key Management** - Implement key generation and validation ✅ (2025-09-03 - f9d0665e7)
-- [ ] **Webhook System** - Build event dispatch system (UI complete, backend missing)
+- [x] **Webhook System** - Build event dispatch system (UI complete, backend missing) ✅ (2025-09-04 - Full webhook system with retry logic and signatures)
 - [x] **API Request Metrics** - Track actual API usage statistics ✅ (2025-09-03 - Real-time API metrics implementation)
-- [ ] **Rate Limiting API** - Implement per-client rate limits
+- [x] **Rate Limiting API** - Implement per-client rate limits ✅ (2025-09-04 - Enhanced rate limiting with per-client controls)
 
 #### Certificate Management
 - [ ] **ACME Integration** - Replace self-signed cert placeholder with real ACME
