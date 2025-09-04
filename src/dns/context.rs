@@ -21,6 +21,7 @@ use crate::dns::geo_loadbalancing::GeoLoadBalancer;
 use crate::dns::performance_optimizer::{PerformanceOptimizer, PerformanceConfig};
 use crate::dns::memory_pool::BufferPool;
 use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
+use crate::dns::health::HealthMonitor;
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -111,6 +112,7 @@ pub struct ServerContext {
     pub enhanced_metrics: Option<Arc<MetricsManager>>,
     pub performance_optimizer: Arc<PerformanceOptimizer>,
     pub zone_templates: Arc<ZoneTemplatesHandler>,
+    pub health_monitor: Arc<HealthMonitor>,
 }
 
 impl Default for ServerContext {
@@ -177,6 +179,7 @@ impl ServerContext {
             enhanced_metrics: None, // Will be initialized later if metrics DB is available
             performance_optimizer,
             zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
+            health_monitor: Arc::new(HealthMonitor::new()),
         })
     }
 
@@ -296,6 +299,7 @@ pub mod tests {
                 BufferPool::new(crate::dns::memory_pool::MemoryPoolConfig::default()),
             )),
             zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
+            health_monitor: Arc::new(HealthMonitor::new()),
         })
     }
 

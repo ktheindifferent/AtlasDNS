@@ -206,6 +206,34 @@ lazy_static! {
         &["method", "endpoint"],
         vec![100.0, 500.0, 1000.0, 5000.0, 10000.0, 50000.0, 100000.0, 500000.0, 1000000.0]
     ).unwrap();
+
+    /// Thread pool statistics gauges
+    pub static ref THREAD_POOL_THREADS: IntGaugeVec = register_int_gauge_vec!(
+        "atlas_thread_pool_threads",
+        "Number of threads in thread pools",
+        &["pool_type", "status"]  // status: total, active, idle
+    ).unwrap();
+
+    /// Thread pool queue size gauge
+    pub static ref THREAD_POOL_QUEUE_SIZE: IntGaugeVec = register_int_gauge_vec!(
+        "atlas_thread_pool_queue_size",
+        "Number of queued tasks in thread pools",
+        &["pool_type"]  // pool_type: udp_dns, tcp_dns
+    ).unwrap();
+
+    /// Thread pool task counters
+    pub static ref THREAD_POOL_TASKS: IntCounterVec = register_int_counter_vec!(
+        "atlas_thread_pool_tasks_total",
+        "Total number of tasks processed by thread pools",
+        &["pool_type", "status"]  // status: completed, failed, timeout
+    ).unwrap();
+
+    /// Thread pool utilization gauge
+    pub static ref THREAD_POOL_UTILIZATION: GaugeVec = register_gauge_vec!(
+        "atlas_thread_pool_utilization_ratio",
+        "Thread pool utilization ratio (0.0 to 1.0)",
+        &["pool_type"]
+    ).unwrap();
 }
 
 /// Comprehensive metrics summary structure
@@ -870,6 +898,20 @@ pub fn initialize_metrics() {
     USER_SESSIONS.with_label_values(&["admin"]).set(0);
     USER_SESSIONS.with_label_values(&["user"]).set(0);
     USER_SESSIONS.with_label_values(&["readonly"]).set(0);
+    
+    // Initialize thread pool metrics
+    THREAD_POOL_THREADS.with_label_values(&["udp_dns", "total"]).set(0);
+    THREAD_POOL_THREADS.with_label_values(&["udp_dns", "active"]).set(0);
+    THREAD_POOL_THREADS.with_label_values(&["udp_dns", "idle"]).set(0);
+    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "total"]).set(0);
+    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "active"]).set(0);
+    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).set(0);
+    
+    THREAD_POOL_QUEUE_SIZE.with_label_values(&["udp_dns"]).set(0);
+    THREAD_POOL_QUEUE_SIZE.with_label_values(&["tcp_dns"]).set(0);
+    
+    THREAD_POOL_UTILIZATION.with_label_values(&["udp_dns"]).set(0.0);
+    THREAD_POOL_UTILIZATION.with_label_values(&["tcp_dns"]).set(0.0);
     
     log::info!("Prometheus metrics initialized");
 }

@@ -21,6 +21,7 @@ use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 use crate::dns::security::SecurityAction;
 use crate::dns::dnssec::DnssecSigner;
+use crate::dns::metrics::{THREAD_POOL_THREADS, THREAD_POOL_QUEUE_SIZE, THREAD_POOL_TASKS, THREAD_POOL_UTILIZATION};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {
@@ -558,7 +559,12 @@ impl DnsUdpServer {
                     .lock()
                     .ok()
                     .and_then(|x| request_cond.wait(x).ok())
-                    .and_then(|mut x| x.pop_front())
+                    .and_then(|mut x| {
+                        let result = x.pop_front();
+                        // Update queue size metrics after popping
+                        THREAD_POOL_QUEUE_SIZE.with_label_values(&["udp_dns"]).set(x.len() as i64);
+                        result
+                    })
                 {
                     Some(x) => x,
                     None => {
@@ -567,7 +573,16 @@ impl DnsUdpServer {
                     }
                 };
 
+                // Update thread activity metrics - mark thread as active
+                THREAD_POOL_THREADS.with_label_values(&["udp_dns", "active"]).inc();
+                THREAD_POOL_THREADS.with_label_values(&["udp_dns", "idle"]).dec();
+                
                 Self::process_request(&socket, context.clone(), src, &request);
+                
+                // Mark task as completed and thread back to idle
+                THREAD_POOL_TASKS.with_label_values(&["udp_dns", "completed"]).inc();
+                THREAD_POOL_THREADS.with_label_values(&["udp_dns", "active"]).dec();
+                THREAD_POOL_THREADS.with_label_values(&["udp_dns", "idle"]).inc();
             }
         })?;
         
@@ -619,6 +634,8 @@ impl DnsUdpServer {
         match self.request_queue.lock() {
             Ok(mut queue) => {
                 queue.push_back((src, request));
+                // Update queue size metrics
+                THREAD_POOL_QUEUE_SIZE.with_label_values(&["udp_dns"]).set(queue.len() as i64);
                 self.request_cond.notify_one();
             }
             Err(e) => {
@@ -649,6 +666,11 @@ impl DnsServer for DnsUdpServer {
 
             self.spawn_request_handler(thread_id, socket_clone)?;
         }
+
+        // Update thread pool metrics
+        THREAD_POOL_THREADS.with_label_values(&["udp_dns", "total"]).set(self.thread_count as i64);
+        THREAD_POOL_THREADS.with_label_values(&["udp_dns", "idle"]).set(self.thread_count as i64);
+        THREAD_POOL_THREADS.with_label_values(&["udp_dns", "active"]).set(0);
 
         // Start servicing incoming requests
         self.spawn_incoming_handler(socket)?;
@@ -698,6 +720,10 @@ impl DnsServer for DnsTcpServer {
                         .tcp_query_count
                         .fetch_add(1, Ordering::Release);
 
+                    // Update thread activity metrics - mark thread as active
+                    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "active"]).inc();
+                    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).dec();
+
                     // When DNS packets are sent over TCP, they're prefixed with a two byte
                     // length. We don't really need to know the length in advance, so we
                     // just move past it and continue reading as usual
@@ -741,9 +767,19 @@ impl DnsServer for DnsTcpServer {
                     ignore_or_report!(stream.write_all(data), "Failed to write response packet");
 
                     ignore_or_report!(stream.shutdown(Shutdown::Both), "Failed to shutdown socket");
+                    
+                    // Mark task as completed and thread back to idle
+                    THREAD_POOL_TASKS.with_label_values(&["tcp_dns", "completed"]).inc();
+                    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "active"]).dec();
+                    THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).inc();
                 }
             })?;
         }
+
+        // Update TCP thread pool metrics
+        THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "total"]).set(self.thread_count as i64);
+        THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).set(self.thread_count as i64);
+        THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "active"]).set(0);
 
         let _ = Builder::new()
             .name("DnsTcpServer-incoming".into())

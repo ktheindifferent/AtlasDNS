@@ -486,43 +486,115 @@ impl PerformanceOptimizer {
 
     /// Get worker thread statistics
     fn get_worker_thread_stats(&self) -> WorkerThreadStats {
-        // TODO: In a real implementation, we would track thread pool statistics
-        // from the DNS servers. For now, provide estimates based on system info.
+        // Get real thread pool statistics from Prometheus metrics if available
+        let (total_threads, active_threads, queued_tasks, total_tasks) = self.get_real_thread_pool_stats();
         
-        use std::thread;
-        let available_parallelism = thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
-        
-        // Estimate based on typical DNS server configuration
-        let total_threads = available_parallelism * 2; // UDP + TCP servers
         let response_stats = self.response_tracker.get_stats();
+        let idle_threads = total_threads.saturating_sub(active_threads);
         
-        // Calculate estimated utilization based on query load
-        let queries_per_sec = if response_stats.total_queries > 0 {
-            response_stats.total_queries as f64 / 60.0 // Rough estimate over last minute
+        // Calculate utilization percentage
+        let utilization_percentage = if total_threads > 0 {
+            (active_threads as f64 / total_threads as f64) * 100.0
         } else {
             0.0
         };
         
-        // Estimate utilization: assume each thread can handle ~100 qps efficiently
-        let estimated_utilization = ((queries_per_sec / (total_threads as f64 * 100.0)) * 100.0).min(100.0);
-        let active_threads = ((estimated_utilization / 100.0) * total_threads as f64) as usize;
+        // Estimate peak utilization (keep a running maximum)
+        let peak_utilization = utilization_percentage * 1.1; // Simple estimate
         
         WorkerThreadStats {
             total_threads,
             active_threads,
-            idle_threads: total_threads - active_threads,
-            total_tasks_processed: response_stats.total_queries,
-            queued_tasks: if estimated_utilization > 80.0 {
-                (estimated_utilization - 80.0) as usize * 10 // Estimate queue buildup
-            } else {
-                0
-            },
+            idle_threads,
+            total_tasks_processed: total_tasks,
+            queued_tasks,
             avg_task_time_us: response_stats.p50_ms * 1000.0, // Convert ms to us
-            utilization_percentage: estimated_utilization,
-            peak_utilization: estimated_utilization * 1.2, // Estimate peak
+            utilization_percentage,
+            peak_utilization,
         }
+    }
+    
+    /// Get real thread pool statistics from Prometheus metrics
+    fn get_real_thread_pool_stats(&self) -> (usize, usize, usize, u64) {
+        use prometheus::gather;
+        
+        let mut total_threads = 0;
+        let mut active_threads = 0; 
+        let mut queued_tasks = 0;
+        let mut total_tasks = 0u64;
+        
+        // Gather all Prometheus metrics
+        let metric_families = gather();
+        
+        for metric_family in &metric_families {
+            match metric_family.get_name() {
+                "atlas_thread_pool_threads" => {
+                    for metric in metric_family.get_metric() {
+                        let labels = metric.get_label();
+                        let status = labels.iter()
+                            .find(|label| label.get_name() == "status")
+                            .map(|label| label.get_value())
+                            .unwrap_or("");
+                        
+                        let value = metric.get_gauge().get_value() as usize;
+                        
+                        match status {
+                            "total" => total_threads += value,
+                            "active" => active_threads += value,
+                            _ => {}
+                        }
+                    }
+                }
+                "atlas_thread_pool_queue_size" => {
+                    for metric in metric_family.get_metric() {
+                        queued_tasks += metric.get_gauge().get_value() as usize;
+                    }
+                }
+                "atlas_thread_pool_tasks_total" => {
+                    for metric in metric_family.get_metric() {
+                        let labels = metric.get_label();
+                        let status = labels.iter()
+                            .find(|label| label.get_name() == "status")
+                            .map(|label| label.get_value())
+                            .unwrap_or("");
+                        
+                        if status == "completed" {
+                            total_tasks += metric.get_counter().get_value() as u64;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        // If no metrics are available, fall back to estimates
+        if total_threads == 0 {
+            use std::thread;
+            let available_parallelism = thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4);
+            
+            total_threads = available_parallelism * 2; // UDP + TCP servers
+            
+            // Estimate active threads based on query load
+            let response_stats = self.response_tracker.get_stats();
+            let queries_per_sec = if response_stats.total_queries > 0 {
+                response_stats.total_queries as f64 / 60.0 // Rough estimate over last minute
+            } else {
+                0.0
+            };
+            
+            let estimated_utilization = ((queries_per_sec / (total_threads as f64 * 100.0)) * 100.0).min(100.0);
+            active_threads = ((estimated_utilization / 100.0) * total_threads as f64) as usize;
+            
+            if estimated_utilization > 80.0 {
+                queued_tasks = (estimated_utilization - 80.0) as usize * 10;
+            }
+            
+            total_tasks = response_stats.total_queries;
+        }
+        
+        (total_threads, active_threads, queued_tasks, total_tasks)
     }
 
     /// Check if performance target is being met
