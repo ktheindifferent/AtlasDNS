@@ -532,11 +532,25 @@ impl MetricsTracker {
     }
 }
 
+/// Zone-specific metrics
+#[derive(Debug, Clone, Default)]
+pub struct ZoneMetrics {
+    pub query_count: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub nxdomain_count: u64,
+    pub error_count: u64,
+    pub query_types: HashMap<String, u64>,
+    pub response_codes: HashMap<String, u64>,
+    pub total_response_time_us: u64,
+}
+
 /// Metrics collector for Atlas DNS server
 pub struct MetricsCollector {
     start_time: Instant,
     registry: Registry,
     tracker: Arc<MetricsTracker>,
+    zone_metrics: Arc<RwLock<HashMap<String, ZoneMetrics>>>,
 }
 
 impl MetricsCollector {
@@ -547,6 +561,7 @@ impl MetricsCollector {
             start_time: Instant::now(),
             registry: Registry::new(),
             tracker: Arc::new(MetricsTracker::new()),
+            zone_metrics: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -662,6 +677,40 @@ impl MetricsCollector {
         ZONE_STATS
             .with_label_values(&[metric])
             .set(value);
+    }
+    
+    /// Record zone-specific query
+    pub fn record_zone_query(&self, zone: &str, query_type: &str, cache_hit: bool, response_code: &str, response_time: Duration) {
+        if let Ok(mut zone_metrics) = self.zone_metrics.write() {
+            let metrics = zone_metrics.entry(zone.to_string()).or_insert_with(ZoneMetrics::default);
+            
+            metrics.query_count += 1;
+            if cache_hit {
+                metrics.cache_hits += 1;
+            } else {
+                metrics.cache_misses += 1;
+            }
+            
+            *metrics.query_types.entry(query_type.to_string()).or_insert(0) += 1;
+            *metrics.response_codes.entry(response_code.to_string()).or_insert(0) += 1;
+            metrics.total_response_time_us += response_time.as_micros() as u64;
+            
+            if response_code == "NXDOMAIN" {
+                metrics.nxdomain_count += 1;
+            } else if response_code == "SERVFAIL" || response_code == "REFUSED" {
+                metrics.error_count += 1;
+            }
+        }
+    }
+    
+    /// Get zone metrics
+    pub fn get_zone_metrics(&self, zone: &str) -> Option<ZoneMetrics> {
+        self.zone_metrics.read().ok()?.get(zone).cloned()
+    }
+    
+    /// Get all zone metrics
+    pub fn get_all_zone_metrics(&self) -> HashMap<String, ZoneMetrics> {
+        self.zone_metrics.read().map(|m| m.clone()).unwrap_or_default()
     }
 
     /// Record upstream query

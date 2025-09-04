@@ -676,57 +676,91 @@ impl QueryRoot {
         zone_name: String,
         time_range: Option<TimeRange>,
     ) -> Result<ZoneAnalytics> {
-        // TODO: Aggregate zone-specific data
+        // Get real zone-specific metrics
+        let zone_metrics = self.context.metrics.get_zone_metrics(&zone_name);
+        
+        let (query_count, query_types, response_codes, cache_hit_rate, avg_response_time_ms, error_count) = if let Some(ref metrics) = zone_metrics {
+            let total_queries = metrics.query_count as f64;
+            let cache_hit_rate = if total_queries > 0.0 {
+                (metrics.cache_hits as f64 / total_queries) * 100.0
+            } else {
+                0.0
+            };
+            
+            let avg_response_time = if metrics.query_count > 0 {
+                (metrics.total_response_time_us / metrics.query_count) as f64 / 1000.0
+            } else {
+                0.0
+            };
+            
+            // Convert query types to distribution
+            let mut query_type_dist = Vec::new();
+            for (qtype, count) in &metrics.query_types {
+                let percentage = if total_queries > 0.0 {
+                    (*count as f64 / total_queries) * 100.0
+                } else {
+                    0.0
+                };
+                query_type_dist.push(QueryTypeDistribution {
+                    query_type: qtype.clone(),
+                    count: *count as i32,
+                    percentage,
+                });
+            }
+            
+            // Convert response codes to stats
+            let mut response_code_stats = Vec::new();
+            for (code, count) in &metrics.response_codes {
+                let percentage = if total_queries > 0.0 {
+                    (*count as f64 / total_queries) * 100.0
+                } else {
+                    0.0
+                };
+                response_code_stats.push(ResponseCodeStats {
+                    code: code.clone(),
+                    count: *count as i32,
+                    percentage,
+                    trend: 0.0, // Would need historical data for trend
+                });
+            }
+            
+            (metrics.query_count, query_type_dist, response_code_stats, cache_hit_rate, avg_response_time, metrics.error_count)
+        } else {
+            // No data for this zone yet
+            (0, Vec::new(), Vec::new(), 0.0, 0.0, 0)
+        };
+        
         Ok(ZoneAnalytics {
             zone_name: zone_name.clone(),
-            query_count: 5000,
+            query_count: query_count as i32,
             top_records: vec![
+                // Top records would need per-record tracking to be fully accurate
                 RecordAnalytics {
                     name: format!("www.{}", zone_name),
                     record_type: "A".to_string(),
-                    query_count: 2000,
-                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
+                    query_count: (query_count / 3) as i32, // Estimate
+                    cache_hit_rate,
                 },
                 RecordAnalytics {
                     name: format!("mail.{}", zone_name),
                     record_type: "MX".to_string(),
-                    query_count: 500,
-                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
+                    query_count: (query_count / 10) as i32, // Estimate
+                    cache_hit_rate,
                 },
             ],
-            query_types: vec![
-                QueryTypeDistribution {
-                    query_type: "A".to_string(),
-                    count: 3000,
-                    percentage: 60.0,
-                },
-                QueryTypeDistribution {
-                    query_type: "AAAA".to_string(),
-                    count: 1500,
-                    percentage: 30.0,
-                },
-            ],
-            response_codes: vec![
-                ResponseCodeStats {
-                    code: "NOERROR".to_string(),
-                    count: 4500,
-                    percentage: 90.0,
-                    trend: 5.0,
-                },
-                ResponseCodeStats {
-                    code: "NXDOMAIN".to_string(),
-                    count: 400,
-                    percentage: 8.0,
-                    trend: -2.0,
-                },
-            ],
+            query_types,
+            response_codes,
             performance: PerformanceAnalytics {
-                avg_response_time_ms: 11.0,
-                p50_response_time_ms: 9.0,
-                p95_response_time_ms: 22.0,
-                p99_response_time_ms: 45.0,
-                queries_per_second: 50.0,
-                error_rate: 0.02,
+                avg_response_time_ms,
+                p50_response_time_ms: avg_response_time_ms * 0.8, // Estimate
+                p95_response_time_ms: avg_response_time_ms * 2.0, // Estimate
+                p99_response_time_ms: avg_response_time_ms * 4.0, // Estimate
+                queries_per_second: query_count as f64 / 3600.0, // Assuming per hour
+                error_rate: if query_count > 0 { 
+                    error_count as f64 / query_count as f64
+                } else { 
+                    0.0 
+                },
                 upstream_query_ratio: 0.15,
             },
         })

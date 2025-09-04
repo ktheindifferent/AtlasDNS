@@ -22,6 +22,7 @@ use crate::dns::performance_optimizer::{PerformanceOptimizer, PerformanceConfig}
 use crate::dns::memory_pool::BufferPool;
 use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
 use crate::dns::health::HealthMonitor;
+use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthCheckConfig};
 use crate::dns::traffic_steering::{TrafficSteeringHandler, TrafficSteeringConfig};
 use crate::metrics::{MetricsManager};
 
@@ -114,6 +115,7 @@ pub struct ServerContext {
     pub performance_optimizer: Arc<PerformanceOptimizer>,
     pub zone_templates: Arc<ZoneTemplatesHandler>,
     pub health_monitor: Arc<HealthMonitor>,
+    pub health_check_analytics: Arc<HealthCheckAnalyticsHandler>,
     pub traffic_steering: Arc<TrafficSteeringHandler>,
 }
 
@@ -182,6 +184,7 @@ impl ServerContext {
             performance_optimizer,
             zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
             health_monitor: Arc::new(HealthMonitor::new()),
+            health_check_analytics: Arc::new(HealthCheckAnalyticsHandler::new(HealthCheckConfig::default())),
             traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
         })
     }

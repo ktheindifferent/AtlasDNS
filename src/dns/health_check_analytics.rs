@@ -624,6 +624,30 @@ impl HealthCheckAnalyticsHandler {
             .map(|(id, state)| (id.clone(), state.status))
             .collect()
     }
+    
+    /// Get count of healthy endpoints
+    pub fn get_healthy_count(&self) -> usize {
+        self.health_states.read()
+            .values()
+            .filter(|state| state.status == HealthStatus::Healthy)
+            .count()
+    }
+    
+    /// Get count of degraded endpoints
+    pub fn get_degraded_count(&self) -> usize {
+        self.health_states.read()
+            .values()
+            .filter(|state| state.status == HealthStatus::Degraded)
+            .count()
+    }
+    
+    /// Get count of unhealthy endpoints
+    pub fn get_unhealthy_count(&self) -> usize {
+        self.health_states.read()
+            .values()
+            .filter(|state| state.status == HealthStatus::Unhealthy)
+            .count()
+    }
 
     /// Create pattern templates
     fn create_pattern_templates() -> Vec<PatternTemplate> {

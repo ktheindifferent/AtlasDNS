@@ -2087,16 +2087,20 @@ impl<'a> WebServer<'a> {
             }
         };
         
+        // Get endpoint health check data
+        let healthy_endpoints = self.context.health_check_analytics.get_healthy_count();
+        let degraded_endpoints = self.context.health_check_analytics.get_degraded_count();
+        let unhealthy_endpoints = self.context.health_check_analytics.get_unhealthy_count();
+        
         let data = serde_json::json!({
             "title": "Health Checks",
             "server_status": if server_responsive { "Healthy" } else { "Starting" },
             "dns_port_status": if self.context.enable_udp || self.context.enable_tcp { "Listening" } else { "Disabled" },
             "api_port_status": if self.context.enable_api { "Listening" } else { "Disabled" },
             "zones_loaded": if let Ok(zones) = self.context.authority.read() { zones.zones().len() } else { 0 },
-            // TODO: Implement endpoint health check manager
-            "healthy_endpoints": 0,
-            "degraded_endpoints": 0,
-            "unhealthy_endpoints": 0,
+            "healthy_endpoints": healthy_endpoints,
+            "degraded_endpoints": degraded_endpoints,
+            "unhealthy_endpoints": unhealthy_endpoints,
             "uptime_percent": uptime_percent
         });
         self.response_from_media_type(request, "health_checks", data)
