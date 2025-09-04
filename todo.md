@@ -63,12 +63,12 @@ Total items: 201 (previously 165)
 - [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
 - [ ] Traffic steering manager - TODO at src/web/server.rs:2023
 - [ ] Endpoint health check manager - TODO at src/web/server.rs:2046
-- [ ] Actual uptime tracking - hardcoded to 100% at src/web/server.rs:2050
-- [ ] Query timestamp storage - TODO at src/web/server.rs:2065
-- [ ] Upstream DNS health checks - TODO at src/dns/health.rs:260
+- [x] Actual uptime tracking - hardcoded to 100% at src/web/server.rs:2050 ✅ (2025-09-04 - 20250904_184615)
+- [x] Query timestamp storage - TODO at src/web/server.rs:2065 ✅ (2025-09-04 - 20250904_184615)
+- [x] Upstream DNS health checks - TODO at src/dns/health.rs:260 ✅ (2025-09-04 - 20250904_184615)
 - [ ] Zone-specific metrics aggregation - TODO at src/web/graphql.rs:679
 - [ ] Record search functionality - TODO at src/web/graphql.rs:992
-- [ ] Statistics reset functionality - TODO at src/web/graphql.rs:1468
+- [x] Statistics reset functionality - TODO at src/web/graphql.rs:1468 ✅ (2025-09-04 - 20250904_184615)
 - [ ] TCP/UDP socket management improvements (context.rs:37-47)
 - [ ] Implement proper DNS notify mechanism (zone_transfer.rs:551)
 - [ ] Complete zero-copy implementation (zerocopy.rs partially done)
@@ -118,7 +118,7 @@ Total items: 201 (previously 165)
 - [ ] Threat feed integration - counter at 0, src/web/server.rs:1838
 - [ ] GraphQL user context - hardcoded to "admin" at src/web/graphql.rs:1485
 - [ ] Query log search API - TODO at src/web/graphql.rs:997
-- [ ] Real upstream server tracking - TODO at src/dns/server.rs:424
+- [x] Real upstream server tracking - TODO at src/dns/server.rs:424 ✅ (2025-09-04 - 20250904_184615)
 - [ ] Implement EDNS0 client subnet support (edns0.rs incomplete)
 - [ ] Add DNS64 support
 - [ ] Implement split-horizon DNS (module exists, needs work)

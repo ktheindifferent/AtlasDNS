@@ -353,6 +353,7 @@ impl DohServer {
             cache_hit: false,
             upstream_server: None,
             dnssec_status: None,
+            timestamp: chrono::Utc::now(),
         };
         self.context.logger.log_dns_query(&ctx, query_log);
 

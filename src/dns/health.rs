@@ -257,16 +257,70 @@ impl HealthMonitor {
     }
 
     async fn check_upstream_dns(&self) {
-        // TODO: Implement actual DNS query to upstream
-        // For now, this is a placeholder
-        self.update_check(
-            "upstream_dns".to_string(),
-            CheckStatus::Pass,
-            Some("Upstream DNS servers reachable".to_string()),
-        );
+        self.check_upstream_dns_with_server(None).await;
     }
 
-    fn check_memory_usage(&self) {
+    /// Check upstream DNS health with specific server information
+    pub async fn check_upstream_dns_with_server(&self, upstream_config: Option<(String, u16)>) {
+        if let Some((host, port)) = upstream_config {
+            // Perform actual DNS health check
+            let check_result = self.perform_upstream_health_check(&host, port).await;
+            
+            match check_result {
+                Ok(_) => {
+                    self.update_check(
+                        "upstream_dns".to_string(),
+                        CheckStatus::Pass,
+                        Some(format!("Upstream DNS server {}:{} is reachable", host, port)),
+                    );
+                }
+                Err(err) => {
+                    self.update_check(
+                        "upstream_dns".to_string(),
+                        CheckStatus::Fail,
+                        Some(format!("Upstream DNS server {}:{} failed: {}", host, port, err)),
+                    );
+                }
+            }
+        } else {
+            // No upstream configured, mark as not applicable
+            self.update_check(
+                "upstream_dns".to_string(),
+                CheckStatus::Pass,
+                Some("No upstream DNS server configured (recursive mode)".to_string()),
+            );
+        }
+    }
+
+    async fn perform_upstream_health_check(&self, host: &str, port: u16) -> std::result::Result<(), String> {
+        use std::net::TcpStream;
+        use std::time::Duration;
+        
+        // Simple TCP connectivity check to the DNS port
+        match std::net::ToSocketAddrs::to_socket_addrs(&format!("{}:{}", host, port)) {
+            Ok(mut addrs) => {
+                if let Some(addr) = addrs.next() {
+                    match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
+                        Ok(_) => {
+                            log::debug!("Successfully connected to upstream DNS server {}:{}", host, port);
+                            Ok(())
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to connect to upstream DNS server {}:{}: {}", host, port, e);
+                            Err(format!("Connection failed: {}", e))
+                        }
+                    }
+                } else {
+                    Err("Could not resolve upstream DNS server address".to_string())
+                }
+            }
+            Err(e) => {
+                Err(format!("Address resolution failed: {}", e))
+            }
+        }
+    }
+
+    pub fn check_memory_usage(&self) {
         // Placeholder for memory check
         // In production, would use system metrics
         self.update_check(
@@ -276,7 +330,7 @@ impl HealthMonitor {
         );
     }
 
-    fn check_error_rates(&self) {
+    pub fn check_error_rates(&self) {
         let queries_total = self.queries_total.load(Ordering::Relaxed);
         let queries_failed = self.queries_failed.load(Ordering::Relaxed);
         
@@ -295,7 +349,23 @@ impl HealthMonitor {
         }
     }
 
-    fn check_cache_performance(&self) {
+    /// Reset all health monitor counters
+    pub fn reset_counters(&self) {
+        self.queries_total.store(0, Ordering::Release);
+        self.queries_failed.store(0, Ordering::Release);
+        self.cache_hits.store(0, Ordering::Release);
+        self.cache_misses.store(0, Ordering::Release);
+        
+        // Clear latency history
+        self.latencies.lock().clear();
+        
+        // Clear health checks history
+        self.checks.lock().clear();
+        
+        log::debug!("Health monitor counters reset");
+    }
+
+    pub fn check_cache_performance(&self) {
         let cache_hits = self.cache_hits.load(Ordering::Relaxed);
         let cache_misses = self.cache_misses.load(Ordering::Relaxed);
         

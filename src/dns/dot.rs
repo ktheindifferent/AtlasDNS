@@ -289,6 +289,7 @@ impl DotServer {
             cache_hit: false,
             upstream_server: None,
             dnssec_status: None,
+            timestamp: chrono::Utc::now(),
         };
         context.logger.log_dns_query(&ctx, query_log);
         

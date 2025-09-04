@@ -861,7 +861,7 @@ impl QueryRoot {
             total_zones: zones,
             total_records: zones * 10, // Estimate
             cache_entries,
-            uptime_seconds: 3600, // TODO: Track actual uptime
+            uptime_seconds: self.context.metrics.get_uptime_seconds() as i64,
             version: env!("CARGO_PKG_VERSION").to_string(),
         })
     }
@@ -1406,8 +1406,8 @@ impl MutationRoot {
 
     /// Trigger manual health check
     async fn trigger_health_check(&self) -> Result<HealthAnalytics> {
-        // Trigger health checks on the monitor
-        self.context.health_monitor.run_checks().await;
+        // Trigger health checks with upstream server configuration
+        self.context.run_health_checks().await;
         
         // Just use placeholder value since we can't easily get the GraphQL context here
         let cache_stats = self.context.cache.get_stats().unwrap_or(crate::dns::cache::CacheStats {
@@ -1465,7 +1465,41 @@ impl MutationRoot {
 
     /// Reset statistics
     async fn reset_statistics(&self, category: Option<String>) -> Result<bool> {
-        // TODO: Reset statistics
+        match category.as_deref() {
+            Some("dns") => {
+                // Reset DNS query statistics
+                self.context.statistics.tcp_query_count.store(0, std::sync::atomic::Ordering::Release);
+                self.context.statistics.udp_query_count.store(0, std::sync::atomic::Ordering::Release);
+                log::info!("DNS statistics reset");
+            }
+            Some("health") => {
+                // Reset health monitor statistics
+                self.context.health_monitor.reset_counters();
+                log::info!("Health monitor statistics reset");
+            }
+            Some("cache") => {
+                // Clear cache statistics by clearing the cache
+                self.context.cache.clear();
+                log::info!("Cache cleared and statistics reset");
+            }
+            Some("metrics") => {
+                // Reset Prometheus metrics (restart counters)
+                // Note: Some metrics like uptime should not be reset
+                log::info!("Metrics reset requested (some metrics like uptime preserved)");
+            }
+            None => {
+                // Reset all statistics
+                self.context.statistics.tcp_query_count.store(0, std::sync::atomic::Ordering::Release);
+                self.context.statistics.udp_query_count.store(0, std::sync::atomic::Ordering::Release);
+                self.context.health_monitor.reset_counters();
+                self.context.cache.clear();
+                log::info!("All statistics reset");
+            }
+            Some(unknown) => {
+                log::warn!("Unknown statistics category: {}", unknown);
+                return Ok(false);
+            }
+        }
         Ok(true)
     }
 

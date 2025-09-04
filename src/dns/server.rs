@@ -316,6 +316,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 cache_hit: false,
                 upstream_server: None,
                 dnssec_status: None,
+                timestamp: chrono::Utc::now(),
             };
             context.logger.log_dns_query(&ctx, query_log);
             
@@ -371,6 +372,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             cache_hit: false,
             upstream_server: None,
             dnssec_status: None,
+            timestamp: chrono::Utc::now(),
         };
         context.logger.log_dns_query(&ctx, query_log);
     } else {
@@ -413,6 +415,18 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             None
         };
 
+        // Determine if upstream server was used based on resolution strategy
+        let upstream_server = match &context.resolve_strategy {
+            crate::dns::context::ResolveStrategy::Forward { host, port } => {
+                if cache_hit {
+                    None // Cache hit, no upstream used
+                } else {
+                    Some(format!("{}:{}", host, port))
+                }
+            }
+            crate::dns::context::ResolveStrategy::Recursive => None, // Recursive resolution
+        };
+
         // Log successful response
         let query_log = DnsQueryLog {
             domain: domain.clone(),
@@ -421,8 +435,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             response_code: format!("{:?}", packet.header.rescode),
             answer_count: packet.answers.len() as u16,
             cache_hit,
-            upstream_server: None, // TODO: Track upstream server
+            upstream_server,
             dnssec_status,
+            timestamp: chrono::Utc::now(),
         };
         context.logger.log_dns_query(&ctx, query_log);
     }
@@ -831,6 +846,18 @@ fn store_dns_query_log(
         .map(|packet| packet.answers.len())
         .sum::<usize>() as u16;
     
+    // Determine if upstream server was used
+    let upstream_server = match &context.resolve_strategy {
+        crate::dns::context::ResolveStrategy::Forward { host, port } => {
+            if cache_hit {
+                None // Cache hit, no upstream used
+            } else {
+                Some(format!("{}:{}", host, port))
+            }
+        }
+        crate::dns::context::ResolveStrategy::Recursive => None, // Recursive resolution
+    };
+
     // Create query log entry
     let query_log = DnsQueryLog {
         domain: question.name.clone(),
@@ -839,8 +866,9 @@ fn store_dns_query_log(
         response_code: format!("{:?}", rescode),
         answer_count,
         cache_hit,
-        upstream_server: None, // Could be enhanced to track upstream server used
+        upstream_server,
         dnssec_status: None,   // Could be enhanced to track DNSSEC validation
+        timestamp: chrono::Utc::now(),
     };
     
     // Store in query log storage

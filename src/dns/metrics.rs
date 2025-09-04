@@ -561,6 +561,11 @@ impl MetricsCollector {
         SERVER_UPTIME.set(uptime as i64);
     }
 
+    /// Get current server uptime in seconds
+    pub fn get_uptime_seconds(&self) -> u64 {
+        self.start_time.elapsed().as_secs()
+    }
+
     /// Record a DNS query
     pub fn record_dns_query(&self, protocol: &str, query_type: &str, zone: &str) {
         DNS_QUERIES_TOTAL

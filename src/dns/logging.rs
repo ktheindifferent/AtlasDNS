@@ -114,6 +114,8 @@ pub struct DnsQueryLog {
     pub upstream_server: Option<String>,
     /// DNSSEC validation status
     pub dnssec_status: Option<String>,
+    /// Timestamp when query was received
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 /// HTTP request logging details
@@ -502,6 +504,7 @@ macro_rules! log_dns_query {
             cache_hit: $cache_hit,
             upstream_server: None,
             dnssec_status: None,
+            timestamp: chrono::Utc::now(),
         };
         $logger.log_dns_query($ctx, query_log);
     }};
@@ -673,6 +676,7 @@ mod tests {
             cache_hit: true,
             upstream_server: Some("8.8.8.8".to_string()),
             dnssec_status: Some("SECURE".to_string()),
+            timestamp: chrono::Utc::now(),
         };
         
         assert_eq!(query_log.domain, "example.com");

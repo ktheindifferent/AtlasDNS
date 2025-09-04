@@ -242,6 +242,22 @@ impl ServerContext {
             }
         }
     }
+
+    /// Run health checks with upstream server configuration
+    pub async fn run_health_checks(&self) {
+        let upstream_config = match &self.resolve_strategy {
+            ResolveStrategy::Forward { host, port } => Some((host.clone(), *port)),
+            ResolveStrategy::Recursive => None,
+        };
+        
+        // Run upstream health check with proper configuration
+        self.health_monitor.check_upstream_dns_with_server(upstream_config).await;
+        
+        // Run other standard health checks
+        self.health_monitor.check_memory_usage();
+        self.health_monitor.check_error_rates();
+        self.health_monitor.check_cache_performance();
+    }
 }
 
 #[cfg(test)]
