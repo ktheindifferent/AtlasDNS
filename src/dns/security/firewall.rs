@@ -394,7 +394,7 @@ impl DnsFirewall {
         {
             let mut blocklists = self.blocklists.write();
             for domain in domains {
-                blocklists.domains.insert(domain, category);
+                blocklists.domains.insert(domain);
             }
         }
         
@@ -457,7 +457,7 @@ impl DnsFirewall {
             if line.contains("CNAME .") {
                 let domain = line.split_whitespace().next().unwrap_or("").to_string();
                 if !domain.is_empty() && self.is_valid_domain(&domain) {
-                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                    rpz.policies.push(RpzPolicy {
                         domain: domain.to_lowercase(),
                         action: RpzAction::Nxdomain,
                         data: None,
@@ -468,7 +468,7 @@ impl DnsFirewall {
             else if line.contains("CNAME rpz-drop") {
                 let domain = line.split_whitespace().next().unwrap_or("").to_string();
                 if !domain.is_empty() && self.is_valid_domain(&domain) {
-                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                    rpz.policies.push(RpzPolicy {
                         domain: domain.to_lowercase(),
                         action: RpzAction::Drop,
                         data: None,
@@ -479,7 +479,7 @@ impl DnsFirewall {
             else if line.contains(" A 127.0.0.") || line.contains(" A 0.0.0.0") {
                 let domain = line.split_whitespace().next().unwrap_or("").to_string();
                 if !domain.is_empty() && self.is_valid_domain(&domain) {
-                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                    rpz.policies.push(RpzPolicy {
                         domain: domain.to_lowercase(),
                         action: RpzAction::Cname,
                         data: Some(b"127.0.0.1".to_vec()),
@@ -759,13 +759,13 @@ impl DnsFirewall {
         log::debug!("Loading blocklist from file: {}", file_path);
         
         let file = File::open(file_path)
-            .map_err(|e| DnsError::Io(format!("Failed to open blocklist file: {}", e)))?;
+            .map_err(|e| DnsError::Io(e))?;
         
         let reader = BufReader::new(file);
         let mut domains = Vec::new();
         
         for (line_num, line) in reader.lines().enumerate() {
-            let line = line.map_err(|e| DnsError::Io(format!("Failed to read line: {}", e)))?;
+            let line = line.map_err(|e| DnsError::Io(e))?;
             let line = line.trim();
             
             // Skip empty lines and comments

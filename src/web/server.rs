@@ -1326,16 +1326,140 @@ impl<'a> WebServer<'a> {
     
     /// Handle DNS resolution requests
     fn resolve_handler(&self, request: &mut Request) -> Result<ResponseBox> {
-        // TODO: Implement DNS resolution API endpoint
-        let response_data = serde_json::json!({
-            "error": "DNS resolve endpoint not yet implemented",
-            "status": "under_development"
+        // Parse request body for DNS query parameters
+        let mut body = String::new();
+        request.as_reader().read_to_string(&mut body)?;
+        
+        let query_params: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|_| {
+            serde_json::json!({})
         });
         
-        Ok(Response::from_string(serde_json::to_string(&response_data)?)
-            .with_header(Self::safe_header("Content-Type: application/json"))
-            .with_status_code(501) // Not Implemented
-            .boxed())
+        // Extract query parameters
+        let qname = query_params.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("example.com");
+        let qtype_str = query_params.get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("A");
+        let recursive = query_params.get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        
+        // Parse query type
+        let qtype = match qtype_str.to_uppercase().as_str() {
+            "A" => crate::dns::protocol::QueryType::A,
+            "AAAA" => crate::dns::protocol::QueryType::Aaaa,
+            "CNAME" => crate::dns::protocol::QueryType::Cname,
+            "MX" => crate::dns::protocol::QueryType::Mx,
+            "NS" => crate::dns::protocol::QueryType::Ns,
+            "TXT" => crate::dns::protocol::QueryType::Txt,
+            "SOA" => crate::dns::protocol::QueryType::Soa,
+            "PTR" => crate::dns::protocol::QueryType::Unknown(12), // PTR type
+            "SRV" => crate::dns::protocol::QueryType::Srv,
+            _ => crate::dns::protocol::QueryType::A,
+        };
+        
+        // Create resolver and perform query
+        let context_clone = self.context.clone();
+        let mut resolver = context_clone.create_resolver(context_clone.clone());
+        
+        match resolver.resolve(qname, qtype, recursive) {
+            Ok(packet) => {
+                // Helper function to format DNS record data
+                let format_record_data = |record: &crate::dns::protocol::DnsRecord| -> String {
+                    match record {
+                        crate::dns::protocol::DnsRecord::A { addr, .. } => addr.to_string(),
+                        crate::dns::protocol::DnsRecord::Aaaa { addr, .. } => addr.to_string(),
+                        crate::dns::protocol::DnsRecord::Cname { host, .. } => host.clone(),
+                        crate::dns::protocol::DnsRecord::Ns { host, .. } => host.clone(),
+                        crate::dns::protocol::DnsRecord::Mx { priority, host, .. } => format!("{} {}", priority, host),
+                        crate::dns::protocol::DnsRecord::Txt { data, .. } => data.clone(),
+                        crate::dns::protocol::DnsRecord::Soa { 
+                            m_name, r_name, serial, refresh, retry, expire, minimum, .. 
+                        } => format!("{} {} {} {} {} {} {}", m_name, r_name, serial, refresh, retry, expire, minimum),
+                        crate::dns::protocol::DnsRecord::Srv { 
+                            priority, weight, port, host, .. 
+                        } => format!("{} {} {} {}", priority, weight, port, host),
+                        _ => "Unknown".to_string(),
+                    }
+                };
+                
+                // Convert DNS packet to JSON response
+                let response_data = serde_json::json!({
+                    "status": "success",
+                    "query": {
+                        "name": qname,
+                        "type": qtype_str,
+                        "recursive": recursive
+                    },
+                    "result": {
+                        "header": {
+                            "id": packet.header.id,
+                            "response": packet.header.response,
+                            "opcode": packet.header.opcode,
+                            "authoritative_answer": packet.header.authoritative_answer,
+                            "truncated_message": packet.header.truncated_message,
+                            "recursion_desired": packet.header.recursion_desired,
+                            "recursion_available": packet.header.recursion_available,
+                            "z": packet.header.z,
+                            "checking_disabled": packet.header.checking_disabled,
+                            "authentic_data": packet.header.authed_data,
+                            "rescode": format!("{:?}", packet.header.rescode)
+                        },
+                        "questions": packet.questions.iter().map(|q| {
+                            serde_json::json!({
+                                "name": q.name,
+                                "qtype": format!("{:?}", q.qtype)
+                            })
+                        }).collect::<Vec<_>>(),
+                        "answers": packet.answers.iter().map(|a| {
+                            serde_json::json!({
+                                "name": a.get_domain().unwrap_or_else(|| "unknown".to_string()),
+                                "type": format!("{:?}", a.get_querytype()),
+                                "ttl": a.get_ttl(),
+                                "data": format_record_data(a)
+                            })
+                        }).collect::<Vec<_>>(),
+                        "authorities": packet.authorities.iter().map(|a| {
+                            serde_json::json!({
+                                "name": a.get_domain().unwrap_or_else(|| "unknown".to_string()),
+                                "type": format!("{:?}", a.get_querytype()),
+                                "ttl": a.get_ttl(),
+                                "data": format_record_data(a)
+                            })
+                        }).collect::<Vec<_>>(),
+                        "additionals": packet.resources.iter().map(|a| {
+                            serde_json::json!({
+                                "name": a.get_domain().unwrap_or_else(|| "unknown".to_string()),
+                                "type": format!("{:?}", a.get_querytype()),
+                                "ttl": a.get_ttl(),
+                                "data": format_record_data(a)
+                            })
+                        }).collect::<Vec<_>>()
+                    }
+                });
+                
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            }
+            Err(e) => {
+                let response_data = serde_json::json!({
+                    "status": "error",
+                    "error": format!("{}", e),
+                    "query": {
+                        "name": qname,
+                        "type": qtype_str,
+                        "recursive": recursive
+                    }
+                });
+                
+                Ok(Response::from_string(serde_json::to_string(&response_data)?)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .with_status_code(500)
+                    .boxed())
+            }
+        }
     }
     
     /// Handle cache clear requests

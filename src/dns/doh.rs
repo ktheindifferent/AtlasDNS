@@ -396,8 +396,8 @@ impl DohServer {
             tc: packet.header.truncated_message,
             rd: packet.header.recursion_desired,
             ra: packet.header.recursion_available,
-            ad: false, // DNSSEC not yet implemented
-            cd: false, // DNSSEC not yet implemented
+            ad: packet.header.authed_data, // DNSSEC Authentic Data flag
+            cd: packet.header.checking_disabled, // DNSSEC Checking Disabled flag
             question: Vec::new(),
             answer: Vec::new(),
             authority: Vec::new(),
