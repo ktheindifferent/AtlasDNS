@@ -61,7 +61,7 @@ Total items: 201 (previously 165)
 ### Missing Core Implementations
 - [ ] DNS-over-TLS (DoT) server - currently stubbed at src/web/server.rs:1943
 - [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
-- [ ] Traffic steering manager - TODO at src/web/server.rs:2023
+- [x] Traffic steering manager - integrated with web dashboard ✅ (2025-09-04 - bb6b98739)
 - [ ] Endpoint health check manager - TODO at src/web/server.rs:2046
 - [x] Actual uptime tracking - hardcoded to 100% at src/web/server.rs:2050 ✅ (2025-09-04 - 20250904_184615)
 - [x] Query timestamp storage - TODO at src/web/server.rs:2065 ✅ (2025-09-04 - 20250904_184615)
@@ -115,7 +115,7 @@ Total items: 201 (previously 165)
 - [ ] Zone transfer (AXFR/IXFR) - module exists but needs implementation
 - [ ] Dynamic DNS updates - module exists but needs completion
 - [ ] Gzip support for zone files - TODO at src/dns/zone_parser.rs:124
-- [ ] Threat feed integration - counter at 0, src/web/server.rs:1838
+- [x] Threat feed integration - counter implemented ✅ (2025-09-04 - bb6b98739)
 - [ ] GraphQL user context - hardcoded to "admin" at src/web/graphql.rs:1485
 - [ ] Query log search API - TODO at src/web/graphql.rs:997
 - [x] Real upstream server tracking - TODO at src/dns/server.rs:424 ✅ (2025-09-04 - 20250904_184615)
