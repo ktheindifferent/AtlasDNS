@@ -72,6 +72,9 @@ pub mod rate_limit;
 /// Retry policy and circuit breaker for DNS queries
 pub mod retry_policy;
 
+/// Timeout handling for DNS queries
+pub mod timeout;
+
 /// Health check and monitoring
 pub mod health;
 

@@ -14,6 +14,7 @@ pub mod bulk_operations;
 pub mod webhooks;
 pub mod validation;
 pub mod csrf;
+pub mod rate_limiter;
 
 #[derive(Debug)]
 pub enum WebError {

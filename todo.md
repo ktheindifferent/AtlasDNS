@@ -24,7 +24,7 @@ Total items: 201 (previously 165)
 - [x] Implement retry logic for failed DNS queries ✅ (2025-09-04 - 20250904_175332)
 - [x] Add circuit breaker pattern for upstream servers ✅ (2025-09-04 - 20250904_175332)
 - [ ] Fix potential deadlocks in RwLock usage (1420+ Arc/clone instances)
-- [ ] Add timeout handling for DNS queries (missing in main implementation)
+- [x] Add timeout handling for DNS queries (missing in main implementation) ✅ (2025-09-04)
 - [ ] Handle socket binding failures gracefully
 - [ ] Implement proper cleanup on thread panic
 - [ ] Fix cross-module circular dependencies (482 internal dependencies)
@@ -37,7 +37,7 @@ Total items: 201 (previously 165)
 
 ### Security Vulnerabilities
 - [x] Add input validation for all web endpoints (no validation found in web handlers) ✅ (2025-09-04 - 2c0cdadb1)
-- [ ] Implement proper rate limiting per user/IP (currently global only)
+- [x] Implement proper rate limiting per user/IP (currently global only) ✅ (2025-09-04)
 - [x] Add CSRF protection for web forms ✅ (2025-09-04 - 20250904_175332)
 - [ ] Implement secure session token rotation
 - [ ] Add password complexity requirements (currently using simple SHA256)
