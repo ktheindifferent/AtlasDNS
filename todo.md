@@ -62,11 +62,11 @@ Total items: 201 (previously 165)
 - [ ] DNS-over-TLS (DoT) server - currently stubbed at src/web/server.rs:1943
 - [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
 - [x] Traffic steering manager - integrated with web dashboard ✅ (2025-09-04 - bb6b98739)
-- [ ] Endpoint health check manager - TODO at src/web/server.rs:2046
+- [x] Endpoint health check manager - implemented with HealthCheckAnalyticsHandler ✅ (2025-09-04 - 0d311a743)
 - [x] Actual uptime tracking - hardcoded to 100% at src/web/server.rs:2050 ✅ (2025-09-04 - 20250904_184615)
 - [x] Query timestamp storage - TODO at src/web/server.rs:2065 ✅ (2025-09-04 - 20250904_184615)
 - [x] Upstream DNS health checks - TODO at src/dns/health.rs:260 ✅ (2025-09-04 - 20250904_184615)
-- [ ] Zone-specific metrics aggregation - TODO at src/web/graphql.rs:679
+- [x] Zone-specific metrics aggregation - real-time zone metrics tracking ✅ (2025-09-04 - 0d311a743)
 - [ ] Record search functionality - TODO at src/web/graphql.rs:992
 - [x] Statistics reset functionality - TODO at src/web/graphql.rs:1468 ✅ (2025-09-04 - 20250904_184615)
 - [ ] TCP/UDP socket management improvements (context.rs:37-47)
