@@ -13,6 +13,7 @@ pub mod api_v2;
 pub mod bulk_operations;
 pub mod webhooks;
 pub mod validation;
+pub mod csrf;
 
 #[derive(Debug)]
 pub enum WebError {

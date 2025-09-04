@@ -69,6 +69,9 @@ pub mod errors;
 /// Rate limiting for DNS queries
 pub mod rate_limit;
 
+/// Retry policy and circuit breaker for DNS queries
+pub mod retry_policy;
+
 /// Health check and monitoring
 pub mod health;
 
