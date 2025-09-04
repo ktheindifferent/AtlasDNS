@@ -16,6 +16,8 @@ pub mod validation;
 pub mod csrf;
 pub mod rate_limiter;
 pub mod panic_handler;
+pub mod token_rotation;
+pub mod secure_password;
 
 #[derive(Debug)]
 pub enum WebError {

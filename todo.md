@@ -39,11 +39,11 @@ Total items: 201 (previously 165)
 - [x] Add input validation for all web endpoints (no validation found in web handlers) ✅ (2025-09-04 - 2c0cdadb1)
 - [x] Implement proper rate limiting per user/IP (currently global only) ✅ (2025-09-04)
 - [x] Add CSRF protection for web forms ✅ (2025-09-04 - 20250904_175332)
-- [ ] Implement secure session token rotation
+- [x] Implement secure session token rotation ✅ (2025-09-04 - 20250904_183342)
 - [x] Add password complexity requirements (currently using simple SHA256) ✅ (2025-09-04) - Already using bcrypt
 - [ ] Implement account lockout after failed attempts
 - [ ] Add audit logging for security events
-- [ ] Fix plaintext password storage in memory
+- [x] Fix plaintext password storage in memory ✅ (2025-09-04 - 20250904_183342)
 - [ ] Add XSS protection in template rendering (innerHTML usage found in templates)
 - [ ] Implement request size limits
 - [ ] Add DNS cache poisoning protection (module exists but empty)
