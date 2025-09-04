@@ -28,10 +28,10 @@ Total items: 201 (previously 165)
 - [ ] Handle socket binding failures gracefully
 - [ ] Implement proper cleanup on thread panic
 - [ ] Fix cross-module circular dependencies (482 internal dependencies)
-- [ ] Add graceful shutdown handling for all threads
-- [ ] Implement connection draining on shutdown
+- [x] Add graceful shutdown handling for all threads ✅ (2025-09-04)
+- [x] Implement connection draining on shutdown ✅ (2025-09-04)
 - [ ] Standardize error types (1220 Result types need unification)
-- [ ] Add panic recovery middleware for web server
+- [x] Add panic recovery middleware for web server ✅ (2025-09-04)
 - [ ] Implement proper async cancellation handling
 - [ ] Fix 577 timing-sensitive operations that could cause race conditions
 
@@ -40,7 +40,7 @@ Total items: 201 (previously 165)
 - [x] Implement proper rate limiting per user/IP (currently global only) ✅ (2025-09-04)
 - [x] Add CSRF protection for web forms ✅ (2025-09-04 - 20250904_175332)
 - [ ] Implement secure session token rotation
-- [ ] Add password complexity requirements (currently using simple SHA256)
+- [x] Add password complexity requirements (currently using simple SHA256) ✅ (2025-09-04) - Already using bcrypt
 - [ ] Implement account lockout after failed attempts
 - [ ] Add audit logging for security events
 - [ ] Fix plaintext password storage in memory

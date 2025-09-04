@@ -75,6 +75,9 @@ pub mod retry_policy;
 /// Timeout handling for DNS queries
 pub mod timeout;
 
+/// Graceful shutdown handling
+pub mod shutdown;
+
 /// Health check and monitoring
 pub mod health;
 
