@@ -676,6 +676,267 @@ impl QueryRoot {
             version: env!("CARGO_PKG_VERSION").to_string(),
         })
     }
+
+    /// Get memory pool statistics
+    async fn memory_pool_stats(&self) -> Result<MemoryPoolStats> {
+        let performance_stats = self.context.performance_optimizer.get_stats();
+        let pool_stats = performance_stats.memory_pool;
+        
+        Ok(MemoryPoolStats {
+            small_pool: PoolStats {
+                total_allocated: pool_stats.small_pool.total_allocated as i32,
+                in_use: pool_stats.small_pool.in_use as i32,
+                available: pool_stats.small_pool.available as i32,
+                total_allocations: pool_stats.small_pool.total_allocations as i32,
+                total_returns: pool_stats.small_pool.total_returns as i32,
+                allocation_failures: pool_stats.small_pool.allocation_failures as i32,
+            },
+            medium_pool: PoolStats {
+                total_allocated: pool_stats.medium_pool.total_allocated as i32,
+                in_use: pool_stats.medium_pool.in_use as i32,
+                available: pool_stats.medium_pool.available as i32,
+                total_allocations: pool_stats.medium_pool.total_allocations as i32,
+                total_returns: pool_stats.medium_pool.total_returns as i32,
+                allocation_failures: pool_stats.medium_pool.allocation_failures as i32,
+            },
+            large_pool: PoolStats {
+                total_allocated: pool_stats.large_pool.total_allocated as i32,
+                in_use: pool_stats.large_pool.in_use as i32,
+                available: pool_stats.large_pool.available as i32,
+                total_allocations: pool_stats.large_pool.total_allocations as i32,
+                total_returns: pool_stats.large_pool.total_returns as i32,
+                allocation_failures: pool_stats.large_pool.allocation_failures as i32,
+            },
+            total_memory_bytes: (pool_stats.small_pool.total_allocated * 512 +
+                                pool_stats.medium_pool.total_allocated * 2048 +
+                                pool_stats.large_pool.total_allocated * 8192) as i64,
+        })
+    }
+
+    /// Get TCP/TLS connection pool statistics
+    async fn connection_pool_stats(&self) -> Result<Vec<ConnectionPoolStats>> {
+        match &self.context.connection_pool {
+            Some(pool_manager) => {
+                let all_stats = pool_manager.get_all_statistics();
+                let mut pool_stats = Vec::new();
+                
+                for (server, stats) in all_stats {
+                    pool_stats.push(ConnectionPoolStats {
+                        server: server.to_string(),
+                        total_created: stats.total_created as i32,
+                        total_closed: stats.total_closed as i32,
+                        current_size: stats.current_size as i32,
+                        total_queries: stats.total_queries as i32,
+                        reuse_count: stats.reuse_count as i32,
+                        failed_connections: stats.failed_connections as i32,
+                        avg_connection_lifetime_ms: stats.avg_connection_lifetime.as_millis() as i32,
+                        pool_utilization: if stats.current_size > 0 {
+                            (stats.reuse_count as f64 / stats.total_queries as f64 * 100.0) as f32
+                        } else {
+                            0.0
+                        },
+                    });
+                }
+                
+                Ok(pool_stats)
+            },
+            None => Ok(Vec::new())
+        }
+    }
+
+    /// Get worker thread pool utilization statistics
+    async fn worker_thread_stats(&self) -> Result<WorkerThreadPoolStats> {
+        let performance_stats = self.context.performance_optimizer.get_stats();
+        let thread_stats = performance_stats.worker_threads;
+        
+        Ok(WorkerThreadPoolStats {
+            total_threads: thread_stats.total_threads as i32,
+            active_threads: thread_stats.active_threads as i32,
+            idle_threads: thread_stats.idle_threads as i32,
+            total_tasks_processed: thread_stats.total_tasks_processed as i64,
+            queued_tasks: thread_stats.queued_tasks as i32,
+            avg_task_time_us: thread_stats.avg_task_time_us as f32,
+            utilization_percentage: thread_stats.utilization_percentage as f32,
+            peak_utilization: thread_stats.peak_utilization as f32,
+        })
+    }
+
+    /// Global search across all resources
+    async fn search(&self, query: String, limit: Option<i32>) -> Result<SearchResults> {
+        let search_term = query.trim().to_lowercase();
+        let search_limit = limit.unwrap_or(50).max(1).min(100) as usize;
+        
+        if search_term.len() < 2 {
+            return Ok(SearchResults {
+                zones: vec![],
+                records: vec![],
+                users: vec![],
+                logs: vec![],
+                total_results: 0,
+            });
+        }
+
+        let mut zones = Vec::new();
+        let mut records = Vec::new();
+        let users = Vec::new(); // Skip users for now - complex API
+        let mut logs = Vec::new();
+
+        // Search DNS zones
+        for zone_name in self.context.authority.list_zones() {
+            if zone_name.to_lowercase().contains(&search_term) {
+                zones.push(SearchResult {
+                        id: zone_name.clone(),
+                        title: zone_name.clone(),
+                        description: format!("DNS Zone: {}", zone_name),
+                        resource_type: "zone".to_string(),
+                        url: format!("/authority?zone={}", zone_name),
+                        match_field: "name".to_string(),
+                    });
+                    
+                    if zones.len() >= search_limit / 2 {
+                        break;
+                    }
+                }
+
+            // Search DNS records within zones (simplified for now)
+            // Skip record searching for initial implementation
+            // TODO: Implement record searching with proper field access
+        }
+
+        // Search query logs (use public API method)
+        // Skip log searching for initial implementation due to private field access
+        // TODO: Add public method to QueryLogStorage for searching
+
+        let total_results = zones.len() + records.len() + users.len() + logs.len();
+        
+        Ok(SearchResults {
+            zones,
+            records,
+            users,
+            logs,
+            total_results: total_results as i32,
+        })
+    }
+
+    /// List available zone templates
+    async fn zone_templates(&self, category: Option<ZoneTemplateCategory>) -> Result<Vec<ZoneTemplate>> {
+        let core_category = category.map(|c| match c {
+            ZoneTemplateCategory::BasicWeb => crate::dns::zone_templates::TemplateCategory::BasicWeb,
+            ZoneTemplateCategory::Ecommerce => crate::dns::zone_templates::TemplateCategory::Ecommerce,
+            ZoneTemplateCategory::Email => crate::dns::zone_templates::TemplateCategory::Email,
+            ZoneTemplateCategory::CDN => crate::dns::zone_templates::TemplateCategory::CDN,
+            ZoneTemplateCategory::API => crate::dns::zone_templates::TemplateCategory::API,
+            ZoneTemplateCategory::Corporate => crate::dns::zone_templates::TemplateCategory::Corporate,
+            ZoneTemplateCategory::Blog => crate::dns::zone_templates::TemplateCategory::Blog,
+            ZoneTemplateCategory::SaaS => crate::dns::zone_templates::TemplateCategory::SaaS,
+            ZoneTemplateCategory::Gaming => crate::dns::zone_templates::TemplateCategory::Gaming,
+            ZoneTemplateCategory::Custom => crate::dns::zone_templates::TemplateCategory::Custom,
+        });
+
+        let templates = self.context.zone_templates.list_templates(core_category);
+        
+        Ok(templates.into_iter().map(|t| ZoneTemplate {
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            category: match t.category {
+                crate::dns::zone_templates::TemplateCategory::BasicWeb => ZoneTemplateCategory::BasicWeb,
+                crate::dns::zone_templates::TemplateCategory::Ecommerce => ZoneTemplateCategory::Ecommerce,
+                crate::dns::zone_templates::TemplateCategory::Email => ZoneTemplateCategory::Email,
+                crate::dns::zone_templates::TemplateCategory::CDN => ZoneTemplateCategory::CDN,
+                crate::dns::zone_templates::TemplateCategory::API => ZoneTemplateCategory::API,
+                crate::dns::zone_templates::TemplateCategory::Corporate => ZoneTemplateCategory::Corporate,
+                crate::dns::zone_templates::TemplateCategory::Blog => ZoneTemplateCategory::Blog,
+                crate::dns::zone_templates::TemplateCategory::SaaS => ZoneTemplateCategory::SaaS,
+                crate::dns::zone_templates::TemplateCategory::Gaming => ZoneTemplateCategory::Gaming,
+                crate::dns::zone_templates::TemplateCategory::Custom => ZoneTemplateCategory::Custom,
+            },
+            parent: t.parent,
+            variables: t.variables.into_iter().map(|v| ZoneTemplateVariable {
+                name: v.name,
+                description: v.description,
+                var_type: format!("{:?}", v.var_type),
+                default_value: v.default_value,
+                required: v.required,
+                pattern: v.pattern,
+            }).collect(),
+            records: t.records.into_iter().map(|r| ZoneTemplateRecord {
+                name: r.name,
+                record_type: r.record_type,
+                ttl: r.ttl,
+                value: r.value,
+                priority: r.priority,
+                weight: r.weight,
+                port: r.port,
+            }).collect(),
+            tags: t.tags,
+            author: t.metadata.author,
+            version: t.metadata.version,
+        }).collect())
+    }
+
+    /// Get a specific zone template by ID
+    async fn zone_template(&self, id: String) -> Result<Option<ZoneTemplate>> {
+        if let Some(t) = self.context.zone_templates.get_template(&id) {
+            Ok(Some(ZoneTemplate {
+                id: t.id,
+                name: t.name,
+                description: t.description,
+                category: match t.category {
+                    crate::dns::zone_templates::TemplateCategory::BasicWeb => ZoneTemplateCategory::BasicWeb,
+                    crate::dns::zone_templates::TemplateCategory::Ecommerce => ZoneTemplateCategory::Ecommerce,
+                    crate::dns::zone_templates::TemplateCategory::Email => ZoneTemplateCategory::Email,
+                    crate::dns::zone_templates::TemplateCategory::CDN => ZoneTemplateCategory::CDN,
+                    crate::dns::zone_templates::TemplateCategory::API => ZoneTemplateCategory::API,
+                    crate::dns::zone_templates::TemplateCategory::Corporate => ZoneTemplateCategory::Corporate,
+                    crate::dns::zone_templates::TemplateCategory::Blog => ZoneTemplateCategory::Blog,
+                    crate::dns::zone_templates::TemplateCategory::SaaS => ZoneTemplateCategory::SaaS,
+                    crate::dns::zone_templates::TemplateCategory::Gaming => ZoneTemplateCategory::Gaming,
+                    crate::dns::zone_templates::TemplateCategory::Custom => ZoneTemplateCategory::Custom,
+                },
+                parent: t.parent,
+                variables: t.variables.into_iter().map(|v| ZoneTemplateVariable {
+                    name: v.name,
+                    description: v.description,
+                    var_type: format!("{:?}", v.var_type),
+                    default_value: v.default_value,
+                    required: v.required,
+                    pattern: v.pattern,
+                }).collect(),
+                records: t.records.into_iter().map(|r| ZoneTemplateRecord {
+                    name: r.name,
+                    record_type: r.record_type,
+                    ttl: r.ttl,
+                    value: r.value,
+                    priority: r.priority,
+                    weight: r.weight,
+                    port: r.port,
+                }).collect(),
+                tags: t.tags,
+                author: t.metadata.author,
+                version: t.metadata.version,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// List zone template instances
+    async fn zone_template_instances(&self, zone_name: Option<String>) -> Result<Vec<ZoneTemplateInstance>> {
+        let instances = self.context.zone_templates.get_instances(zone_name.as_deref());
+        
+        Ok(instances.into_iter().map(|i| ZoneTemplateInstance {
+            id: i.id,
+            template_id: i.template_id,
+            zone_name: i.zone_name,
+            applied_at: chrono::DateTime::from_timestamp(i.applied_at as i64, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d %H:%M:%S UTC")
+                .to_string(),
+            applied_by: i.applied_by,
+            status: format!("{:?}", i.status),
+        }).collect())
+    }
 }
 
 /// Server statistics
@@ -693,6 +954,225 @@ pub struct ServerStats {
     pub version: String,
 }
 
+/// Memory pool statistics for individual pool size
+#[derive(Debug, Clone, SimpleObject)]
+pub struct PoolStats {
+    /// Total buffers allocated
+    pub total_allocated: i32,
+    /// Buffers currently in use
+    pub in_use: i32,
+    /// Buffers available for use
+    pub available: i32,
+    /// Total number of allocations made
+    pub total_allocations: i32,
+    /// Total number of buffers returned
+    pub total_returns: i32,
+    /// Number of failed allocations (pool exhausted)
+    pub allocation_failures: i32,
+}
+
+/// Complete memory pool statistics
+#[derive(Debug, Clone, SimpleObject)]
+pub struct MemoryPoolStats {
+    /// Small buffer pool stats (512 bytes)
+    pub small_pool: PoolStats,
+    /// Medium buffer pool stats (2KB)  
+    pub medium_pool: PoolStats,
+    /// Large buffer pool stats (8KB)
+    pub large_pool: PoolStats,
+    /// Total memory allocated across all pools
+    pub total_memory_bytes: i64,
+}
+
+/// Connection pool statistics for a specific server
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ConnectionPoolStats {
+    /// Server address (host:port)
+    pub server: String,
+    /// Total connections created
+    pub total_created: i32,
+    /// Total connections closed
+    pub total_closed: i32,
+    /// Current active connections
+    pub current_size: i32,
+    /// Total queries handled
+    pub total_queries: i32,
+    /// Connection reuse count
+    pub reuse_count: i32,
+    /// Failed connection attempts
+    pub failed_connections: i32,
+    /// Average connection lifetime in milliseconds
+    pub avg_connection_lifetime_ms: i32,
+    /// Pool utilization percentage (reuse rate)
+    pub pool_utilization: f32,
+}
+
+/// Search result for individual item
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchResult {
+    /// Unique identifier for the result
+    pub id: String,
+    /// Display title
+    pub title: String,
+    /// Description of the result
+    pub description: String,
+    /// Type of resource (zone, record, user, log)
+    pub resource_type: String,
+    /// URL to view the resource
+    pub url: String,
+    /// Field that matched the search term
+    pub match_field: String,
+}
+
+/// Search results containing all matching resources
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchResults {
+    /// Matching DNS zones
+    pub zones: Vec<SearchResult>,
+    /// Matching DNS records
+    pub records: Vec<SearchResult>,
+    /// Matching users
+    pub users: Vec<SearchResult>,
+    /// Matching log entries
+    pub logs: Vec<SearchResult>,
+    /// Total number of results found
+    pub total_results: i32,
+}
+
+/// Zone template category
+#[derive(Debug, Clone, Copy, Enum, Eq, PartialEq)]
+pub enum ZoneTemplateCategory {
+    BasicWeb,
+    Ecommerce,
+    Email,
+    CDN,
+    API,
+    Corporate,
+    Blog,
+    SaaS,
+    Gaming,
+    Custom,
+}
+
+/// Zone template
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ZoneTemplate {
+    /// Template ID
+    pub id: String,
+    /// Template name
+    pub name: String,
+    /// Description
+    pub description: String,
+    /// Category
+    pub category: ZoneTemplateCategory,
+    /// Parent template (for inheritance)
+    pub parent: Option<String>,
+    /// Variables
+    pub variables: Vec<ZoneTemplateVariable>,
+    /// Records
+    pub records: Vec<ZoneTemplateRecord>,
+    /// Tags
+    pub tags: Vec<String>,
+    /// Author
+    pub author: String,
+    /// Version
+    pub version: String,
+}
+
+/// Zone template variable
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ZoneTemplateVariable {
+    /// Variable name
+    pub name: String,
+    /// Description
+    pub description: String,
+    /// Variable type
+    pub var_type: String,
+    /// Default value
+    pub default_value: Option<String>,
+    /// Required flag
+    pub required: bool,
+    /// Pattern
+    pub pattern: Option<String>,
+}
+
+/// Zone template record
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ZoneTemplateRecord {
+    /// Record name (can contain variables)
+    pub name: String,
+    /// Record type
+    pub record_type: String,
+    /// TTL (can be variable)
+    pub ttl: String,
+    /// Record value (can contain variables)
+    pub value: String,
+    /// Priority (for MX, SRV)
+    pub priority: Option<String>,
+    /// Weight (for SRV)
+    pub weight: Option<String>,
+    /// Port (for SRV)
+    pub port: Option<String>,
+}
+
+/// Zone template instance
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ZoneTemplateInstance {
+    /// Instance ID
+    pub id: String,
+    /// Template ID
+    pub template_id: String,
+    /// Zone name
+    pub zone_name: String,
+    /// Applied at
+    pub applied_at: String,
+    /// Applied by
+    pub applied_by: String,
+    /// Status
+    pub status: String,
+}
+
+/// Template application input
+#[derive(Debug, Clone, InputObject)]
+pub struct TemplateApplicationInput {
+    /// Template ID
+    pub template_id: String,
+    /// Zone name
+    pub zone_name: String,
+    /// Variable values
+    pub variables: Vec<TemplateVariableInput>,
+}
+
+/// Template variable input
+#[derive(Debug, Clone, InputObject)]
+pub struct TemplateVariableInput {
+    /// Variable name
+    pub name: String,
+    /// Variable value
+    pub value: String,
+}
+
+/// Worker thread pool utilization statistics
+#[derive(Debug, Clone, SimpleObject)]
+pub struct WorkerThreadPoolStats {
+    /// Total number of worker threads
+    pub total_threads: i32,
+    /// Currently active threads (processing requests)
+    pub active_threads: i32,
+    /// Currently idle threads (waiting for work)
+    pub idle_threads: i32,
+    /// Total tasks processed across all threads
+    pub total_tasks_processed: i64,
+    /// Tasks currently queued for processing
+    pub queued_tasks: i32,
+    /// Average task processing time in microseconds
+    pub avg_task_time_us: f32,
+    /// Thread utilization percentage (0-100)
+    pub utilization_percentage: f32,
+    /// Peak utilization seen
+    pub peak_utilization: f32,
+}
+
 /// GraphQL mutation root
 pub struct MutationRoot {
     context: Arc<ServerContext>,
@@ -708,13 +1188,31 @@ impl MutationRoot {
 impl MutationRoot {
     /// Clear DNS cache
     async fn clear_cache(&self, zone: Option<String>) -> Result<bool> {
-        // TODO: Implement cache clearing
-        if let Some(_zone_name) = zone {
-            // Clear specific zone cache
+        if let Some(zone_name) = zone {
+            // Clear cache entries for specific zone
+            match self.context.cache.clear_zone(&zone_name) {
+                Ok(_) => {
+                    log::info!("Cleared cache for zone: {}", zone_name);
+                    Ok(true)
+                },
+                Err(e) => {
+                    log::error!("Failed to clear cache for zone {}: {}", zone_name, e);
+                    Err(format!("Failed to clear cache for zone: {}", e).into())
+                }
+            }
         } else {
             // Clear all cache
+            match self.context.cache.clear() {
+                Ok(_) => {
+                    log::info!("Cleared all cache entries");
+                    Ok(true)
+                },
+                Err(e) => {
+                    log::error!("Failed to clear cache: {}", e);
+                    Err(format!("Failed to clear cache: {}", e).into())
+                }
+            }
         }
-        Ok(true)
     }
 
     /// Trigger manual health check
@@ -764,6 +1262,34 @@ impl MutationRoot {
         // TODO: Reset statistics
         Ok(true)
     }
+
+    /// Apply a zone template to create DNS records
+    async fn apply_zone_template(&self, input: TemplateApplicationInput) -> Result<Vec<ZoneTemplateRecord>> {
+        // Convert GraphQL input to HashMap
+        let mut variables = std::collections::HashMap::new();
+        for var in input.variables {
+            variables.insert(var.name, var.value);
+        }
+        
+        // Apply the template
+        match self.context.zone_templates.apply_template(
+            &input.template_id,
+            &input.zone_name,
+            variables,
+            "admin", // TODO: Get actual user from context
+        ) {
+            Ok(records) => Ok(records.into_iter().map(|r| ZoneTemplateRecord {
+                name: r.name,
+                record_type: r.record_type,
+                ttl: r.ttl,
+                value: r.value,
+                priority: r.priority,
+                weight: r.weight,
+                port: r.port,
+            }).collect()),
+            Err(e) => Err(Error::new(e)),
+        }
+    }
 }
 
 /// GraphQL subscription root
@@ -781,55 +1307,197 @@ impl SubscriptionRoot {
 impl SubscriptionRoot {
     /// Subscribe to real-time query analytics
     async fn real_time_queries<'a>(&'a self) -> impl Stream<Item = QueryEvent> + 'a {
-        // TODO: Implement real-time streaming
         async_stream::stream! {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                yield QueryEvent {
-                    timestamp: Utc::now(),
-                    domain: "example.com".to_string(),
-                    query_type: "A".to_string(),
-                    response_code: "NOERROR".to_string(),
-                    response_time_ms: 10.0,
-                    cache_hit: true,
-                    client_ip: "192.168.1.1".to_string(),
+            // Get metrics stream if enhanced metrics are available
+            if let Some(metrics_manager) = &self.context.enhanced_metrics {
+                let filter = crate::metrics::streaming::SubscriptionFilter {
+                    update_types: vec![crate::metrics::streaming::UpdateType::QueryMetric],
+                    sample_rate: 1.0,
+                    domains: None,
+                    client_ips: None,
                 };
+                
+                let mut subscriber = metrics_manager.stream().subscribe(filter).await;
+                
+                while let Ok(update) = subscriber.recv().await {
+                    if matches!(update.update_type, crate::metrics::streaming::UpdateType::QueryMetric) {
+                        // Extract query data from metrics update
+                        if let Ok(query_data) = serde_json::from_value::<serde_json::Value>(update.data) {
+                            yield QueryEvent {
+                                timestamp: DateTime::from_timestamp(
+                                    update.timestamp.duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default().as_secs() as i64, 0
+                                ).unwrap_or(Utc::now()),
+                                domain: query_data.get("domain")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("unknown.com").to_string(),
+                                query_type: query_data.get("query_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("A").to_string(),
+                                response_code: query_data.get("response_code")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("NOERROR").to_string(),
+                                response_time_ms: query_data.get("response_time_ms")
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(0.0),
+                                cache_hit: query_data.get("cache_hit")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false),
+                                client_ip: query_data.get("client_ip")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("0.0.0.0").to_string(),
+                            };
+                        }
+                    }
+                }
+            } else {
+                // Fallback to sample data if enhanced metrics not available
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    yield QueryEvent {
+                        timestamp: Utc::now(),
+                        domain: "example.com".to_string(),
+                        query_type: "A".to_string(),
+                        response_code: "NOERROR".to_string(),
+                        response_time_ms: 10.0,
+                        cache_hit: true,
+                        client_ip: "192.168.1.1".to_string(),
+                    };
+                }
             }
         }
     }
 
     /// Subscribe to security events
     async fn security_events<'a>(&'a self) -> impl Stream<Item = SecurityEvent> + 'a {
-        // TODO: Implement real-time security event streaming
         async_stream::stream! {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                yield SecurityEvent {
-                    timestamp: Utc::now(),
-                    event_type: "RateLimit".to_string(),
-                    source_ip: "192.168.1.100".to_string(),
-                    severity: "Medium".to_string(),
-                    action: "Throttled".to_string(),
-                    details: HashMap::new(),
+            // Get metrics stream if enhanced metrics are available
+            if let Some(metrics_manager) = &self.context.enhanced_metrics {
+                let filter = crate::metrics::streaming::SubscriptionFilter {
+                    update_types: vec![crate::metrics::streaming::UpdateType::SecurityEvent],
+                    sample_rate: 1.0,
+                    domains: None,
+                    client_ips: None,
                 };
+                
+                let mut subscriber = metrics_manager.stream().subscribe(filter).await;
+                
+                while let Ok(update) = subscriber.recv().await {
+                    if matches!(update.update_type, crate::metrics::streaming::UpdateType::SecurityEvent) {
+                        // Extract security data from metrics update
+                        if let Ok(security_data) = serde_json::from_value::<serde_json::Value>(update.data) {
+                            yield SecurityEvent {
+                                timestamp: DateTime::from_timestamp(
+                                    update.timestamp.duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default().as_secs() as i64, 0
+                                ).unwrap_or(Utc::now()),
+                                event_type: security_data.get("event_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Unknown").to_string(),
+                                source_ip: security_data.get("source_ip")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("0.0.0.0").to_string(),
+                                severity: security_data.get("severity")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Low").to_string(),
+                                action: security_data.get("action_taken")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("None").to_string(),
+                                details: security_data.get("details")
+                                    .and_then(|v| v.as_object())
+                                    .map(|obj| obj.iter()
+                                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                                        .collect())
+                                    .unwrap_or_default(),
+                            };
+                        }
+                    }
+                }
+            } else {
+                // Fallback to sample data if enhanced metrics not available
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    yield SecurityEvent {
+                        timestamp: Utc::now(),
+                        event_type: "RateLimit".to_string(),
+                        source_ip: "192.168.1.100".to_string(),
+                        severity: "Medium".to_string(),
+                        action: "Throttled".to_string(),
+                        details: HashMap::new(),
+                    };
+                }
             }
         }
     }
 
     /// Subscribe to performance metrics
     async fn performance_metrics<'a>(&'a self) -> impl Stream<Item = PerformanceMetric> + 'a {
-        // TODO: Implement real-time performance streaming
         async_stream::stream! {
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                yield PerformanceMetric {
-                    timestamp: Utc::now(),
-                    queries_per_second: 1000.0,
-                    avg_response_time_ms: 12.5,
-                    cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
-                    error_rate: 0.01,
-                    active_connections: 50,
+            // Get metrics stream if enhanced metrics are available
+            if let Some(metrics_manager) = &self.context.enhanced_metrics {
+                let filter = crate::metrics::streaming::SubscriptionFilter {
+                    update_types: vec![
+                        crate::metrics::streaming::UpdateType::Snapshot,
+                        crate::metrics::streaming::UpdateType::SystemMetric
+                    ],
+                    sample_rate: 0.5, // Sample at 50% to reduce load
+                    domains: None,
+                    client_ips: None,
                 };
+                
+                let mut subscriber = metrics_manager.stream().subscribe(filter).await;
+                
+                while let Ok(update) = subscriber.recv().await {
+                    match update.update_type {
+                        crate::metrics::streaming::UpdateType::Snapshot |
+                        crate::metrics::streaming::UpdateType::SystemMetric => {
+                            // Extract performance data from metrics update
+                            if let Ok(perf_data) = serde_json::from_value::<serde_json::Value>(update.data) {
+                                yield PerformanceMetric {
+                                    timestamp: DateTime::from_timestamp(
+                                        update.timestamp.duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default().as_secs() as i64, 0
+                                    ).unwrap_or(Utc::now()),
+                                    queries_per_second: perf_data.get("queries_per_second")
+                                        .and_then(|v| v.as_f64())
+                                        .unwrap_or_else(|| {
+                                            // Calculate from total queries if available
+                                            perf_data.get("total_queries")
+                                                .and_then(|v| v.as_u64())
+                                                .map(|q| q as f64 / 60.0) // Rough QPS estimate
+                                                .unwrap_or(0.0)
+                                        }),
+                                    avg_response_time_ms: perf_data.get("avg_response_time")
+                                        .and_then(|v| v.as_f64())
+                                        .unwrap_or(0.0),
+                                    cache_hit_rate: perf_data.get("cache_hit_rate")
+                                        .and_then(|v| v.as_f64())
+                                        .unwrap_or_else(|| self.context.metrics.get_metrics_summary().cache_hit_rate),
+                                    error_rate: perf_data.get("error_rate")
+                                        .and_then(|v| v.as_f64())
+                                        .unwrap_or(0.0),
+                                    active_connections: perf_data.get("active_connections")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0) as i32,
+                                };
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            } else {
+                // Fallback to sample data if enhanced metrics not available
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    yield PerformanceMetric {
+                        timestamp: Utc::now(),
+                        queries_per_second: 1000.0,
+                        avg_response_time_ms: 12.5,
+                        cache_hit_rate: self.context.metrics.get_metrics_summary().cache_hit_rate,
+                        error_rate: 0.01,
+                        active_connections: 50,
+                    };
+                }
             }
         }
     }

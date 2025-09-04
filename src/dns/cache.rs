@@ -343,24 +343,64 @@ impl SynchronizedCache {
     }
     
     pub fn get_stats(&self) -> Result<CacheStats> {
-        // Get hit/miss counts from Prometheus metrics
+        use crate::dns::metrics::DNS_CACHE_OPERATIONS;
+        use prometheus::Encoder;
+        
+        // Get actual hit/miss counts from Prometheus metrics
         let mut total_hits = 0u64;
         let mut total_misses = 0u64;
         
-        // Note: In production, we'd query the actual metric values
-        // For now, we'll calculate based on cache entries
+        // Collect metrics from the counter
+        let metric_families = prometheus::gather();
+        for metric_family in metric_families {
+            if metric_family.get_name() == "atlas_dns_cache_operations_total" {
+                for metric in metric_family.get_metric() {
+                    let operation_label = metric.get_label().iter()
+                        .find(|label| label.get_name() == "operation")
+                        .map(|label| label.get_value())
+                        .unwrap_or("");
+                    
+                    let counter_value = metric.get_counter().get_value() as u64;
+                    
+                    match operation_label {
+                        "hit" | "negative_hit" => total_hits += counter_value,
+                        "miss" => total_misses += counter_value,
+                        _ => {} // ignore other operations like "store"
+                    }
+                }
+            }
+        }
+        
         let cache = self.cache.read().map_err(|_| CacheError::PoisonedLock)?;
         let total_entries = cache.domain_entries.len();
         
-        // Calculate approximate memory usage
-        let memory_usage_bytes = total_entries * std::mem::size_of::<DomainEntry>();
+        // Calculate actual memory usage (more precise)
+        let mut memory_usage_bytes = std::mem::size_of::<Cache>();
+        for domain_entry in cache.domain_entries.values() {
+            memory_usage_bytes += std::mem::size_of::<String>() + domain_entry.domain.len();
+            memory_usage_bytes += std::mem::size_of::<DomainEntry>();
+            
+            // Add size of record sets
+            for record_set in domain_entry.record_types.values() {
+                memory_usage_bytes += std::mem::size_of::<RecordSet>();
+                match record_set {
+                    RecordSet::Records { records, .. } => {
+                        memory_usage_bytes += records.len() * std::mem::size_of::<RecordEntry>();
+                    }
+                    RecordSet::NoRecords { .. } => {} // minimal overhead
+                }
+            }
+        }
         
-        // Calculate hit rate (this would normally come from metrics)
+        // Calculate real hit rate based on actual metrics
         let hit_rate = if total_hits + total_misses > 0 {
             (total_hits as f64 / (total_hits + total_misses) as f64) * 100.0
         } else {
             0.0
         };
+        
+        log::debug!("Cache stats - entries: {}, hits: {}, misses: {}, hit_rate: {:.2}%", 
+                   total_entries, total_hits, total_misses, hit_rate);
         
         Ok(CacheStats {
             total_entries,
@@ -481,6 +521,21 @@ impl SynchronizedCache {
         // Clear the domain entries HashMap
         cache.domain_entries.clear();
         
+        Ok(())
+    }
+    
+    /// Clear cache entries for a specific zone
+    pub fn clear_zone(&self, zone_name: &str) -> Result<()> {
+        let mut cache = self.cache.write().map_err(|_| CacheError::PoisonedLock)?;
+        
+        // Remove all cache entries that belong to the specified zone
+        // This includes exact matches and subdomains
+        cache.domain_entries.retain(|domain, _| {
+            // Keep entries that don't match the zone
+            !domain.ends_with(zone_name) && domain != zone_name
+        });
+        
+        log::info!("Cleared cache entries for zone: {}", zone_name);
         Ok(())
     }
 }

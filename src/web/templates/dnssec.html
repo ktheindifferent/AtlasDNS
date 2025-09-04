@@ -715,6 +715,72 @@ function cancelRollover(rolloverId) {
 function runDNSSECValidation() {
     showToast('Running DNSSEC validation on all zones...', 'info');
 }
+
+// Zone Search Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchZones');
+    const searchButton = searchInput?.nextElementSibling;
+    const zonesTable = document.querySelector('.table tbody');
+    
+    if (searchInput && zonesTable) {
+        // Store original table rows
+        const originalRows = Array.from(zonesTable.querySelectorAll('tr'));
+        
+        // Search function
+        function filterZones() {
+            const query = searchInput.value.trim().toLowerCase();
+            
+            if (query === '') {
+                // Show all zones
+                originalRows.forEach(row => {
+                    row.style.display = '';
+                });
+                return;
+            }
+            
+            // Filter zones based on search query
+            originalRows.forEach(row => {
+                const zoneCell = row.querySelector('td:first-child');
+                if (zoneCell) {
+                    const zoneName = zoneCell.textContent.toLowerCase();
+                    const recordCount = zoneCell.textContent.toLowerCase();
+                    
+                    // Search in zone name and record count
+                    if (zoneName.includes(query) || recordCount.includes(query)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+            
+            // Update visible count
+            const visibleRows = originalRows.filter(row => row.style.display !== 'none').length;
+            console.log(`Found ${visibleRows} zones matching "${query}"`);
+        }
+        
+        // Add event listeners
+        searchInput.addEventListener('input', filterZones);
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                filterZones();
+            }
+        });
+        
+        if (searchButton) {
+            searchButton.addEventListener('click', filterZones);
+        }
+        
+        // Clear search when input is cleared
+        searchInput.addEventListener('keyup', function(e) {
+            if (e.key === 'Escape') {
+                this.value = '';
+                filterZones();
+            }
+        });
+    }
+});
 </script>
 {{/inline}}
 

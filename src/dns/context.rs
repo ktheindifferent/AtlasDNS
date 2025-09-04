@@ -16,6 +16,11 @@ use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 use crate::dns::security::{SecurityManager, SecurityConfig};
 use crate::dns::api_keys::ApiKeyManager;
+use crate::dns::geodns::{GeoDnsHandler, GeoDnsConfig};
+use crate::dns::geo_loadbalancing::GeoLoadBalancer;
+use crate::dns::performance_optimizer::{PerformanceOptimizer, PerformanceConfig};
+use crate::dns::memory_pool::BufferPool;
+use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -81,7 +86,7 @@ pub enum ResolveStrategy {
 /// ```
 pub struct ServerContext {
     pub authority: Authority,
-    pub cache: SynchronizedCache,
+    pub cache: Arc<SynchronizedCache>,
     pub client: Box<dyn DnsClient + Sync + Send>,
     pub dns_port: u16,
     pub api_port: u16,
@@ -101,7 +106,11 @@ pub struct ServerContext {
     pub connection_pool: Option<Arc<ConnectionPoolManager>>,
     pub security_manager: Arc<SecurityManager>,
     pub api_key_manager: Arc<ApiKeyManager>,
+    pub geodns_handler: Arc<GeoDnsHandler>,
+    pub geo_load_balancer: Arc<GeoLoadBalancer>,
     pub enhanced_metrics: Option<Arc<MetricsManager>>,
+    pub performance_optimizer: Arc<PerformanceOptimizer>,
+    pub zone_templates: Arc<ZoneTemplatesHandler>,
 }
 
 impl Default for ServerContext {
@@ -125,9 +134,22 @@ impl ServerContext {
         // Initialize query log storage (store up to 1000 recent queries)
         let query_log_storage = Arc::new(QueryLogStorage::new(1000));
         
+        // Initialize memory pool for performance optimization
+        use crate::dns::memory_pool::MemoryPoolConfig;
+        let buffer_pool = BufferPool::new(MemoryPoolConfig::default());
+        
+        // Initialize performance optimizer with shared cache
+        let shared_cache = Arc::new(SynchronizedCache::new());
+        let performance_config = PerformanceConfig::default();
+        let performance_optimizer = Arc::new(PerformanceOptimizer::new(
+            performance_config,
+            shared_cache.clone(),
+            buffer_pool.clone(),
+        ));
+        
         Ok(ServerContext {
             authority: Authority::new(),
-            cache: SynchronizedCache::new(),
+            cache: shared_cache,
             client: Box::new(DnsNetworkClient::new(0)?), // Use port 0 to let OS choose available port
             dns_port: 53,
             api_port: 5380,
@@ -150,7 +172,11 @@ impl ServerContext {
             connection_pool: None,
             security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
             api_key_manager: Arc::new(ApiKeyManager::new()),
+            geodns_handler: Arc::new(GeoDnsHandler::new(GeoDnsConfig::default())),
+            geo_load_balancer: Arc::new(GeoLoadBalancer::new()),
             enhanced_metrics: None, // Will be initialized later if metrics DB is available
+            performance_optimizer,
+            zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
         })
     }
 
@@ -239,7 +265,7 @@ pub mod tests {
         
         Arc::new(ServerContext {
             authority: Authority::new(),
-            cache: SynchronizedCache::new(),
+            cache: Arc::new(SynchronizedCache::new()),
             client: Box::new(DnsStubClient::new(callback)),
             dns_port: 53,
             api_port: 5380,
@@ -257,7 +283,19 @@ pub mod tests {
             ssl_config: SslConfig::default(),
             metrics: Arc::new(MetricsCollector::new()),
             logger,
+            query_log_storage: Arc::new(QueryLogStorage::new(1000)),
             connection_pool: None,
+            security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
+            api_key_manager: Arc::new(ApiKeyManager::new()),
+            geodns_handler: Arc::new(GeoDnsHandler::new(GeoDnsConfig::default())),
+            geo_load_balancer: Arc::new(GeoLoadBalancer::new()),
+            enhanced_metrics: None,
+            performance_optimizer: Arc::new(PerformanceOptimizer::new(
+                PerformanceConfig::default(),
+                Arc::new(SynchronizedCache::new()),
+                BufferPool::new(crate::dns::memory_pool::MemoryPoolConfig::default()),
+            )),
+            zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
         })
     }
 

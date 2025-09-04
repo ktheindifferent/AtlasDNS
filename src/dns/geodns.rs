@@ -576,6 +576,11 @@ impl GeoDnsHandler {
         self.stats.read().clone()
     }
 
+    /// Get configuration
+    pub fn get_config(&self) -> GeoDnsConfig {
+        self.config.read().clone()
+    }
+
     /// Clear cache
     pub fn clear_cache(&self) {
         self.geo_cache.write().clear();

@@ -636,6 +636,16 @@ impl AlertManagementHandler {
             alert.resolved_at.map_or(true, |resolved| resolved > cutoff)
         });
     }
+
+    /// Get alert rules
+    pub fn get_alert_rules(&self) -> Vec<AlertRule> {
+        self.rules.read().values().cloned().collect()
+    }
+
+    /// Get notification channels
+    pub fn get_notification_channels(&self) -> Vec<NotificationChannel> {
+        self.config.read().channels.clone()
+    }
 }
 
 // Helper trait for Duration

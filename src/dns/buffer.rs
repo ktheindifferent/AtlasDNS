@@ -276,7 +276,8 @@ where
     }
 
     fn save_label(&mut self, _: &str, _: usize) {
-        unimplemented!();
+        // StreamPacketBuffer doesn't support label compression/storage
+        // This is a no-op similar to BytePacketBuffer
     }
 
     fn read(&mut self) -> Result<u8> {
@@ -313,11 +314,13 @@ where
     }
 
     fn write(&mut self, _: u8) -> Result<()> {
-        unimplemented!();
+        // StreamPacketBuffer is read-only
+        Err(BufferError::EndOfBuffer)
     }
 
     fn set(&mut self, _: usize, _: u8) -> Result<()> {
-        unimplemented!();
+        // StreamPacketBuffer is read-only
+        Err(BufferError::EndOfBuffer)
     }
 
     fn pos(&self) -> usize {

@@ -168,6 +168,11 @@
                     <input class="form-check-input" type="checkbox" id="showSystem">
                     <label class="form-check-label" for="showSystem">System</label>
                 </div>
+                <div class="form-check form-check-inline ms-4">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearAllFilters()">
+                        <i class="bi bi-x-circle"></i> Clear Filters
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -423,8 +428,147 @@ function clearLogs() {
 }
 
 function searchLogs() {
-    const query = document.getElementById('logSearch').value;
-    showToast(`Searching for: ${query}`, 'info');
+    applyLogFilters();
+}
+
+// Comprehensive log filtering functionality
+let allLogEntries = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Store original log entries for filtering
+    const logEntriesTable = document.getElementById('logEntries');
+    if (logEntriesTable) {
+        allLogEntries = Array.from(logEntriesTable.querySelectorAll('tr'));
+        
+        // Add event listeners for real-time filtering
+        document.getElementById('logSearch')?.addEventListener('input', applyLogFilters);
+        document.getElementById('logLevel')?.addEventListener('change', applyLogFilters);
+        document.getElementById('logSource')?.addEventListener('change', applyLogFilters);
+        document.getElementById('timeRange')?.addEventListener('change', applyLogFilters);
+        
+        // Add checkbox event listeners
+        ['showDNS', 'showErrors', 'showSecurity', 'showPerformance', 'showSystem'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', applyLogFilters);
+        });
+        
+        // Add Enter key support for search input
+        document.getElementById('logSearch')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyLogFilters();
+            }
+        });
+    }
+});
+
+function applyLogFilters() {
+    const query = (document.getElementById('logSearch')?.value || '').trim().toLowerCase();
+    const levelFilter = document.getElementById('logLevel')?.value || '';
+    const sourceFilter = document.getElementById('logSource')?.value || '';
+    const timeRange = document.getElementById('timeRange')?.value || '';
+    
+    // Get checkbox states
+    const showDNS = document.getElementById('showDNS')?.checked ?? true;
+    const showErrors = document.getElementById('showErrors')?.checked ?? true;
+    const showSecurity = document.getElementById('showSecurity')?.checked ?? true;
+    const showPerformance = document.getElementById('showPerformance')?.checked ?? false;
+    const showSystem = document.getElementById('showSystem')?.checked ?? false;
+    
+    let visibleCount = 0;
+    
+    allLogEntries.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 4) return;
+        
+        const timestamp = cells[0].textContent.toLowerCase();
+        const level = cells[1].textContent.toLowerCase();
+        const source = cells[2].textContent.toLowerCase();
+        const message = cells[3].textContent.toLowerCase();
+        
+        let visible = true;
+        
+        // Text search filter
+        if (query && !timestamp.includes(query) && !level.includes(query) && 
+            !source.includes(query) && !message.includes(query)) {
+            visible = false;
+        }
+        
+        // Level filter
+        if (levelFilter && !level.includes(levelFilter.toLowerCase())) {
+            visible = false;
+        }
+        
+        // Source filter  
+        if (sourceFilter && !source.includes(sourceFilter.toLowerCase())) {
+            visible = false;
+        }
+        
+        // Category filters based on log content and source
+        const isDNS = source.includes('dns') || message.includes('query') || message.includes('dnssec');
+        const isError = level.includes('error') || level.includes('warn');
+        const isSecurity = source.includes('security') || message.includes('rate limit') || 
+                          message.includes('auth') || message.includes('blocked');
+        const isPerformance = message.includes('memory') || message.includes('cpu') || 
+                             message.includes('performance') || message.includes('latency');
+        const isSystem = source.includes('system') || message.includes('startup') || 
+                        message.includes('shutdown') || level.includes('trace');
+        
+        // Apply category filters
+        if (!showDNS && isDNS) visible = false;
+        if (!showErrors && isError) visible = false;
+        if (!showSecurity && isSecurity) visible = false;
+        if (!showPerformance && isPerformance) visible = false;
+        if (!showSystem && isSystem) visible = false;
+        
+        // Time range filter (simplified - in real implementation would parse timestamps)
+        if (timeRange === 'custom') {
+            // Custom time range logic would go here
+        }
+        
+        if (visible) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+    
+    // Update status text
+    const statusElement = document.querySelector('.card-footer .text-muted');
+    if (statusElement) {
+        const totalEntries = allLogEntries.length;
+        statusElement.textContent = `Showing ${visibleCount} of ${totalEntries} entries`;
+    }
+    
+    // Show toast with filter results
+    if (query || levelFilter || sourceFilter) {
+        showToast(`Found ${visibleCount} matching log entries`, 'info');
+    }
+}
+
+// Enhanced search with highlighting
+function highlightSearchTerms(text, query) {
+    if (!query) return text;
+    const regex = new RegExp(`(${query})`, 'gi');
+    return text.replace(regex, '<mark>$1</mark>');
+}
+
+// Clear all filters
+function clearAllFilters() {
+    document.getElementById('logSearch').value = '';
+    document.getElementById('logLevel').value = '';
+    document.getElementById('logSource').value = '';
+    document.getElementById('timeRange').value = '24h';
+    
+    // Reset checkboxes to default
+    document.getElementById('showDNS').checked = true;
+    document.getElementById('showErrors').checked = true;
+    document.getElementById('showSecurity').checked = true;
+    document.getElementById('showPerformance').checked = false;
+    document.getElementById('showSystem').checked = false;
+    
+    applyLogFilters();
+    showToast('All filters cleared', 'info');
 }
 
 function viewLogDetails(id) {
@@ -449,18 +593,7 @@ document.getElementById('liveUpdate').addEventListener('change', function() {
     }
 });
 
-// Apply filters
-document.getElementById('logLevel').addEventListener('change', function() {
-    showToast(`Filtering by level: ${this.value || 'All'}`, 'info');
-});
-
-document.getElementById('logSource').addEventListener('change', function() {
-    showToast(`Filtering by source: ${this.value || 'All'}`, 'info');
-});
-
-document.getElementById('timeRange').addEventListener('change', function() {
-    showToast(`Time range: ${this.options[this.selectedIndex].text}`, 'info');
-});
+// Legacy filter event listeners are now handled by the comprehensive filtering system above
 </script>
 {{/inline}}
 

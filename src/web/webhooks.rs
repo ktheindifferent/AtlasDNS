@@ -728,6 +728,36 @@ impl WebhookHandler {
             .collect()
     }
 
+    /// Check if webhooks are enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.read().enabled
+    }
+
+    /// Get supported event types
+    pub fn get_supported_events(&self) -> Vec<String> {
+        vec![
+            "zone.created".to_string(),
+            "zone.updated".to_string(),
+            "zone.deleted".to_string(),
+            "zone.transfer.initiated".to_string(),
+            "zone.transfer.completed".to_string(),
+            "zone.validation.failed".to_string(),
+            "record.created".to_string(),
+            "record.updated".to_string(),
+            "record.deleted".to_string(),
+            "record.bulk.operation".to_string(),
+            "health.check.failed".to_string(),
+            "health.check.recovered".to_string(),
+            "query.blocked".to_string(),
+            "query.allowed".to_string(),
+            "system.started".to_string(),
+            "system.stopped".to_string(),
+            "certificate.renewed".to_string(),
+            "certificate.expired".to_string(),
+            "security.alert".to_string(),
+        ]
+    }
+
     /// Test endpoint
     pub async fn test_endpoint(&self, endpoint_id: &str) -> Result<(), String> {
         let endpoints = self.endpoints.read();

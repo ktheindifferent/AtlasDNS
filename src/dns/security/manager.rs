@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc;
 
 use crate::dns::protocol::DnsPacket;
-use crate::dns::errors::DnsError;
+use crate::dns::errors::{DnsError, ConfigError};
 use super::{
     SecurityCheckResult, SecurityAction, SecurityMetrics, SecurityAlert,
     AlertSeverity, AlertType, ThreatLevel, SecurityComponent,
@@ -330,6 +330,30 @@ impl SecurityManager {
         self.alerts.write().clear();
         self.event_log.write().clear();
         self.log_configuration_change("Reset all security components");
+    }
+
+    /// Get rate limiting metrics
+    pub fn get_rate_limit_metrics(&self) -> super::rate_limiter::RateLimitMetrics {
+        self.rate_limiter.get_metrics()
+    }
+
+    /// Get rate limiting configuration
+    pub fn get_rate_limit_config(&self) -> RateLimitConfig {
+        self.config.read().rate_limiting.clone()
+    }
+
+    /// Update rate limiting configuration
+    pub fn update_rate_limit_config(&self, config: RateLimitConfig) -> Result<(), DnsError> {
+        let config_json = serde_json::to_value(&config).map_err(|_| DnsError::Configuration(ConfigError {
+            parameter: "rate_limit_config".to_string(),
+            value: "serialized_config".to_string(),
+            reason: "Failed to serialize rate limit config".to_string(),
+            suggestion: "Check configuration format".to_string(),
+        }))?;
+        self.rate_limiter.update_config(config_json)?;
+        self.config.write().rate_limiting = config;
+        self.log_configuration_change("Updated rate limiting configuration");
+        Ok(())
     }
 
     // Internal helper methods
