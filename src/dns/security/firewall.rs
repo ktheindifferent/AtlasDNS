@@ -209,6 +209,7 @@ enum RpzAction {
     Cname,
 }
 
+
 /// Firewall metrics
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct FirewallMetrics {
@@ -217,6 +218,9 @@ pub struct FirewallMetrics {
     pub allowed_queries: u64,
     pub monitored_queries: u64,
     pub active_rules: usize,
+    pub total_blocklist_domains: u64,
+    pub total_allowlist_domains: u64,
+    pub total_rpz_policies: u64,
     pub rules_triggered: HashMap<String, u64>,
     pub categories_blocked: HashMap<ThreatCategory, u64>,
     pub top_blocked_domains: Vec<(String, u64)>,
@@ -374,19 +378,124 @@ impl DnsFirewall {
 
     /// Load blocklist from file or URL
     pub fn load_blocklist(&self, source: &str, category: ThreatCategory) -> Result<(), DnsError> {
-        // Implementation would load and parse blocklist
+        log::info!("Loading blocklist from source: {} (category: {:?})", source, category);
+        
+        let domains = if source.starts_with("http://") || source.starts_with("https://") {
+            // Load from URL
+            self.load_blocklist_from_url(source)?
+        } else {
+            // Load from file
+            self.load_blocklist_from_file(source)?
+        };
+        
+        log::info!("Loaded {} domains for category {:?}", domains.len(), category);
+        
+        // Add domains to blocklist
+        {
+            let mut blocklists = self.blocklists.write();
+            for domain in domains {
+                blocklists.domains.insert(domain, category);
+            }
+        }
+        
+        // Update metrics
+        {
+            let mut metrics = self.metrics.write();
+            metrics.total_blocklist_domains = self.blocklists.read().domains.len() as u64;
+        }
+        
         Ok(())
     }
 
     /// Load allowlist from file or URL
     pub fn load_allowlist(&self, source: &str) -> Result<(), DnsError> {
-        // Implementation would load and parse allowlist
+        log::info!("Loading allowlist from source: {}", source);
+        
+        let domains = if source.starts_with("http://") || source.starts_with("https://") {
+            // Load from URL
+            self.load_blocklist_from_url(source)? // Reuse same parser
+        } else {
+            // Load from file
+            self.load_blocklist_from_file(source)? // Reuse same parser
+        };
+        
+        log::info!("Loaded {} domains for allowlist", domains.len());
+        
+        // Add domains to allowlist
+        {
+            let mut allowlists = self.allowlists.write();
+            for domain in domains {
+                allowlists.domains.insert(domain);
+            }
+        }
+        
+        // Update metrics
+        {
+            let mut metrics = self.metrics.write();
+            metrics.total_allowlist_domains = self.allowlists.read().domains.len() as u64;
+        }
+        
         Ok(())
     }
 
     /// Load RPZ zone
     pub fn load_rpz_zone(&self, zone_data: &str) -> Result<(), DnsError> {
-        // Implementation would parse and load RPZ zone
+        log::info!("Loading RPZ zone data ({} bytes)", zone_data.len());
+        
+        // Parse RPZ zone data (simplified implementation)
+        let mut rpz = self.rpz_zones.write();
+        
+        for line in zone_data.lines() {
+            let line = line.trim();
+            
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with(';') {
+                continue;
+            }
+            
+            // Simple RPZ parsing: "domain CNAME ."
+            if line.contains("CNAME .") {
+                let domain = line.split_whitespace().next().unwrap_or("").to_string();
+                if !domain.is_empty() && self.is_valid_domain(&domain) {
+                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                        domain: domain.to_lowercase(),
+                        action: RpzAction::Nxdomain,
+                        data: None,
+                    });
+                }
+            }
+            // "domain CNAME rpz-drop"
+            else if line.contains("CNAME rpz-drop") {
+                let domain = line.split_whitespace().next().unwrap_or("").to_string();
+                if !domain.is_empty() && self.is_valid_domain(&domain) {
+                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                        domain: domain.to_lowercase(),
+                        action: RpzAction::Drop,
+                        data: None,
+                    });
+                }
+            }
+            // "domain A 127.0.0.1" (sinkhole)
+            else if line.contains(" A 127.0.0.") || line.contains(" A 0.0.0.0") {
+                let domain = line.split_whitespace().next().unwrap_or("").to_string();
+                if !domain.is_empty() && self.is_valid_domain(&domain) {
+                    rpz.policies.insert(domain.to_lowercase(), RpzPolicy {
+                        domain: domain.to_lowercase(),
+                        action: RpzAction::Cname,
+                        data: Some(b"127.0.0.1".to_vec()),
+                    });
+                }
+            }
+        }
+        
+        log::info!("Loaded {} RPZ policies", rpz.policies.len());
+        
+        // Update metrics
+        {
+            let mut metrics = self.metrics.write();
+            metrics.total_rpz_policies = rpz.policies.len() as u64;
+        }
+        
         Ok(())
     }
 
@@ -640,6 +749,82 @@ impl DnsFirewall {
             FirewallAction::RateLimit => SecurityAction::RateLimit,
             FirewallAction::Monitor => SecurityAction::Allow,
         }
+    }
+
+    /// Load blocklist from file
+    fn load_blocklist_from_file(&self, file_path: &str) -> Result<Vec<String>, DnsError> {
+        use std::fs::File;
+        use std::io::{BufRead, BufReader};
+
+        log::debug!("Loading blocklist from file: {}", file_path);
+        
+        let file = File::open(file_path)
+            .map_err(|e| DnsError::Io(format!("Failed to open blocklist file: {}", e)))?;
+        
+        let reader = BufReader::new(file);
+        let mut domains = Vec::new();
+        
+        for (line_num, line) in reader.lines().enumerate() {
+            let line = line.map_err(|e| DnsError::Io(format!("Failed to read line: {}", e)))?;
+            let line = line.trim();
+            
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+                continue;
+            }
+            
+            // Parse domain (handle various formats)
+            let domain = if line.starts_with("0.0.0.0 ") || line.starts_with("127.0.0.1 ") {
+                // Hosts file format: "0.0.0.0 domain.com"
+                line.split_whitespace().nth(1).unwrap_or(line).to_string()
+            } else if line.contains(' ') {
+                // Take first part before space
+                line.split_whitespace().next().unwrap_or(line).to_string()
+            } else {
+                // Plain domain format
+                line.to_string()
+            };
+            
+            // Basic domain validation
+            if self.is_valid_domain(&domain) {
+                domains.push(domain.to_lowercase());
+            } else {
+                log::warn!("Invalid domain on line {}: {}", line_num + 1, domain);
+            }
+        }
+        
+        Ok(domains)
+    }
+
+    /// Load blocklist from URL
+    fn load_blocklist_from_url(&self, url: &str) -> Result<Vec<String>, DnsError> {
+        log::debug!("Loading blocklist from URL: {}", url);
+        
+        // For now, return empty list - could be implemented with reqwest
+        log::warn!("URL-based blocklist loading not yet implemented: {}", url);
+        Ok(Vec::new())
+    }
+
+    /// Basic domain validation
+    fn is_valid_domain(&self, domain: &str) -> bool {
+        if domain.is_empty() || domain.len() > 253 {
+            return false;
+        }
+        
+        // Must not start or end with dot
+        if domain.starts_with('.') || domain.ends_with('.') {
+            return false;
+        }
+        
+        // Must contain only valid characters
+        for c in domain.chars() {
+            if !c.is_ascii_alphanumeric() && c != '.' && c != '-' && c != '_' {
+                return false;
+            }
+        }
+        
+        // Must have at least one dot (valid FQDN)
+        domain.contains('.')
     }
 }
 
