@@ -518,6 +518,12 @@ impl DnsFirewall {
         self.metrics.read().clone()
     }
 
+    /// Get the count of active threat feeds
+    pub fn get_threat_feed_count(&self) -> usize {
+        let blocklists = self.blocklists.read();
+        blocklists.threat_feeds.iter().filter(|(_, feed)| feed.enabled).count()
+    }
+
     /// Internal helper methods
     
     fn is_allowlisted(&self, packet: &DnsPacket, client_ip: IpAddr) -> bool {

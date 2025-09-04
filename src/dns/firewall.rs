@@ -581,6 +581,12 @@ impl DnsFirewall {
         }
     }
 
+    /// Get the count of active threat feeds
+    pub fn get_threat_feed_count(&self) -> usize {
+        let feeds = self.threat_feeds.read();
+        feeds.iter().filter(|f| f.enabled).count()
+    }
+
     /// Create a sinkhole response
     pub fn create_sinkhole_response(&self, packet: &DnsPacket, qtype: QueryType) -> DnsPacket {
         let mut response = DnsPacket::new();

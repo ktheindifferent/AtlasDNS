@@ -13,11 +13,14 @@
 //! * **CORS Support** - Cross-origin resource sharing for web clients
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::io::Read;
+use std::time::Instant;
 use tiny_http::{Method, Request, Response, Header};
 use base64;
 use serde::{Serialize, Deserialize};
 use serde_json;
+use parking_lot::RwLock;
 
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
@@ -61,6 +64,27 @@ impl Default for DohConfig {
             cache_max_age: 300,
         }
     }
+}
+
+/// DoH Metrics for tracking statistics
+#[derive(Debug, Clone, Default)]
+pub struct DohMetrics {
+    /// Total number of DoH queries
+    pub total_queries: u64,
+    /// Number of GET requests
+    pub get_requests: u64,
+    /// Number of POST requests  
+    pub post_requests: u64,
+    /// Cache hits
+    pub cache_hits: u64,
+    /// Cache misses
+    pub cache_misses: u64,
+    /// Total response time in microseconds
+    pub total_response_time_us: u64,
+    /// Number of active connections
+    pub active_connections: u64,
+    /// Failed requests
+    pub failed_requests: u64,
 }
 
 /// DNS JSON format for application/dns-json
@@ -127,12 +151,17 @@ pub struct DnsJsonRecord {
 pub struct DohServer {
     context: Arc<ServerContext>,
     config: DohConfig,
+    metrics: Arc<RwLock<DohMetrics>>,
 }
 
 impl DohServer {
     /// Create a new DoH server
     pub fn new(context: Arc<ServerContext>, config: DohConfig) -> Self {
-        Self { context, config }
+        Self { 
+            context, 
+            config,
+            metrics: Arc::new(RwLock::new(DohMetrics::default())),
+        }
     }
 
     /// Check if DoH server is enabled
@@ -143,6 +172,11 @@ impl DohServer {
     /// Get DoH configuration
     pub fn get_config(&self) -> &DohConfig {
         &self.config
+    }
+
+    /// Get DoH metrics
+    pub fn get_metrics(&self) -> DohMetrics {
+        self.metrics.read().clone()
     }
 
     /// Handle DoH request
@@ -171,6 +205,12 @@ impl DohServer {
         request: &Request,
         ctx: CorrelationContext,
     ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
+        // Track GET request
+        {
+            let mut metrics = self.metrics.write();
+            metrics.get_requests += 1;
+        }
+        
         // Extract DNS query from URL parameter
         let query_string = request.url()
             .split('?')
@@ -200,6 +240,12 @@ impl DohServer {
         request: &mut Request,
         ctx: CorrelationContext,
     ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
+        // Track POST request
+        {
+            let mut metrics = self.metrics.write();
+            metrics.post_requests += 1;
+        }
+        
         // Check content type
         let content_type = request.headers()
             .iter()
@@ -234,6 +280,15 @@ impl DohServer {
         query_bytes: &[u8],
         ctx: CorrelationContext,
     ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
+        let start_time = Instant::now();
+        
+        // Track query
+        {
+            let mut metrics = self.metrics.write();
+            metrics.total_queries += 1;
+            metrics.active_connections += 1;
+        }
+        
         // Parse DNS packet
         let mut buffer = BytePacketBuffer::new();
         buffer.buf[..query_bytes.len()].copy_from_slice(query_bytes);
@@ -242,6 +297,11 @@ impl DohServer {
         let request_packet = match DnsPacket::from_buffer(&mut buffer) {
             Ok(packet) => packet,
             Err(_) => {
+                {
+                    let mut metrics = self.metrics.write();
+                    metrics.failed_requests += 1;
+                    metrics.active_connections -= 1;
+                }
                 return Ok(Response::from_string("Bad Request")
                     .with_status_code(400)
                     .boxed());
@@ -250,6 +310,14 @@ impl DohServer {
 
         // Process DNS query
         let mut response_packet = self.resolve_query(request_packet, ctx).await?;
+        
+        // Update metrics with response time
+        {
+            let duration = start_time.elapsed();
+            let mut metrics = self.metrics.write();
+            metrics.total_response_time_us += duration.as_micros() as u64;
+            metrics.active_connections -= 1;
+        }
 
         // Serialize response
         let mut response_buffer = BytePacketBuffer::new();

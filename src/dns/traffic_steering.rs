@@ -814,6 +814,26 @@ impl TrafficSteeringHandler {
         stats.active_shifts = self.get_active_shifts().len();
         stats
     }
+    
+    /// Check if traffic steering is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.read().enabled
+    }
+    
+    /// Get number of active policies
+    pub fn get_policy_count(&self) -> usize {
+        self.policies.read().len()
+    }
+    
+    /// Get number of traffic pools
+    pub fn get_pool_count(&self) -> usize {
+        self.pools.read().len()
+    }
+    
+    /// Get configuration
+    pub fn get_config(&self) -> TrafficSteeringConfig {
+        self.config.read().clone()
+    }
 
     /// Generate ID
     fn generate_id() -> String {

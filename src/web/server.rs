@@ -1835,7 +1835,7 @@ impl<'a> WebServer<'a> {
             "blocked_queries": security_metrics.firewall_blocked,
             "active_rules": security_metrics.active_rules,
             "custom_rules": security_metrics.active_rules, // Same as active rules for now
-            "threat_feeds": 0, // TODO: Track threat feed count
+            "threat_feeds": self.context.security_manager.get_threat_feed_count(),
             "block_rate": if security_metrics.total_queries > 0 {
                 (security_metrics.firewall_blocked as f64 / security_metrics.total_queries as f64) * 100.0
             } else {
@@ -1918,6 +1918,21 @@ impl<'a> WebServer<'a> {
         // Get DoH configuration from server
         let doh_enabled = self.doh_server.is_enabled();
         let doh_config = self.doh_server.get_config();
+        let doh_metrics = self.doh_server.get_metrics();
+        
+        // Calculate average latency
+        let avg_latency_ms = if doh_metrics.total_queries > 0 {
+            (doh_metrics.total_response_time_us / doh_metrics.total_queries) as f64 / 1000.0
+        } else {
+            0.0
+        };
+        
+        // Calculate cache hit rate
+        let cache_hit_rate = if doh_metrics.total_queries > 0 {
+            (doh_metrics.cache_hits as f64 / doh_metrics.total_queries as f64) * 100.0
+        } else {
+            0.0
+        };
         
         let data = serde_json::json!({
             "title": "DNS-over-HTTPS",
@@ -1928,11 +1943,10 @@ impl<'a> WebServer<'a> {
             "cors_enabled": doh_config.cors,
             "max_message_size": doh_config.max_message_size,
             "cache_max_age": doh_config.cache_max_age,
-            // TODO: Add DoH query tracking to metrics
-            "doh_queries": 0,
-            "active_connections": 0,
-            "avg_latency": 0,
-            "cache_hit_rate": 0,
+            "doh_queries": doh_metrics.total_queries,
+            "active_connections": doh_metrics.active_connections,
+            "avg_latency": avg_latency_ms,
+            "cache_hit_rate": cache_hit_rate,
         });
         self.response_from_media_type(request, "doh", data)
     }
@@ -2018,15 +2032,33 @@ impl<'a> WebServer<'a> {
     }
     
     fn traffic_steering_page(&self, request: &Request) -> Result<ResponseBox> {
+        // Get traffic steering data
+        let enabled = self.context.traffic_steering.is_enabled();
+        let stats = self.context.traffic_steering.get_stats();
+        let active_policies = self.context.traffic_steering.get_policy_count();
+        let pool_count = self.context.traffic_steering.get_pool_count();
+        let active_shifts = self.context.traffic_steering.get_active_shifts();
+        
+        // Count different types of deployments
+        let ab_tests = stats.by_pool.iter()
+            .filter(|(name, _)| name.contains("test") || name.contains("variant"))
+            .count();
+        let canary_deployments = stats.by_pool.iter()
+            .filter(|(name, _)| name.contains("canary"))
+            .count();
+        
         let data = serde_json::json!({
             "title": "Traffic Steering",
-            // TODO: Implement traffic steering manager
-            "enabled": false,
-            "active_policies": 0,
-            "traffic_splits": 0,
-            "ab_tests": 0,
-            "redirects": 0,
-            "canary_deployments": 0,
+            "enabled": enabled,
+            "active_policies": active_policies,
+            "traffic_splits": pool_count,
+            "ab_tests": ab_tests,
+            "redirects": stats.total_decisions,
+            "canary_deployments": canary_deployments,
+            "active_shifts": active_shifts.len(),
+            "completed_shifts": stats.completed_shifts,
+            "session_hits": stats.session_hits,
+            "session_misses": stats.session_misses,
         });
         self.response_from_media_type(request, "traffic_steering", data)
     }

@@ -342,6 +342,11 @@ impl SecurityManager {
         self.config.read().rate_limiting.clone()
     }
 
+    /// Get the count of active threat feeds
+    pub fn get_threat_feed_count(&self) -> usize {
+        self.firewall.get_threat_feed_count()
+    }
+
     /// Update rate limiting configuration
     pub fn update_rate_limit_config(&self, config: RateLimitConfig) -> Result<(), DnsError> {
         let config_json = serde_json::to_value(&config).map_err(|_| DnsError::Configuration(ConfigError {
