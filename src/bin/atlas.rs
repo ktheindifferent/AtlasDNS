@@ -1,6 +1,7 @@
 use std::env;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
+use std::thread;
 
 use getopts::Options;
 extern crate sentry;
@@ -286,25 +287,72 @@ fn main() {
 
     log::info!("Listening on port {}", context.dns_port);
 
-    // Start DNS servers
+    // Start DNS servers in background threads
+    let mut dns_threads = Vec::new();
+    
     if context.enable_udp {
-        let udp_server = DnsUdpServer::new(context.clone(), 20);
-        if let Err(e) = udp_server.run_server() {
-            log::info!("Failed to bind UDP listener: {:?}", e);
-        }
+        let udp_context = context.clone();
+        let udp_handle = std::thread::Builder::new()
+            .name("DNS-UDP-Main".to_string())
+            .spawn(move || {
+                log::info!("Starting UDP DNS server on port {}", udp_context.dns_port);
+                let udp_server = DnsUdpServer::new(udp_context, 20);
+                match udp_server.run_server() {
+                    Ok(_) => {
+                        log::info!("UDP DNS server started successfully");
+                        // Keep this thread alive indefinitely
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(3600));
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to start UDP DNS server: {:?}", e);
+                        sentry::capture_message(&format!("UDP DNS server startup failed: {:?}", e), sentry::Level::Error);
+                    }
+                }
+            })
+            .expect("Failed to spawn UDP DNS server thread");
+        dns_threads.push(udp_handle);
     }
 
     if context.enable_tcp {
-        let tcp_server = DnsTcpServer::new(context.clone(), 20);
-        if let Err(e) = tcp_server.run_server() {
-            log::info!("Failed to bind TCP listener: {:?}", e);
-        }
+        let tcp_context = context.clone();
+        let tcp_handle = std::thread::Builder::new()
+            .name("DNS-TCP-Main".to_string())
+            .spawn(move || {
+                log::info!("Starting TCP DNS server on port {}", tcp_context.dns_port);
+                let tcp_server = DnsTcpServer::new(tcp_context, 20);
+                match tcp_server.run_server() {
+                    Ok(_) => {
+                        log::info!("TCP DNS server started successfully");
+                        // Keep this thread alive indefinitely
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_secs(3600));
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to start TCP DNS server: {:?}", e);
+                        sentry::capture_message(&format!("TCP DNS server startup failed: {:?}", e), sentry::Level::Error);
+                    }
+                }
+            })
+            .expect("Failed to spawn TCP DNS server thread");
+        dns_threads.push(tcp_handle);
     }
+    
+    // Give DNS servers time to initialize
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Start web server
     if context.enable_api {
         let webserver = WebServer::new(context.clone());
         webserver.run_webserver(true);
+    } else {
+        // If web server is disabled, we still need to keep the DNS servers running
+        log::info!("Web server disabled, keeping DNS servers running...");
+        for handle in dns_threads {
+            let _ = handle.join();
+        }
     }
 }
 
