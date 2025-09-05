@@ -1000,9 +1000,9 @@ impl QueryRoot {
         }
 
         let mut zones = Vec::new();
-        let records = Vec::new();
+        let mut records = Vec::new();
         let users = Vec::new(); // Skip users for now - complex API
-        let logs = Vec::new();
+        let mut logs = Vec::new();
 
         // Search DNS zones
         for zone_name in self.context.authority.list_zones().unwrap_or_default() {
@@ -1021,14 +1021,58 @@ impl QueryRoot {
                     }
                 }
 
-            // Search DNS records within zones (simplified for now)
-            // Skip record searching for initial implementation
-            // TODO: Implement record searching with proper field access
+            // Search DNS records within zones
+            if let Some(zone_records) = self.context.authority.get_zone_records(&zone_name) {
+                for record in zone_records {
+                    let record_name = record.get_name();
+                    let record_type = format!("{:?}", record.get_record_type());
+                    
+                    if record_name.to_lowercase().contains(&search_term) ||
+                       record_type.to_lowercase().contains(&search_term) {
+                        records.push(SearchResult {
+                            id: format!("{}:{}", zone_name, record_name),
+                            title: format!("{} ({}) - {}", record_name, record_type, zone_name),
+                            description: format!("DNS Record: {} {} in zone {}", record_name, record_type, zone_name),
+                            resource_type: "record".to_string(),
+                            url: format!("/authority?zone={}&record={}", zone_name, record_name),
+                            match_field: if record_name.to_lowercase().contains(&search_term) { "name" } else { "type" }.to_string(),
+                        });
+                        
+                        if records.len() >= search_limit / 2 {
+                            break;
+                        }
+                    }
+                }
+                
+                if records.len() >= search_limit / 2 {
+                    break;
+                }
+            }
         }
 
-        // Search query logs (use public API method)
-        // Skip log searching for initial implementation due to private field access
-        // TODO: Add public method to QueryLogStorage for searching
+        // Search query logs
+        let query_logs = self.context.query_log_storage.search_logs(&search_term, search_limit / 4);
+        for query_log in query_logs {
+            logs.push(SearchResult {
+                id: format!("log:{}:{}", query_log.timestamp.timestamp(), query_log.domain),
+                title: format!("{} ({}) - {}", query_log.domain, query_log.query_type, query_log.protocol),
+                description: format!("Query Log: {} {} via {} at {}", 
+                    query_log.domain, 
+                    query_log.query_type, 
+                    query_log.protocol,
+                    query_log.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+                ),
+                resource_type: "query_log".to_string(),
+                url: format!("/logs?domain={}", query_log.domain),
+                match_field: if query_log.domain.to_lowercase().contains(&search_term) { 
+                    "domain" 
+                } else if query_log.query_type.to_lowercase().contains(&search_term) {
+                    "query_type"
+                } else {
+                    "protocol"
+                }.to_string(),
+            });
+        }
 
         let total_results = zones.len() + records.len() + users.len() + logs.len();
         

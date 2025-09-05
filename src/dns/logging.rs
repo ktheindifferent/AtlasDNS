@@ -608,6 +608,23 @@ impl QueryLogStorage {
         let mut logs = self.logs.write().unwrap();
         logs.clear();
     }
+
+    /// Search query logs by domain or query type
+    pub fn search_logs(&self, search_term: &str, limit: usize) -> Vec<DnsQueryLog> {
+        let logs = self.logs.read().unwrap();
+        let search_term_lower = search_term.to_lowercase();
+        
+        logs.iter()
+            .rev() // Most recent first
+            .filter(|log| {
+                log.domain.to_lowercase().contains(&search_term_lower) ||
+                log.query_type.to_lowercase().contains(&search_term_lower) ||
+                log.protocol.to_lowercase().contains(&search_term_lower)
+            })
+            .take(limit)
+            .cloned()
+            .collect()
+    }
     
     /// Get estimated memory usage in bytes
     pub fn get_memory_usage(&self) -> usize {

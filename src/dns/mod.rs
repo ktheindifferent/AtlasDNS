@@ -96,6 +96,9 @@ pub mod doh;
 /// DNS-over-TLS (DoT) implementation - RFC 7858
 pub mod dot;
 
+/// DNS-over-TLS (DoT) server management and statistics
+pub mod dot_manager;
+
 /// DNS Firewall for threat protection and content filtering
 pub mod firewall;
 

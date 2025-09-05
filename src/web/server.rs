@@ -2070,14 +2070,26 @@ impl<'a> WebServer<'a> {
     }
     
     fn dot_page(&self, request: &Request) -> Result<ResponseBox> {
+        let (enabled, port, connections, qps, tls_version) = if let Some(ref dot_manager) = self.context.dot_manager {
+            let stats = dot_manager.get_statistics();
+            (
+                stats.is_enabled(),
+                stats.get_port(),
+                stats.get_active_connections(),
+                stats.get_qps(),
+                stats.get_tls_version(),
+            )
+        } else {
+            (false, 853, 0, 0, "Not configured".to_string())
+        };
+
         let data = serde_json::json!({
             "title": "DNS-over-TLS",
-            // TODO: Implement DoT server functionality
-            "enabled": false,
-            "port": 853,
-            "dot_connections": 0,
-            "qps": 0,
-            "tls_version": "Not configured",
+            "enabled": enabled,
+            "port": port,
+            "dot_connections": connections,
+            "qps": qps,
+            "tls_version": tls_version,
         });
         self.response_from_media_type(request, "dot", data)
     }
@@ -2448,21 +2460,36 @@ impl<'a> WebServer<'a> {
         };
         
         // Load blocklist
-        self.context.security_manager.load_blocklist(source, category)
-            .map_err(|e| WebError::InternalError(format!("Failed to load blocklist: {}", e)))?;
-        
-        // Return proper JSON response
-        let response_data = serde_json::json!({
-            "success": true,
-            "message": "Blocklist loaded successfully",
-            "category": category_str,
-            "source": source
-        });
-        
-        Ok(Response::from_string(response_data.to_string())
-            .with_header(Self::safe_header("Content-Type: application/json"))
-            .with_status_code(201)
-            .boxed())
+        match self.context.security_manager.load_blocklist(source, category) {
+            Ok(_) => {
+                // Return proper JSON success response
+                let response_data = serde_json::json!({
+                    "success": true,
+                    "message": "Blocklist loaded successfully",
+                    "category": category_str,
+                    "source": source
+                });
+                
+                Ok(Response::from_string(response_data.to_string())
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .with_status_code(201)
+                    .boxed())
+            }
+            Err(e) => {
+                // Return proper JSON error response
+                let response_data = serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to load blocklist: {}", e),
+                    "category": category_str,
+                    "source": source
+                });
+                
+                Ok(Response::from_string(response_data.to_string())
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .with_status_code(500)
+                    .boxed())
+            }
+        }
     }
     
     fn load_allowlist(&self, request: &mut Request) -> Result<ResponseBox> {
@@ -2477,20 +2504,34 @@ impl<'a> WebServer<'a> {
             .ok_or_else(|| WebError::InvalidInput("Missing 'source' field".into()))?;
         
         // Load allowlist
-        self.context.security_manager.load_allowlist(source)
-            .map_err(|e| WebError::InternalError(format!("Failed to load allowlist: {}", e)))?;
-        
-        // Return proper JSON response
-        let response_data = serde_json::json!({
-            "success": true,
-            "message": "Allowlist loaded successfully",
-            "source": source
-        });
-        
-        Ok(Response::from_string(response_data.to_string())
-            .with_header(Self::safe_header("Content-Type: application/json"))
-            .with_status_code(201)
-            .boxed())
+        match self.context.security_manager.load_allowlist(source) {
+            Ok(_) => {
+                // Return proper JSON success response
+                let response_data = serde_json::json!({
+                    "success": true,
+                    "message": "Allowlist loaded successfully",
+                    "source": source
+                });
+                
+                Ok(Response::from_string(response_data.to_string())
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .with_status_code(201)
+                    .boxed())
+            }
+            Err(e) => {
+                // Return proper JSON error response
+                let response_data = serde_json::json!({
+                    "success": false,
+                    "error": format!("Failed to load allowlist: {}", e),
+                    "source": source
+                });
+                
+                Ok(Response::from_string(response_data.to_string())
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .with_status_code(500)
+                    .boxed())
+            }
+        }
     }
     
     fn unblock_client(&self, _request: &Request, client_ip: &str) -> Result<ResponseBox> {

@@ -26,6 +26,7 @@ use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthChec
 use crate::dns::traffic_steering::{TrafficSteeringHandler, TrafficSteeringConfig};
 use crate::dns::request_limits::RequestLimiter;
 use crate::dns::cache_poisoning::CachePoisonProtection;
+use crate::dns::dot_manager::DotManager;
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -121,6 +122,7 @@ pub struct ServerContext {
     pub traffic_steering: Arc<TrafficSteeringHandler>,
     pub request_limiter: Option<Arc<RequestLimiter>>,
     pub cache_poison_protection: Option<Arc<CachePoisonProtection>>,
+    pub dot_manager: Option<Arc<DotManager>>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -228,6 +230,7 @@ impl Default for ServerContext {
             traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
             request_limiter: None,
             cache_poison_protection: None,
+            dot_manager: None,
         }
     }
 }
@@ -295,6 +298,7 @@ impl ServerContext {
             traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
             request_limiter: None, // Will be initialized based on configuration
             cache_poison_protection: None, // Will be initialized based on configuration
+            dot_manager: None, // Will be initialized based on configuration
         })
     }
 
@@ -357,6 +361,26 @@ impl ServerContext {
     pub fn enable_default_cache_poison_protection(&mut self) {
         let config = crate::dns::cache_poisoning::PoisonProtectionConfig::default();
         self.enable_cache_poison_protection(config);
+    }
+
+    /// Enable DNS-over-TLS (DoT) server with custom configuration
+    pub fn enable_dot_server(&mut self, config: crate::dns::dot::DotConfig) {
+        let mut manager = DotManager::new(config);
+        
+        // Create a shared reference to self for the manager initialization
+        // We need to use a different approach since we can't borrow self mutably twice
+        if let Ok(()) = manager.initialize(Arc::new(Self::default())) {
+            self.dot_manager = Some(Arc::new(manager));
+            log::info!("DNS-over-TLS (DoT) server enabled on port {}", self.dot_manager.as_ref().unwrap().get_config().port);
+        } else {
+            log::error!("Failed to initialize DoT server");
+        }
+    }
+
+    /// Enable DNS-over-TLS (DoT) server with default configuration
+    pub fn enable_default_dot_server(&mut self) {
+        let config = crate::dns::dot::DotConfig::default();
+        self.enable_dot_server(config);
     }
 
     /// Initialize enhanced metrics system (async)
