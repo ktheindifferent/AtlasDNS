@@ -195,7 +195,7 @@ pub struct HealthChecker {
 
 /// Health check result
 #[derive(Debug, Clone)]
-struct HealthCheckResult {
+pub struct HealthCheckResult {
     /// Datacenter ID
     dc_id: String,
     /// Overall health

@@ -628,7 +628,7 @@ impl DynamicUpdateHandler {
 
 /// Update error types
 #[derive(Debug)]
-enum UpdateError {
+pub enum UpdateError {
     PrerequisiteFailed,
     UpdateFailed,
     ZoneLocked,

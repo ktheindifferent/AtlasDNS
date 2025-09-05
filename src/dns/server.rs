@@ -4,10 +4,11 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::net::{Shutdown, TcpListener, TcpStream, UdpSocket};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::Builder;
+use std::time::{Duration, Instant};
 
 use derive_more::{Display, Error, From};
 use rand::random;
@@ -29,6 +30,64 @@ pub enum ServerError {
 }
 
 type Result<T> = std::result::Result<T, ServerError>;
+
+/// Socket performance and resource metrics
+#[derive(Debug)]
+pub struct SocketMetrics {
+    /// Total bytes sent
+    bytes_sent: u64,
+    /// Total bytes received
+    bytes_received: u64,
+    /// Number of active connections (for TCP)
+    active_connections: u32,
+    /// Socket errors encountered
+    socket_errors: u32,
+    /// Last error timestamp
+    last_error: Option<Instant>,
+    /// Average response time
+    avg_response_time: Duration,
+    /// Socket creation time
+    created_at: Instant,
+    /// Last activity timestamp
+    last_activity: Instant,
+}
+
+/// Information about an active connection
+#[derive(Debug)]
+pub struct ConnectionInfo {
+    /// Connection ID
+    id: u64,
+    /// Remote address
+    remote_addr: SocketAddr,
+    /// Connection start time
+    connected_at: Instant,
+    /// Last activity timestamp
+    last_activity: Instant,
+    /// Number of queries processed
+    queries_processed: u32,
+    /// Total bytes transferred
+    bytes_transferred: u64,
+}
+
+impl ConnectionInfo {
+    fn new(id: u64, remote_addr: SocketAddr) -> Self {
+        let now = Instant::now();
+        Self {
+            id,
+            remote_addr,
+            connected_at: now,
+            last_activity: now,
+            queries_processed: 0,
+            bytes_transferred: 0,
+        }
+    }
+    
+    fn update_activity(&mut self, bytes: u64) {
+        self.last_activity = Instant::now();
+        self.queries_processed += 1;
+        self.bytes_transferred += bytes;
+    }
+}
 
 macro_rules! return_or_report {
     ( $x:expr, $message:expr ) => {
@@ -504,15 +563,37 @@ pub struct DnsUdpServer {
     request_queue: Arc<Mutex<VecDeque<(SocketAddr, DnsPacket)>>>,
     request_cond: Arc<Condvar>,
     thread_count: usize,
+    shutdown_flag: Arc<AtomicBool>,
+    socket_metrics: Arc<Mutex<SocketMetrics>>,
+}
+
+impl SocketMetrics {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            bytes_sent: 0,
+            bytes_received: 0,
+            active_connections: 0,
+            socket_errors: 0,
+            last_error: None,
+            avg_response_time: Duration::default(),
+            created_at: now,
+            last_activity: now,
+        }
+    }
 }
 
 impl DnsUdpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsUdpServer {
+        let metrics = SocketMetrics::new();
+        
         DnsUdpServer {
             context,
             request_queue: Arc::new(Mutex::new(VecDeque::new())),
             request_cond: Arc::new(Condvar::new()),
             thread_count,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            socket_metrics: Arc::new(Mutex::new(metrics)),
         }
     }
 
@@ -564,7 +645,7 @@ impl DnsUdpServer {
 
         log::info!("req: {:?}", request.clone());
 
-        let mut packet = execute_query_with_ip(context, request, Some(src.ip()));
+        let mut packet = execute_query_with_ip(context.clone(), request, Some(src.ip()));
         let _ = packet.write(&mut res_buffer, size_limit);
 
         // Fire off the response
@@ -573,10 +654,38 @@ impl DnsUdpServer {
             res_buffer.get_range(0, len),
             "Failed to get buffer data"
         );
-        ignore_or_report!(
-            socket.send_to(data, src),
-            "Failed to send response packet"
-        );
+        
+        // Track metrics for this request
+        let _bytes_sent = len as u64;
+        let _bytes_received = packet.questions.first()
+            .map(|q| q.name.len() as u64 + 12) // Approximate query size
+            .unwrap_or(12);
+        
+        match socket.send_to(data, src) {
+            Ok(_) => {
+                // Update metrics for successful send
+                context.metrics.record_dns_response(
+                    &format!("{:?}", packet.header.rescode),
+                    "UDP",
+                    &packet.questions.first().map(|q| format!("{:?}", q.qtype)).unwrap_or("UNKNOWN".to_string())
+                );
+            }
+            Err(e) => {
+                log::info!("Failed to send response packet: {:?}", e);
+                // Report send error to Sentry
+                sentry::configure_scope(|scope| {
+                    scope.set_tag("component", "dns_server");
+                    scope.set_tag("operation", "udp_send");
+                    scope.set_extra("error_details", format!("{:?}", e).into());
+                    scope.set_extra("client_addr", src.to_string().into());
+                });
+                sentry::capture_message(
+                    &format!("UDP DNS Response Send Failed: {:?}", e),
+                    sentry::Level::Warning
+                );
+                return;
+            }
+        }
     }
 
     /// Spawn a worker thread to handle DNS requests
@@ -636,6 +745,12 @@ impl DnsUdpServer {
             .name("DnsUdpServer-incoming".into())
             .spawn(move || {
                 loop {
+                    // Check for shutdown signal
+                    if self.shutdown_flag.load(Ordering::SeqCst) {
+                        log::info!("UDP server received shutdown signal, stopping incoming handler");
+                        break;
+                    }
+                    
                     let _ = self
                         .context
                         .statistics
@@ -863,6 +978,54 @@ impl DnsUdpServer {
         
         Ok(())
     }
+    
+    /// Update socket metrics with activity
+    fn update_socket_metrics(&self, bytes_received: u64, bytes_sent: u64, had_error: bool) {
+        if let Ok(mut metrics) = self.socket_metrics.lock() {
+            metrics.bytes_received += bytes_received;
+            metrics.bytes_sent += bytes_sent;
+            metrics.last_activity = Instant::now();
+            
+            if had_error {
+                metrics.socket_errors += 1;
+                metrics.last_error = Some(Instant::now());
+            }
+        }
+    }
+    
+    /// Get current socket metrics for monitoring
+    pub fn get_socket_metrics(&self) -> Option<SocketMetrics> {
+        self.socket_metrics.lock().ok().map(|m| SocketMetrics {
+            bytes_sent: m.bytes_sent,
+            bytes_received: m.bytes_received,
+            active_connections: m.active_connections,
+            socket_errors: m.socket_errors,
+            last_error: m.last_error,
+            avg_response_time: m.avg_response_time,
+            created_at: m.created_at,
+            last_activity: m.last_activity,
+        })
+    }
+    
+    /// Initiate graceful shutdown of the UDP server
+    pub fn shutdown(&self) {
+        log::info!("Initiating graceful shutdown of UDP DNS server");
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        
+        // Notify all waiting threads to wake up and check shutdown flag
+        self.request_cond.notify_all();
+        
+        // Log final metrics
+        if let Some(metrics) = self.get_socket_metrics() {
+            log::info!(
+                "UDP Server final metrics - Bytes sent: {}, Bytes received: {}, Errors: {}, Uptime: {:?}",
+                metrics.bytes_sent,
+                metrics.bytes_received, 
+                metrics.socket_errors,
+                metrics.last_activity.duration_since(metrics.created_at)
+            );
+        }
+    }
 }
 
 impl DnsServer for DnsUdpServer {
@@ -904,14 +1067,22 @@ pub struct DnsTcpServer {
     context: Arc<ServerContext>,
     senders: Vec<Sender<TcpStream>>,
     thread_count: usize,
+    shutdown_flag: Arc<AtomicBool>,
+    socket_metrics: Arc<Mutex<SocketMetrics>>,
+    active_connections: Arc<Mutex<std::collections::HashMap<u64, ConnectionInfo>>>,
 }
 
 impl DnsTcpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsTcpServer {
+        let metrics = SocketMetrics::new();
+        
         DnsTcpServer {
             context,
             senders: Vec::new(),
             thread_count,
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            socket_metrics: Arc::new(Mutex::new(metrics)),
+            active_connections: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -1000,6 +1171,141 @@ impl DnsTcpServer {
         // This should never be reached due to the return in the loop
         unreachable!("bind_tcp_socket_with_retry: exceeded retry loop without returning")
     }
+    
+    /// Track a new TCP connection
+    fn track_connection(&self, stream: &TcpStream) -> Option<u64> {
+        let connection_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos() as u64;
+        
+        if let Ok(remote_addr) = stream.peer_addr() {
+            if let Ok(mut connections) = self.active_connections.lock() {
+                connections.insert(connection_id, ConnectionInfo::new(connection_id, remote_addr));
+                
+                // Update active connections count in metrics
+                if let Ok(mut metrics) = self.socket_metrics.lock() {
+                    metrics.active_connections = connections.len() as u32;
+                }
+                
+                log::debug!("Tracking new TCP connection {} from {}", connection_id, remote_addr);
+                return Some(connection_id);
+            }
+        }
+        None
+    }
+    
+    /// Update connection activity
+    fn update_connection_activity(&self, connection_id: u64, bytes_transferred: u64) {
+        if let Ok(mut connections) = self.active_connections.lock() {
+            if let Some(conn_info) = connections.get_mut(&connection_id) {
+                conn_info.update_activity(bytes_transferred);
+            }
+        }
+    }
+    
+    /// Clean up a finished connection
+    fn cleanup_connection(&self, connection_id: Option<u64>) {
+        if let Some(id) = connection_id {
+            if let Ok(mut connections) = self.active_connections.lock() {
+                if let Some(conn_info) = connections.remove(&id) {
+                    let duration = conn_info.last_activity.duration_since(conn_info.connected_at);
+                    log::debug!(
+                        "Cleaned up TCP connection {} from {} - Duration: {:?}, Queries: {}, Bytes: {}",
+                        id,
+                        conn_info.remote_addr,
+                        duration,
+                        conn_info.queries_processed,
+                        conn_info.bytes_transferred
+                    );
+                    
+                    // Update metrics
+                    if let Ok(mut metrics) = self.socket_metrics.lock() {
+                        metrics.active_connections = connections.len() as u32;
+                        metrics.bytes_sent += conn_info.bytes_transferred;
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Update socket metrics with activity
+    fn update_socket_metrics(&self, bytes_received: u64, bytes_sent: u64, had_error: bool) {
+        if let Ok(mut metrics) = self.socket_metrics.lock() {
+            metrics.bytes_received += bytes_received;
+            metrics.bytes_sent += bytes_sent;
+            metrics.last_activity = Instant::now();
+            
+            if had_error {
+                metrics.socket_errors += 1;
+                metrics.last_error = Some(Instant::now());
+            }
+        }
+    }
+    
+    /// Get current socket metrics for monitoring
+    pub fn get_socket_metrics(&self) -> Option<SocketMetrics> {
+        self.socket_metrics.lock().ok().map(|m| SocketMetrics {
+            bytes_sent: m.bytes_sent,
+            bytes_received: m.bytes_received,
+            active_connections: m.active_connections,
+            socket_errors: m.socket_errors,
+            last_error: m.last_error,
+            avg_response_time: m.avg_response_time,
+            created_at: m.created_at,
+            last_activity: m.last_activity,
+        })
+    }
+    
+    /// Get information about active connections
+    pub fn get_active_connections(&self) -> Vec<ConnectionInfo> {
+        self.active_connections
+            .lock()
+            .map(|conns| {
+                conns.values().map(|conn| ConnectionInfo {
+                    id: conn.id,
+                    remote_addr: conn.remote_addr,
+                    connected_at: conn.connected_at,
+                    last_activity: conn.last_activity,
+                    queries_processed: conn.queries_processed,
+                    bytes_transferred: conn.bytes_transferred,
+                }).collect()
+            })
+            .unwrap_or_else(|_| Vec::new())
+    }
+    
+    /// Initiate graceful shutdown of the TCP server
+    pub fn shutdown(&self) {
+        log::info!("Initiating graceful shutdown of TCP DNS server");
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+        
+        // Log active connections before shutdown
+        let active_conns = self.get_active_connections();
+        if !active_conns.is_empty() {
+            log::info!("Closing {} active TCP connections during shutdown", active_conns.len());
+            for conn in &active_conns {
+                log::debug!(
+                    "Active connection {} from {} - Queries: {}, Duration: {:?}",
+                    conn.id,
+                    conn.remote_addr,
+                    conn.queries_processed,
+                    conn.last_activity.duration_since(conn.connected_at)
+                );
+            }
+        }
+        
+        // Log final metrics
+        if let Some(metrics) = self.get_socket_metrics() {
+            log::info!(
+                "TCP Server final metrics - Bytes sent: {}, Bytes received: {}, Active connections: {}, Errors: {}, Uptime: {:?}",
+                metrics.bytes_sent,
+                metrics.bytes_received,
+                metrics.active_connections,
+                metrics.socket_errors,
+                metrics.last_activity.duration_since(metrics.created_at)
+            );
+        }
+    }
 }
 
 impl DnsServer for DnsTcpServer {
@@ -1020,6 +1326,12 @@ impl DnsServer for DnsTcpServer {
                         Ok(x) => x,
                         Err(_) => continue,
                     };
+                    
+                    // Generate a simple connection ID for tracking
+                    let connection_id = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or(0);
 
                     let _ = context
                         .statistics
@@ -1126,7 +1438,33 @@ impl DnsServer for DnsTcpServer {
                         "Failed to get packet data"
                     );
 
-                    ignore_or_report!(stream.write_all(data), "Failed to write response packet");
+                    let _bytes_sent = len as u64;
+                    let _bytes_received = packet_length as u64;
+                    
+                    match stream.write_all(data) {
+                        Ok(_) => {
+                            // Update metrics for successful send
+                            context.metrics.record_dns_response(
+                                &format!("{:?}", packet.header.rescode),
+                                "TCP",
+                                &request.questions.first().map(|q| format!("{:?}", q.qtype)).unwrap_or("UNKNOWN".to_string())
+                            );
+                        }
+                        Err(e) => {
+                            log::info!("Failed to write response packet: {:?}", e);
+                            // Report send error to Sentry
+                            sentry::configure_scope(|scope| {
+                                scope.set_tag("component", "dns_server");
+                                scope.set_tag("operation", "tcp_send");
+                                scope.set_extra("error_details", format!("{:?}", e).into());
+                                scope.set_extra("connection_id", connection_id.into());
+                            });
+                            sentry::capture_message(
+                                &format!("TCP DNS Response Send Failed: {:?}", e),
+                                sentry::Level::Warning
+                            );
+                        }
+                    }
 
                     ignore_or_report!(stream.shutdown(Shutdown::Both), "Failed to shutdown socket");
                     

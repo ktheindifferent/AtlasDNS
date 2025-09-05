@@ -452,7 +452,7 @@ struct ReconcileRequest {
 
 /// Reconcile operation
 #[derive(Debug, Clone, PartialEq)]
-enum ReconcileOperation {
+pub enum ReconcileOperation {
     Create,
     Update,
     Delete,
