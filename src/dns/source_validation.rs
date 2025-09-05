@@ -264,6 +264,30 @@ impl SourceValidator {
         ]
     }
 
+    /// Check if IP address is from an internal/private network
+    fn is_internal_network(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ipv4) => {
+                // RFC 1918 private networks
+                let octets = ipv4.octets();
+                // 10.0.0.0/8
+                octets[0] == 10 ||
+                // 172.16.0.0/12
+                (octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31) ||
+                // 192.168.0.0/16
+                (octets[0] == 192 && octets[1] == 168) ||
+                // 127.0.0.0/8 (loopback)
+                octets[0] == 127
+            }
+            IpAddr::V6(ipv6) => {
+                // IPv6 private addresses
+                ipv6.is_loopback() || 
+                ipv6.segments()[0] == 0xfc00 || // fc00::/7 unique local
+                ipv6.segments()[0] == 0xfe80    // fe80::/10 link local
+            }
+        }
+    }
+
     /// Validate source IP
     pub fn validate_source(
         &self,
@@ -299,8 +323,8 @@ impl SourceValidator {
             return ValidationResult::Invalid("Rate limit exceeded".to_string());
         }
 
-        // DNS cookie validation
-        if config.dns_cookies && !is_tcp {
+        // DNS cookie validation (skip for internal/private networks)
+        if config.dns_cookies && !is_tcp && !self.is_internal_network(source_ip) {
             match self.validate_cookie(packet, source_ip) {
                 CookieValidation::Valid => {
                     self.stats.write().cookie_validations += 1;
