@@ -738,14 +738,23 @@ async function saveCustomBlockList() {
             })
         });
         
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('Failed to parse JSON response:', parseError);
+            const textResponse = await response.text();
+            console.error('Raw response:', textResponse);
+            showToast('Server returned invalid response format', 'error');
+            return;
+        }
         
         if (response.ok && data.success) {
-            showToast('Custom block list created successfully', 'success');
+            showToast(data.message || 'Custom block list created successfully', 'success');
             bootstrap.Modal.getInstance(document.querySelector('.modal.show')).hide();
             setTimeout(() => location.reload(), 1000);
         } else {
-            showToast(data.error || 'Failed to create block list', 'error');
+            showToast(data.error || data.message || 'Failed to create block list', 'error');
         }
     } catch (error) {
         console.error('Error creating block list:', error);

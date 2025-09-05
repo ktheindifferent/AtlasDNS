@@ -2451,7 +2451,18 @@ impl<'a> WebServer<'a> {
         self.context.security_manager.load_blocklist(source, category)
             .map_err(|e| WebError::InternalError(format!("Failed to load blocklist: {}", e)))?;
         
-        Ok(Response::empty(201).boxed())
+        // Return proper JSON response
+        let response_data = serde_json::json!({
+            "success": true,
+            "message": "Blocklist loaded successfully",
+            "category": category_str,
+            "source": source
+        });
+        
+        Ok(Response::from_string(response_data.to_string())
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .with_status_code(201)
+            .boxed())
     }
     
     fn load_allowlist(&self, request: &mut Request) -> Result<ResponseBox> {
@@ -2469,7 +2480,17 @@ impl<'a> WebServer<'a> {
         self.context.security_manager.load_allowlist(source)
             .map_err(|e| WebError::InternalError(format!("Failed to load allowlist: {}", e)))?;
         
-        Ok(Response::empty(201).boxed())
+        // Return proper JSON response
+        let response_data = serde_json::json!({
+            "success": true,
+            "message": "Allowlist loaded successfully",
+            "source": source
+        });
+        
+        Ok(Response::from_string(response_data.to_string())
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .with_status_code(201)
+            .boxed())
     }
     
     fn unblock_client(&self, _request: &Request, client_ip: &str) -> Result<ResponseBox> {
