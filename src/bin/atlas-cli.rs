@@ -773,7 +773,7 @@ async fn handle_zone_commands(
     formatter: &OutputFormatter,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match action {
-        ZoneCommands::List { filter, enabled_only } => {
+        ZoneCommands::List { filter, enabled_only: _ } => {
             let pb = show_progress("Fetching zones...");
             let mut path = "/api/v2/zones".to_string();
             if let Some(f) = filter {
@@ -783,7 +783,7 @@ async fn handle_zone_commands(
             pb.finish_and_clear();
             formatter.print(&zones);
         }
-        ZoneCommands::Get { zone, with_records } => {
+        ZoneCommands::Get { zone, with_records: _ } => {
             let pb = show_progress(&format!("Fetching zone {}...", zone));
             let path = format!("/api/v2/zones/{}", zone);
             let zone_data = client.get(&path).await?;
@@ -1015,8 +1015,8 @@ async fn handle_health_commands(
 }
 
 async fn handle_traffic_commands(
-    action: TrafficCommands,
-    client: &AtlasClient,
+    _action: TrafficCommands,
+    _client: &AtlasClient,
     formatter: &OutputFormatter,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Implementation for traffic commands

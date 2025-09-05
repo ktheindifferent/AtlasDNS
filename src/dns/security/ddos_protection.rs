@@ -342,7 +342,7 @@ impl DDoSProtection {
         let mut threat_level = ThreatLevel::None;
 
         // Check connection limits (but don't trigger on Medium for rate limiting)
-        if let Some(action) = self.check_connection_limits(client_ip) {
+        if let Some(_action) = self.check_connection_limits(client_ip) {
             events.push(SecurityEvent::ConnectionLimitExceeded {
                 client_ip,
                 connections: self.get_connection_count(client_ip),
@@ -514,7 +514,7 @@ impl DDoSProtection {
     /// Check connection limits
     fn check_connection_limits(&self, client_ip: IpAddr) -> Option<MitigationAction> {
         let mut limiter = self.connection_limiter.write();
-        let config = self.config.read();
+        let _config = self.config.read();
         
         let now = Instant::now();
         let info = limiter.connections.entry(client_ip).or_insert_with(|| {
@@ -614,7 +614,7 @@ impl DDoSProtection {
     }
 
     /// Validate DNS cookie
-    fn validate_dns_cookie(&self, packet: &DnsPacket, client_ip: IpAddr) -> bool {
+    fn validate_dns_cookie(&self, _packet: &DnsPacket, client_ip: IpAddr) -> bool {
         // Simplified DNS cookie validation
         // In production, this would parse EDNS options and validate cookies
         let validator = self.dns_cookie_validator.read();
@@ -627,7 +627,7 @@ impl DDoSProtection {
     }
 
     /// Analyze patterns
-    fn analyze_patterns(&self, packet: &DnsPacket, client_ip: IpAddr) -> Option<(PatternType, ThreatLevel)> {
+    fn analyze_patterns(&self, packet: &DnsPacket, _client_ip: IpAddr) -> Option<(PatternType, ThreatLevel)> {
         let analyzer = self.pattern_analyzer.read();
         
         if let Some(domain) = self.get_query_domain(packet) {
@@ -644,7 +644,7 @@ impl DDoSProtection {
     }
 
     /// Detect attack type
-    fn detect_attack_type(&self, packet: &DnsPacket, client_ip: IpAddr) -> Option<AttackInfo> {
+    fn detect_attack_type(&self, _packet: &DnsPacket, client_ip: IpAddr) -> Option<AttackInfo> {
         let mut detector = self.attack_detector.write();
         
         // Update query rates
