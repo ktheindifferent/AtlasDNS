@@ -510,6 +510,10 @@ pub mod tests {
         ) -> Result<DnsPacket> {
             (self.callback)(qname, qtype, server, recursive)
         }
+        
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
     }
 
     #[test]
