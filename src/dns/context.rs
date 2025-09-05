@@ -8,7 +8,7 @@ use derive_more::{Display, Error, From};
 
 use crate::dns::authority::Authority;
 use crate::dns::cache::SynchronizedCache;
-use crate::dns::client::{DnsClient, DnsNetworkClient};
+use crate::dns::client::{DnsClient, DnsNetworkClient, ClientError};
 use crate::dns::resolve::{DnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
 use crate::dns::acme::SslConfig;
 use crate::dns::metrics::MetricsCollector;
@@ -19,7 +19,7 @@ use crate::dns::api_keys::ApiKeyManager;
 use crate::dns::geodns::{GeoDnsHandler, GeoDnsConfig};
 use crate::dns::geo_loadbalancing::GeoLoadBalancer;
 use crate::dns::performance_optimizer::{PerformanceOptimizer, PerformanceConfig};
-use crate::dns::memory_pool::{BufferPool, MemoryPoolConfig};
+use crate::dns::memory_pool::BufferPool;
 use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
 use crate::dns::health::HealthMonitor;
 use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthCheckConfig};
@@ -123,18 +123,111 @@ pub struct ServerContext {
     pub cache_poison_protection: Option<Arc<CachePoisonProtection>>,
 }
 
+/// A dummy DNS client that returns errors for all operations
+/// Used as a placeholder when the real client can't be initialized
+struct DummyDnsClient;
+
+impl DummyDnsClient {
+    fn new() -> Self {
+        DummyDnsClient
+    }
+}
+
+impl DnsClient for DummyDnsClient {
+    fn get_sent_count(&self) -> usize {
+        0
+    }
+
+    fn get_failed_count(&self) -> usize {
+        0
+    }
+
+    fn run(&self) -> std::result::Result<(), ClientError> {
+        // Return a generic IO error for uninitialized client
+        Err(ClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "DummyDnsClient: DNS client not initialized"
+        )))
+    }
+
+    fn send_query(
+        &self,
+        _qname: &str,
+        _qtype: crate::dns::protocol::QueryType,
+        _server: (&str, u16),
+        _recursive: bool,
+    ) -> std::result::Result<crate::dns::protocol::DnsPacket, ClientError> {
+        Err(ClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotConnected,
+            "DummyDnsClient: DNS client not initialized"
+        )))
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
 impl Default for ServerContext {
     fn default() -> Self {
-        match ServerContext::new() {
-            Ok(context) => context,
+        // Create a minimal default context that won't fail
+        // The actual initialization can be done later with proper error handling
+        // Use port 0 to let OS choose an available port for the client
+        let client = match DnsNetworkClient::new(0) {
+            Ok(c) => Box::new(c) as Box<dyn DnsClient + Send + Sync>,
             Err(e) => {
-                // Log the error and then panic with a clearer message
-                // This is better than using expect() because we get more context
-                log::error!("Failed to create default ServerContext: {}", e);
-                log::error!("This is a critical error that prevents the server from starting");
-                log::error!("Please check that all required resources are available");
-                panic!("ServerContext initialization failed: {}. The server cannot start without a valid context.", e);
+                // Log error but don't panic - create a context anyway
+                log::warn!("Failed to create DNS client in Default: {}. DNS forwarding will not work until properly initialized.", e);
+                // Create a dummy client that will error on use
+                // This is safe because the client will be re-initialized in ServerContext::initialize()
+                Box::new(DummyDnsClient::new()) as Box<dyn DnsClient + Send + Sync>
             }
+        };
+
+        // Create shared cache and buffer pool for performance optimizer
+        let shared_cache = Arc::new(SynchronizedCache::new());
+        let buffer_pool = BufferPool::new(crate::dns::memory_pool::MemoryPoolConfig::default());
+        let performance_optimizer = Arc::new(PerformanceOptimizer::new(
+            PerformanceConfig::default(),
+            shared_cache.clone(),
+            buffer_pool,
+        ));
+
+        ServerContext {
+            authority: Authority::new(),
+            cache: shared_cache,
+            client,
+            dns_port: 53,
+            api_port: 5380,
+            ssl_api_port: 5343,
+            resolve_strategy: ResolveStrategy::Recursive,
+            allow_recursive: true,
+            enable_udp: true,
+            enable_tcp: true,
+            enable_api: true,
+            dnssec_enabled: false,
+            statistics: ServerStatistics {
+                tcp_query_count: AtomicUsize::new(0),
+                udp_query_count: AtomicUsize::new(0),
+            },
+            zones_dir: Arc::from("/opt/atlas/zones"),
+            ssl_config: SslConfig::default(),
+            metrics: Arc::new(MetricsCollector::new()),
+            logger: Arc::new(StructuredLogger::default()),
+            query_log_storage: Arc::new(QueryLogStorage::new(1000)),
+            connection_pool: None,
+            security_manager: Arc::new(SecurityManager::new(SecurityConfig::default())),
+            api_key_manager: Arc::new(ApiKeyManager::new()),
+            geodns_handler: Arc::new(GeoDnsHandler::new(GeoDnsConfig::default())),
+            geo_load_balancer: Arc::new(GeoLoadBalancer::new()),
+            enhanced_metrics: None,
+            performance_optimizer,
+            zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
+            health_monitor: Arc::new(HealthMonitor::new()),
+            health_check_analytics: Arc::new(HealthCheckAnalyticsHandler::new(HealthCheckConfig::default())),
+            traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
+            request_limiter: None,
+            cache_poison_protection: None,
         }
     }
 }

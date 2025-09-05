@@ -266,6 +266,14 @@ pub struct StructuredLogger {
     config: LoggerConfig,
 }
 
+impl Default for StructuredLogger {
+    fn default() -> Self {
+        Self {
+            config: LoggerConfig::default(),
+        }
+    }
+}
+
 impl StructuredLogger {
     /// Initialize the structured logger with configuration
     pub fn init(config: LoggerConfig) -> Result<Self, Box<dyn std::error::Error>> {

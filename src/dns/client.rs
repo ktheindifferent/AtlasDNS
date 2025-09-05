@@ -43,9 +43,8 @@ pub trait DnsClient {
     ) -> Result<DnsPacket>;
     
     /// Allow downcasting to specific client types for configuration
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        panic!("as_any_mut not implemented for this client type")
-    }
+    /// Default implementation that should be overridden by concrete types
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// The UDP client
