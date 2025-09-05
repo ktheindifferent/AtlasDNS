@@ -192,6 +192,59 @@
 
 ## 🟡 MEDIUM Priority Issues (Open)
 
+### [UI] Sentry JavaScript Integration Failed - Multiple Frontend Errors
+- [ ] **Frontend Monitoring Broken**: Sentry JavaScript SDK fails to load causing multiple errors in src/web/templates/index.html
+  - **Symptoms**: Multiple JavaScript errors in browser console preventing frontend error tracking
+  - **Frequency**: Always - affects all page loads
+  - **Component**: Web Interface/Frontend Monitoring
+  - **Errors Observed**:
+    - `Failed to load resource: net::ERR_BLOCKED_BY_CLIENT` for bundle.min.js (likely ad-blocker)
+    - `Uncaught ReferenceError: Sentry is not defined` at (index):35:9
+    - `Uncaught ReferenceError: Sentry is not defined` at (index):2014:13 (multiple occurrences)
+    - Despite errors, page shows "✅ Sentry UI/UX monitoring initialized successfully" (misleading)
+  - **Missing Function**: `refreshDashboardData` is not defined causing button click error at (index):1070
+  - **User Impact**: 
+    - No frontend error tracking to Sentry
+    - JavaScript errors not reported for debugging
+    - Refresh button on dashboard non-functional
+    - False positive success messages confusing
+  - **Root Cause**: 
+    - Sentry CDN script blocked by browser/ad-blocker
+    - No fallback for when Sentry fails to load
+    - Missing function definition for refreshDashboardData
+  - **Fix Required**:
+    - Add try-catch blocks around Sentry initialization
+    - Check if Sentry is defined before using it
+    - Host Sentry bundle locally to avoid CDN blocking
+    - Define missing refreshDashboardData function
+    - Remove misleading success message when Sentry fails
+  - **Workaround**: Frontend still functions but without error tracking
+  - **Priority**: Medium (monitoring affected but core functionality works)
+
+### [UI] Metrics Stream Connection Repeatedly Failing
+- [ ] **EventSource Connection Issues**: Real-time metrics stream disconnects every 2 seconds in src/web/templates/index.html
+  - **Symptoms**: Continuous reconnection attempts visible in console logs
+  - **Frequency**: Every 2 seconds continuously
+  - **Component**: Web Interface/Real-time Dashboard
+  - **Pattern Observed**:
+    - "✅ Real-time metrics stream connected" 
+    - "✅ Dashboard metrics updated: {cache_hit_rate: 0, total_queries: 0, timestamp: ...}"
+    - "Metrics stream connection error: Event"
+    - "Attempting to reconnect metrics stream (1/5)"
+    - Cycle repeats endlessly
+  - **User Impact**:
+    - Unnecessary network traffic from constant reconnections
+    - Potential performance impact from repeated connection attempts
+    - Dashboard metrics may not update smoothly
+  - **Root Cause**: Server-Sent Events connection dropping after each update
+  - **Fix Required**:
+    - Investigate SSE keepalive settings
+    - Check server-side event stream implementation
+    - Add exponential backoff for reconnection attempts
+    - Consider WebSocket alternative if SSE unstable
+  - **Workaround**: Dashboard still updates but inefficiently
+  - **Priority**: Medium (affects performance but not critical functionality)
+
 ### [LOG] Tracing Subscriber Double Initialization Warning
 - [ ] **Logger Re-initialization Error**: Warning on startup about already initialized logging system in src/bin/atlas.rs
   - **Symptoms**: "Warning: Tracing subscriber already initialized: attempted to set a logger after the logging system was already initialized"

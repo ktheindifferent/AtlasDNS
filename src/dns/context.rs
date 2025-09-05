@@ -19,7 +19,7 @@ use crate::dns::api_keys::ApiKeyManager;
 use crate::dns::geodns::{GeoDnsHandler, GeoDnsConfig};
 use crate::dns::geo_loadbalancing::GeoLoadBalancer;
 use crate::dns::performance_optimizer::{PerformanceOptimizer, PerformanceConfig};
-use crate::dns::memory_pool::BufferPool;
+use crate::dns::memory_pool::{BufferPool, MemoryPoolConfig};
 use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
 use crate::dns::health::HealthMonitor;
 use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthCheckConfig};
@@ -125,7 +125,17 @@ pub struct ServerContext {
 
 impl Default for ServerContext {
     fn default() -> Self {
-        ServerContext::new().expect("Failed to create default ServerContext")
+        match ServerContext::new() {
+            Ok(context) => context,
+            Err(e) => {
+                // Log the error and then panic with a clearer message
+                // This is better than using expect() because we get more context
+                log::error!("Failed to create default ServerContext: {}", e);
+                log::error!("This is a critical error that prevents the server from starting");
+                log::error!("Please check that all required resources are available");
+                panic!("ServerContext initialization failed: {}. The server cannot start without a valid context.", e);
+            }
+        }
     }
 }
 

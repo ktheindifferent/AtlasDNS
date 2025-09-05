@@ -201,7 +201,7 @@ The command includes automatic version timestamping for deployment tracking:
 ```bash
 # Sentry API Base URL
 SENTRY_API="https://sentry.alpha.opensam.foundation/api/0"
-SENTRY_TOKEN="your_auth_token_here"  # Replace with actual token
+SENTRY_TOKEN="1e200f21d8ee492a8d808d3c2b88732cb97af0cc92f54c54b79a2d6266f7a76c"
 
 # Get recent issues
 curl -H "Authorization: Bearer $SENTRY_TOKEN" \
