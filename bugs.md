@@ -23,17 +23,15 @@ None - All critical security and crash issues resolved ✅
   - **Files Involved**: src/dns/server.rs, src/dns/authority.rs, src/dns/resolve.rs
   - **Priority**: HIGH - Core DNS functionality completely broken
 
-- [ ] **Firewall Block List Creation Error**: JSON parsing failure in custom block list creation on firewall page
+- [x] **Firewall Block List Creation Error**: JSON parsing failure in custom block list creation on firewall page → Fixed ✅ (43271b4e0)
   - **Component**: Web Interface/Firewall API
   - **Endpoint**: POST /api/firewall/blocklist  
-  - **Symptoms**: "SyntaxError: Unexpected token 'I', 'Internal e'... is not valid JSON" error
-  - **Frequency**: 100% failure rate for custom block list creation
-  - **Client Impact**: Users cannot create custom DNS block lists
-  - **Root Cause**: API returns empty 201 response on success, non-JSON error on failure, but JS expects JSON
-  - **Reproduction**: Access firewall page → Create Custom Block List → Fill form → Submit
-  - **Files Affected**: src/web/server.rs:load_blocklist(), src/web/templates/firewall.html:741
-  - **API Response**: Empty body (201) or plain text error, not JSON as expected
-  - **Sentry Tracking**: Client-side error in saveCustomBlockList function
+  - **Fix Applied**: Implemented consistent JSON response handling for both success and error cases
+  - **Changes**: Modified load_blocklist() and load_allowlist() to return JSON in all scenarios
+  - **Error Handling**: API now returns {"success": false, "error": "..."} instead of plain text
+  - **JavaScript**: Improved error handling with better JSON parse error recovery
+  - **Files Fixed**: src/web/server.rs:2463-2534, src/web/templates/firewall.html:741-762
+  - **Status**: RESOLVED - No more JSON parsing errors, consistent API responses
 
 ## 🟡 MEDIUM Priority Issues (Open)
 - [ ] No persistent storage - all data lost on restart (requires database backend)
@@ -68,6 +66,7 @@ None - All active development completed ✅
 - **08:31 EDT**: Medium priority fixes (Sentry, tracing, code quality) → v20250905_083111 ✅
 - **08:51 EDT**: Critical unwrap() elimination in authority.rs → v20250905_085149 ✅
 - **09:08 EDT**: Additional unwrap() elimination in memory_pool.rs, geodns.rs, doh.rs → v20250905_090806 ✅
+- **09:38 EDT**: Firewall API JSON response fixes → v20250905_093842 ✅
 
 ## 🔍 System Status Summary
 - **Authentication**: JSON + Form-based both working ✅
@@ -113,7 +112,7 @@ None - All active development completed ✅
 
 ## 🚀 Deployment Status
 - **Environment**: https://atlas.alpha.opensam.foundation/
-- **Current Version**: v20250905_090806
+- **Current Version**: v20250905_093842
 - **Build System**: CapRover + gitea auto-deployment
 - **Deploy Time**: 3-5 minutes average
 - **Verification**: /api/version timestamp checking
