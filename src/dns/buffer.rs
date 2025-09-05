@@ -436,7 +436,7 @@ mod tests {
         // First write the standard string
         match buffer.write_qname(&instr1) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to write qname '{}': {}", instr1, e),
         }
 
         // Then we set up a slight variation with relies on a jump back to the data of
@@ -445,7 +445,7 @@ mod tests {
         for b in &crafted_data {
             match buffer.write_u8(*b) {
                 Ok(_) => {}
-                Err(_) => panic!(),
+                Err(e) => panic!("Failed to write byte {:#02x}: {}", b, e),
             }
         }
 
@@ -456,7 +456,7 @@ mod tests {
         let mut outstr1 = String::new();
         match buffer.read_qname(&mut outstr1) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to read first qname: {}", e),
         }
 
         assert_eq!(instr1, outstr1);
@@ -465,7 +465,7 @@ mod tests {
         let mut outstr2 = String::new();
         match buffer.read_qname(&mut outstr2) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to read second qname: {}", e),
         }
 
         assert_eq!(instr2, outstr2);
@@ -480,24 +480,24 @@ mod tests {
 
         match buffer.write_qname(&"ns1.google.com".to_string()) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to write ns1.google.com: {}", e),
         }
         match buffer.write_qname(&"ns2.google.com".to_string()) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to write ns2.google.com: {}", e),
         }
 
         assert_eq!(22, buffer.pos());
 
         match buffer.seek(0) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to seek to position 0: {}", e),
         }
 
         let mut str1 = String::new();
         match buffer.read_qname(&mut str1) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to read first qname: {}", e),
         }
 
         assert_eq!("ns1.google.com", str1);
@@ -505,7 +505,7 @@ mod tests {
         let mut str2 = String::new();
         match buffer.read_qname(&mut str2) {
             Ok(_) => {}
-            Err(_) => panic!(),
+            Err(e) => panic!("Failed to read second qname: {}", e),
         }
 
         assert_eq!("ns2.google.com", str2);

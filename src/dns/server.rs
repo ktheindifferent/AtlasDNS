@@ -950,7 +950,7 @@ mod tests {
                     port: 53,
                 };
             }
-            None => panic!(),
+            None => panic!("Failed to get mutable reference to ServerContext in test"),
         }
 
         // A successful resolve
@@ -962,7 +962,7 @@ mod tests {
                 DnsRecord::A { ref domain, .. } => {
                     assert_eq!("google.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected specific DNS record type but got different type"),
             }
         };
 
@@ -978,14 +978,14 @@ mod tests {
                 DnsRecord::Cname { ref domain, .. } => {
                     assert_eq!("www.facebook.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected specific DNS record type but got different type"),
             }
 
             match res.answers[1] {
                 DnsRecord::A { ref domain, .. } => {
                     assert_eq!("cdn.facebook.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected specific DNS record type but got different type"),
             }
         };
 
@@ -1001,14 +1001,14 @@ mod tests {
                 DnsRecord::Cname { ref domain, .. } => {
                     assert_eq!("www.microsoft.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected specific DNS record type but got different type"),
             }
 
             match res.answers[1] {
                 DnsRecord::A { ref domain, .. } => {
                     assert_eq!("cdn.microsoft.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected specific DNS record type but got different type"),
             }
         };
 
@@ -1024,7 +1024,7 @@ mod tests {
             Some(ctx) => {
                 ctx.allow_recursive = false;
             }
-            None => panic!(),
+            None => panic!("Failed to get mutable reference to ServerContext in test"),
         }
 
         // This should generate an error code, since recursive resolves are
@@ -1058,7 +1058,7 @@ mod tests {
                     port: 53,
                 };
             }
-            None => panic!(),
+            None => panic!("Failed to get mutable reference to ServerContext in test"),
         }
 
         // We expect this to set the server failure rescode

@@ -101,7 +101,13 @@ impl CircuitBreaker {
 
     /// Check if circuit allows request
     pub fn allow_request(&self) -> bool {
-        let mut state = self.state.write().expect("Failed to acquire state lock");
+        let mut state = match self.state.write() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                log::error!("Circuit breaker state lock was poisoned in allow_request, recovering");
+                poisoned.into_inner()
+            }
+        };
         
         match *state {
             CircuitState::Closed => true,
@@ -135,9 +141,27 @@ impl CircuitBreaker {
 
     /// Record successful request
     pub fn record_success(&self) {
-        let mut state = self.state.write().expect("Failed to acquire state lock");
-        let mut success_count = self.success_count.write().expect("Failed to acquire success count lock");
-        let mut failure_count = self.failure_count.write().expect("Failed to acquire failure count lock");
+        let mut state = match self.state.write() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                log::error!("Circuit breaker state lock was poisoned in record_success, recovering");
+                poisoned.into_inner()
+            }
+        };
+        let mut success_count = match self.success_count.write() {
+            Ok(count) => count,
+            Err(poisoned) => {
+                log::error!("Circuit breaker success count lock was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
+        let mut failure_count = match self.failure_count.write() {
+            Ok(count) => count,
+            Err(poisoned) => {
+                log::error!("Circuit breaker failure count lock was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
         
         *success_count += 1;
         
@@ -160,9 +184,27 @@ impl CircuitBreaker {
 
     /// Record failed request
     pub fn record_failure(&self) {
-        let mut state = self.state.write().expect("Failed to acquire state lock");
-        let mut failure_count = self.failure_count.write().expect("Failed to acquire failure count lock");
-        let mut last_failure = self.last_failure_time.write().expect("Failed to acquire last failure lock");
+        let mut state = match self.state.write() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                log::error!("Circuit breaker state lock was poisoned in record_failure, recovering");
+                poisoned.into_inner()
+            }
+        };
+        let mut failure_count = match self.failure_count.write() {
+            Ok(count) => count,
+            Err(poisoned) => {
+                log::error!("Circuit breaker failure count lock was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
+        let mut last_failure = match self.last_failure_time.write() {
+            Ok(time) => time,
+            Err(poisoned) => {
+                log::error!("Circuit breaker last failure time lock was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
         let now = Instant::now();
         
         // Check if failures are within window
@@ -205,7 +247,13 @@ impl CircuitBreaker {
 
     /// Get current circuit state
     pub fn get_state(&self) -> CircuitState {
-        self.state.read().expect("Failed to acquire state lock").clone()
+        match self.state.read() {
+            Ok(state) => state.clone(),
+            Err(poisoned) => {
+                log::error!("Circuit breaker state lock was poisoned when reading state, recovering");
+                poisoned.into_inner().clone()
+            }
+        }
     }
 }
 
@@ -225,7 +273,13 @@ impl CircuitBreakerManager {
 
     /// Get or create circuit breaker for server
     pub fn get_breaker(&self, server: SocketAddr) -> Arc<CircuitBreaker> {
-        let mut breakers = self.breakers.write().expect("Failed to acquire breakers lock");
+        let mut breakers = match self.breakers.write() {
+            Ok(breakers) => breakers,
+            Err(poisoned) => {
+                log::error!("Circuit breaker collection lock was poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
         
         breakers.entry(server)
             .or_insert_with(|| Arc::new(CircuitBreaker::new(self.config.clone())))
@@ -435,7 +489,7 @@ mod tests {
         // Should now be open
         match breaker.get_state() {
             CircuitState::Open { .. } => {}
-            _ => panic!("Circuit should be open"),
+            state => panic!("Expected circuit to be open but got: {:?}", state),
         }
         assert!(!breaker.allow_request());
 
@@ -446,7 +500,7 @@ mod tests {
         assert!(breaker.allow_request());
         match breaker.get_state() {
             CircuitState::HalfOpen { .. } => {}
-            _ => panic!("Circuit should be half-open"),
+            state => panic!("Expected circuit to be half-open but got: {:?}", state),
         }
 
         // Success in half-open should eventually close

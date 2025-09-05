@@ -272,7 +272,7 @@ mod tests {
             assert_eq!(addr, Ipv4Addr::new(192, 168, 1, 1));
             assert_eq!(ttl.0, 3600);
         } else {
-            panic!("Expected A record");
+            panic!("Expected A record but got: {:?}", result);
         }
     }
 
@@ -317,7 +317,7 @@ mod tests {
             assert_eq!(addr, Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1));
             assert_eq!(ttl.0, 7200);
         } else {
-            panic!("Expected AAAA record");
+            panic!("Expected AAAA record but got: {:?}", result);
         }
     }
 
@@ -357,7 +357,7 @@ mod tests {
             assert_eq!(host, "ns1.example.com");
             assert_eq!(ttl.0, 86400);
         } else {
-            panic!("Expected NS record");
+            panic!("Expected NS record but got: {:?}", result);
         }
     }
 
@@ -376,7 +376,7 @@ mod tests {
             assert_eq!(host, "example.com");
             assert_eq!(ttl.0, 3600);
         } else {
-            panic!("Expected CNAME record");
+            panic!("Expected CNAME record but got: {:?}", result);
         }
     }
 
@@ -397,7 +397,7 @@ mod tests {
             assert_eq!(host, "mail.example.com");
             assert_eq!(ttl.0, 3600);
         } else {
-            panic!("Expected MX record");
+            panic!("Expected MX record but got: {:?}", result);
         }
     }
 
@@ -455,7 +455,7 @@ mod tests {
             assert_eq!(minimum, 86400);
             assert_eq!(ttl.0, 86400);
         } else {
-            panic!("Expected SOA record");
+            panic!("Expected SOA record but got: {:?}", result);
         }
     }
 
@@ -504,7 +504,7 @@ mod tests {
             assert_eq!(data, txt_data);
             assert_eq!(ttl.0, 300);
         } else {
-            panic!("Expected TXT record");
+            panic!("Expected TXT record but got: {:?}", result);
         }
     }
 
@@ -591,7 +591,7 @@ mod tests {
             assert_eq!(host, "sip.example.com");
             assert_eq!(ttl.0, 86400);
         } else {
-            panic!("Expected SRV record");
+            panic!("Expected SRV record but got: {:?}", result);
         }
     }
 
@@ -652,7 +652,7 @@ mod tests {
             assert_eq!(flags, 0x00810000);
             assert!(!data.is_empty());
         } else {
-            panic!("Expected OPT record");
+            panic!("Expected OPT record but got: {:?}", result);
         }
     }
 
@@ -675,7 +675,7 @@ mod tests {
             assert_eq!(ttl.0, 3600);
             assert_eq!(buffer.pos, 10); // Should have stepped over the data
         } else {
-            panic!("Expected Unknown record");
+            panic!("Expected Unknown record but got: {:?}", result);
         }
     }
 

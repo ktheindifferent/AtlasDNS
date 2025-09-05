@@ -358,7 +358,9 @@ mod tests {
                     port: 53,
                 };
             }
-            None => panic!(),
+            None => {
+                panic!("Failed to get mutable reference to ServerContext in test");
+            }
         }
 
         let mut resolver = context.create_resolver(context.clone());
@@ -367,7 +369,7 @@ mod tests {
         {
             let res = match resolver.resolve("google.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful DNS resolution but got error: {}", e),
             };
 
             assert_eq!(1, res.answers.len());
@@ -376,7 +378,7 @@ mod tests {
                 DnsRecord::A { ref domain, .. } => {
                     assert_eq!("google.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected A record but got different record type"),
             }
         };
 
@@ -385,14 +387,14 @@ mod tests {
         {
             let res = match resolver.resolve("google.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(1, res.answers.len());
 
             let list = match context.cache.list() {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(1, list.len());
@@ -406,7 +408,7 @@ mod tests {
         {
             let res = match resolver.resolve("yahoo.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(0, res.answers.len());
@@ -425,8 +427,8 @@ mod tests {
         let mut resolver = context.create_resolver(context.clone());
 
         // Expect failure when no name servers are available
-        if let Ok(_) = resolver.resolve("google.com", QueryType::A, true) {
-            panic!();
+        if resolver.resolve("google.com", QueryType::A, true).is_ok() {
+            panic!("Expected DNS resolution to fail but it succeeded");
         }
     }
 
@@ -442,7 +444,7 @@ mod tests {
 
         // Expect failure when no name servers are available
         if resolver.resolve("google.com", QueryType::A, true).is_ok() {
-            panic!();
+            panic!("Expected DNS resolution to fail but it succeeded");
         }
 
         // Insert name server, but no corresponding A record
@@ -455,8 +457,8 @@ mod tests {
 
         let _ = context.cache.store(&nameservers);
 
-        if let Ok(_) = resolver.resolve("google.com", QueryType::A, true) {
-            panic!();
+        if resolver.resolve("google.com", QueryType::A, true).is_ok() {
+            panic!("Expected DNS resolution to fail but it succeeded");
         }
     }
 
@@ -506,7 +508,7 @@ mod tests {
 
         // Expect failure when no name servers are available
         if resolver.resolve("google.com", QueryType::A, true).is_ok() {
-            panic!();
+            panic!("Expected DNS resolution to fail but it succeeded");
         }
 
         // Insert root servers
@@ -633,7 +635,7 @@ mod tests {
         {
             let res = match resolver.resolve("google.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(1, res.answers.len());
@@ -642,7 +644,7 @@ mod tests {
                 DnsRecord::A { ref domain, .. } => {
                     assert_eq!("google.com", domain);
                 }
-                _ => panic!(),
+                _ => panic!("Expected A record but got different record type"),
             }
         };
 
@@ -650,7 +652,7 @@ mod tests {
         {
             let res = match resolver.resolve("foobar.google.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(ResultCode::NXDOMAIN, res.header.rescode);
@@ -661,7 +663,7 @@ mod tests {
         {
             let res = match resolver.resolve("google.com", QueryType::A, true) {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(1, res.answers.len());
@@ -671,7 +673,7 @@ mod tests {
         {
             let list = match context.cache.list() {
                 Ok(x) => x,
-                Err(_) => panic!(),
+                Err(e) => panic!("Expected successful operation but got error: {}", e),
             };
 
             assert_eq!(3, list.len());
