@@ -482,7 +482,7 @@ impl SecurityManager {
                 // Collect metrics from all components
                 let firewall_metrics = firewall.get_metrics();
                 let rate_limit_metrics = rate_limiter.get_metrics();
-                let ddos_metrics = ddos_protection.get_metrics();
+                let _ddos_metrics = ddos_protection.get_metrics();
                 
                 // Update global metrics
                 let mut global_metrics = metrics.write();
@@ -494,7 +494,7 @@ impl SecurityManager {
     }
 
     fn start_alert_processor(&self) {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (_tx, mut rx) = mpsc::unbounded_channel();
         let webhook_config = Arc::clone(&self.webhook_config);
         
         // Check if we're in a Tokio runtime context

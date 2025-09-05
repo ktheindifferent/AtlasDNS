@@ -221,7 +221,7 @@ use crate::dns::client::ClientError;
 impl From<ClientError> for DnsError {
     fn from(err: ClientError) -> Self {
         match err {
-            ClientError::Protocol(p) => DnsError::Protocol(ProtocolError {
+            ClientError::Protocol(_p) => DnsError::Protocol(ProtocolError {
                 kind: ProtocolErrorKind::MalformedPacket,
                 packet_id: None,
                 query_name: None,

@@ -543,7 +543,7 @@ impl DnsFirewall {
     }
 
     /// Record rule match
-    fn record_rule_match(&self, rule: &FirewallRule, _domain: &str, _client_ip: IpAddr) {
+    fn record_rule_match(&self, _rule: &FirewallRule, _domain: &str, _client_ip: IpAddr) {
         // Update rule statistics (would need mutable access in production)
         // This is simplified for the example
     }

@@ -105,10 +105,10 @@ impl AcmeCertificateManager {
     pub fn get_certificate_status(&self) -> CertificateStatus {
         match self.load_certificate() {
             Ok(cert) => {
-                let not_after = cert.not_after();
+                let _not_after = cert.not_after();
                 // Calculate days until expiry (simplified)
-                let current_time = std::time::SystemTime::now();
-                let expiry_time = chrono::DateTime::parse_from_rfc2822("Mon, 1 Jan 2024 00:00:00 +0000");
+                let _current_time = std::time::SystemTime::now();
+                let _expiry_time = chrono::DateTime::parse_from_rfc2822("Mon, 1 Jan 2024 00:00:00 +0000");
                 
                 CertificateStatus {
                     valid: true,

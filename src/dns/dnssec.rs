@@ -131,7 +131,7 @@ impl DnssecKey {
     }
 
     /// Calculate key tag from public key
-    fn calculate_key_tag(public_key: &[u8], algorithm: DnssecAlgorithm) -> u16 {
+    fn calculate_key_tag(public_key: &[u8], _algorithm: DnssecAlgorithm) -> u16 {
         // Simplified key tag calculation (RFC 4034)
         let mut sum: u32 = 0;
         
@@ -557,7 +557,7 @@ impl DnssecSigner {
     /// Generate NSEC3 records for authenticated denial
     fn generate_nsec3_records(
         &self,
-        zone: &str,
+        _zone: &str,
         records: &[DnsRecord],
     ) -> Result<Vec<Nsec3Record>, Box<dyn std::error::Error>> {
         let mut nsec3_records = Vec::new();
