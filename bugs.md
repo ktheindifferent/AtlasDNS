@@ -1,10 +1,18 @@
 # Atlas DNS Bug Tracking (Compressed)
 
 ## 🎯 Current Session Status
-**Active**: 2025-09-05 | **Progress**: Critical security vulnerabilities fixed and deployed | **Environment**: https://atlas.alpha.opensam.foundation/
-**Security Level**: **SECURED** (3 critical vulnerabilities patched) | **Deployment**: ✅ Deployed (20250905_040630) | **Code Quality**: **HARDENED** (memory safety improved)
+**Active**: 2025-09-05 | **Progress**: Hardcoded credentials removed, security improved | **Environment**: https://atlas.alpha.opensam.foundation/
+**Security Level**: **IMPROVING** (4 vulnerabilities patched) | **Deployment**: ✅ Deployed (20250905_040630) | **Code Quality**: **HARDENING** (removing security risks)
 
 ## 🔴 CRITICAL Issues (Resolved Today - 2025-09-05)
+
+### [SECURITY] Hardcoded Sentry DSN Credentials ✅ **FIXED**
+- [x] **Security Risk**: Sentry DSN hardcoded in src/bin/atlas.rs:23 exposed credentials
+  - **Error**: `"http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4"`
+  - **Impact**: Exposed monitoring credentials, potential for fake telemetry data
+  - **Attack Vector**: Anyone with source code access could send false error reports
+  - **Fix Applied**: Changed to use SENTRY_DSN environment variable
+  - **Status**: Fixed - now reads from environment, skips if not set
 
 ### [CRASH] Command Line Parsing Panic ✅ **FIXED**
 - [x] **Production Panic**: Server crashes on invalid command line arguments in src/bin/atlas.rs:138

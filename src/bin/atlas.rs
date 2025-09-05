@@ -20,7 +20,14 @@ fn print_usage(program: &str, opts: Options) {
 /// Main entry point for the Atlas DNS server
 fn main() {
     // Initialize Sentry for error tracking and monitoring
-    let _guard = sentry::init("http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4");
+    // Use environment variable for Sentry DSN to avoid exposing credentials
+    let sentry_dsn = std::env::var("SENTRY_DSN").unwrap_or_default();
+    let _guard = if !sentry_dsn.is_empty() {
+        Some(sentry::init(sentry_dsn))
+    } else {
+        // No Sentry DSN provided, skip initialization
+        None
+    };
     
     // Set up Sentry context
     sentry::configure_scope(|scope| {
