@@ -27,6 +27,7 @@ use crate::dns::traffic_steering::{TrafficSteeringHandler, TrafficSteeringConfig
 use crate::dns::request_limits::RequestLimiter;
 use crate::dns::cache_poisoning::CachePoisonProtection;
 use crate::dns::dot_manager::DotManager;
+use crate::dns::doq_manager::DoqManager;
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -123,6 +124,7 @@ pub struct ServerContext {
     pub request_limiter: Option<Arc<RequestLimiter>>,
     pub cache_poison_protection: Option<Arc<CachePoisonProtection>>,
     pub dot_manager: Option<Arc<DotManager>>,
+    pub doq_manager: Option<Arc<DoqManager>>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -231,6 +233,7 @@ impl Default for ServerContext {
             request_limiter: None,
             cache_poison_protection: None,
             dot_manager: None,
+            doq_manager: None,
         }
     }
 }
@@ -299,6 +302,7 @@ impl ServerContext {
             request_limiter: None, // Will be initialized based on configuration
             cache_poison_protection: None, // Will be initialized based on configuration
             dot_manager: None, // Will be initialized based on configuration
+            doq_manager: None, // Will be initialized based on configuration
         })
     }
 
@@ -381,6 +385,25 @@ impl ServerContext {
     pub fn enable_default_dot_server(&mut self) {
         let config = crate::dns::dot::DotConfig::default();
         self.enable_dot_server(config);
+    }
+
+    /// Enable DNS-over-QUIC (DoQ) server with custom configuration
+    pub async fn enable_doq_server(&mut self, config: crate::dns::doq::DoqConfig) {
+        let mut manager = DoqManager::new(config);
+        
+        // Create a self-reference for initialization - we'll need to improve this pattern
+        if let Ok(()) = manager.initialize(Arc::new(Self::default())).await {
+            self.doq_manager = Some(Arc::new(manager));
+            log::info!("DNS-over-QUIC (DoQ) server enabled on port {}", self.doq_manager.as_ref().unwrap().get_config().port);
+        } else {
+            log::error!("Failed to initialize DoQ server");
+        }
+    }
+
+    /// Enable DNS-over-QUIC (DoQ) server with default configuration
+    pub async fn enable_default_doq_server(&mut self) {
+        let config = crate::dns::doq::DoqConfig::default();
+        self.enable_doq_server(config).await;
     }
 
     /// Initialize enhanced metrics system (async)

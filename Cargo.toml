@@ -43,6 +43,11 @@ async-stream = "0.3"
 futures-util = "0.3"
 libc = "0.2"
 
+# DNS-over-QUIC dependencies
+quinn = "0.10"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+rcgen = "0.11"
+
 # CLI dependencies
 clap = { version = "4.3", features = ["derive", "env", "cargo"] }
 colored = "2.0"

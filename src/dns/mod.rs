@@ -99,6 +99,12 @@ pub mod dot;
 /// DNS-over-TLS (DoT) server management and statistics
 pub mod dot_manager;
 
+/// DNS-over-QUIC (DoQ) implementation - RFC 9250
+pub mod doq;
+
+/// DNS-over-QUIC (DoQ) server management and statistics
+pub mod doq_manager;
+
 /// DNS Firewall for threat protection and content filtering
 pub mod firewall;
 

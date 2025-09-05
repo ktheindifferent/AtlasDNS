@@ -2095,16 +2095,30 @@ impl<'a> WebServer<'a> {
     }
     
     fn doq_page(&self, request: &Request) -> Result<ResponseBox> {
+        let (enabled, port, quic_streams, zero_rtt, packet_loss, latency, http3_enabled) = if let Some(ref doq_manager) = self.context.doq_manager {
+            let stats = doq_manager.get_statistics();
+            (
+                stats.is_enabled(),
+                stats.get_port(),
+                stats.get_active_streams(),
+                stats.get_zero_rtt_connections(),
+                stats.get_packet_loss_percent(),
+                stats.get_avg_latency_ms(),
+                stats.is_http3_enabled(),
+            )
+        } else {
+            (false, 853, 0, 0, 0.0, 0, false)
+        };
+
         let data = serde_json::json!({
             "title": "DNS-over-QUIC",
-            // TODO: Implement DoQ server functionality
-            "enabled": false,
-            "port": 853,
-            "quic_streams": 0,
-            "zero_rtt": 0,
-            "packet_loss": 0.0,
-            "latency": 0,
-            "http3_enabled": false,
+            "enabled": enabled,
+            "port": port,
+            "quic_streams": quic_streams,
+            "zero_rtt": zero_rtt,
+            "packet_loss": packet_loss,
+            "latency": latency,
+            "http3_enabled": http3_enabled,
         });
         self.response_from_media_type(request, "doq", data)
     }
