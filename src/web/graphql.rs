@@ -13,7 +13,7 @@
 //! * **Zone Management** - CRUD operations for DNS zones and records via GraphQL
 
 use async_graphql::*;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, TimeZone};
 use std::collections::HashMap;
 use std::sync::Arc;
 use futures_util::Stream;
@@ -606,29 +606,142 @@ impl QueryRoot {
     /// Get security analytics
     async fn security_analytics(
         &self,
-        _time_range: Option<TimeRange>,
+        time_range: Option<TimeRange>,
     ) -> Result<SecurityAnalytics> {
-        // TODO: Aggregate from security logs
-        Ok(SecurityAnalytics {
-            total_events: 150,
-            rate_limit_events: 100,
-            blocked_queries: 50,
-            suspicious_domains: vec!["malware.com".to_string(), "phishing.net".to_string()],
-            top_threat_sources: vec![
+        // Get real security statistics from the security manager
+        let security_stats = self.context.security_manager.get_statistics();
+        
+        // Get recent security events (limit to 1000 for performance)
+        let events = self.context.security_manager.get_events(1000);
+        
+        // Filter events by time range if specified
+        let filtered_events: Vec<_> = if let Some(range) = time_range {
+            let start_timestamp = range.start.timestamp() as u64;
+            let end_timestamp = range.end.timestamp() as u64;
+            events.into_iter()
+                .filter(|event| event.timestamp >= start_timestamp && event.timestamp <= end_timestamp)
+                .collect()
+        } else {
+            // Default to last 24 hours if no time range specified
+            let one_day_ago = (Utc::now() - Duration::hours(24)).timestamp() as u64;
+            events.into_iter()
+                .filter(|event| event.timestamp >= one_day_ago)
+                .collect()
+        };
+
+        // Aggregate suspicious domains from events
+        let mut domain_counts = std::collections::HashMap::new();
+        for event in &filtered_events {
+            if let Some(domain) = &event.domain {
+                if matches!(event.action_taken, crate::dns::security::SecurityAction::BlockNxDomain | 
+                           crate::dns::security::SecurityAction::BlockRefused |
+                           crate::dns::security::SecurityAction::BlockServfail) {
+                    *domain_counts.entry(domain.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        
+        let suspicious_domains: Vec<String> = domain_counts
+            .into_iter()
+            .filter(|(_, count)| *count >= 5) // Domains blocked 5+ times
+            .map(|(domain, _)| domain)
+            .collect();
+
+        // Aggregate threat sources by IP
+        let mut ip_stats = std::collections::HashMap::new();
+        for event in &filtered_events {
+            if let Some(ip) = &event.client_ip {
+                let entry = ip_stats.entry(ip.to_string()).or_insert((0, Vec::new()));
+                entry.0 += 1;
+                
+                let action_str = match event.action_taken {
+                    crate::dns::security::SecurityAction::Allow => "Allowed",
+                    crate::dns::security::SecurityAction::BlockNxDomain => "Blocked (NXDOMAIN)",
+                    crate::dns::security::SecurityAction::BlockRefused => "Blocked (REFUSED)",
+                    crate::dns::security::SecurityAction::BlockServfail => "Blocked (SERVFAIL)",
+                    crate::dns::security::SecurityAction::Sinkhole(_) => "Sinkholed",
+                    crate::dns::security::SecurityAction::RateLimit => "Rate Limited",
+                    crate::dns::security::SecurityAction::Challenge => "Challenged",
+                };
+                
+                if !entry.1.contains(&action_str.to_string()) {
+                    entry.1.push(action_str.to_string());
+                }
+            }
+        }
+
+        // Create top threat sources (IPs with most events)
+        let mut top_threat_sources: Vec<ThreatSource> = ip_stats
+            .into_iter()
+            .map(|(ip, (count, actions))| {
+                let severity = if count >= 100 { "Critical" } 
+                              else if count >= 50 { "High" }
+                              else if count >= 20 { "Medium" }
+                              else { "Low" };
+                              
                 ThreatSource {
-                    ip_address: "192.168.1.100".to_string(),
-                    query_count: 500,
-                    severity: "High".to_string(),
-                    actions_taken: vec!["Rate Limited".to_string(), "Blocked".to_string()],
-                },
-            ],
-            event_timeline: vec![
+                    ip_address: ip,
+                    query_count: count as i32,
+                    severity: severity.to_string(),
+                    actions_taken: actions,
+                }
+            })
+            .collect();
+        
+        top_threat_sources.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        top_threat_sources.truncate(10); // Top 10 threat sources
+
+        // Create event timeline (hourly buckets)
+        let mut hourly_counts = std::collections::HashMap::new();
+        for event in &filtered_events {
+            let event_time = Utc.timestamp_opt(event.timestamp as i64, 0).unwrap();
+            let hour_bucket = event_time.format("%Y-%m-%d %H:00:00").to_string();
+            
+            let entry = hourly_counts.entry(hour_bucket.clone()).or_insert((event_time, Vec::new()));
+            let event_type = format!("{:?}", event.event_type);
+            if !entry.1.contains(&event_type) {
+                entry.1.push(event_type);
+            }
+        }
+
+        let mut event_timeline: Vec<SecurityEventDataPoint> = hourly_counts
+            .into_iter()
+            .map(|(_, (timestamp, event_types))| {
+                let count = filtered_events.iter()
+                    .filter(|e| {
+                        let e_time = Utc.timestamp_opt(e.timestamp as i64, 0).unwrap();
+                        e_time.format("%Y-%m-%d %H:00:00").to_string() == timestamp.format("%Y-%m-%d %H:00:00").to_string()
+                    })
+                    .count();
+                    
                 SecurityEventDataPoint {
-                    timestamp: Utc::now() - Duration::hours(1),
-                    event_count: 10,
-                    event_types: vec!["RateLimit".to_string()],
-                },
-            ],
+                    timestamp,
+                    event_count: count as i32,
+                    event_types,
+                }
+            })
+            .collect();
+        
+        event_timeline.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+        // Count specific event types
+        let rate_limit_events = filtered_events.iter()
+            .filter(|e| matches!(e.action_taken, crate::dns::security::SecurityAction::RateLimit))
+            .count();
+            
+        let blocked_queries = filtered_events.iter()
+            .filter(|e| matches!(e.action_taken, crate::dns::security::SecurityAction::BlockNxDomain | 
+                                              crate::dns::security::SecurityAction::BlockRefused |
+                                              crate::dns::security::SecurityAction::BlockServfail))
+            .count();
+
+        Ok(SecurityAnalytics {
+            total_events: filtered_events.len() as i32,
+            rate_limit_events: rate_limit_events as i32,
+            blocked_queries: blocked_queries as i32,
+            suspicious_domains,
+            top_threat_sources,
+            event_timeline,
         })
     }
 
