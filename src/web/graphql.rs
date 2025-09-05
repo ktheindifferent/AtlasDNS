@@ -19,6 +19,25 @@ use std::sync::Arc;
 use futures_util::Stream;
 
 use crate::dns::context::ServerContext;
+use crate::web::users::UserRole;
+
+/// GraphQL user context for request-specific user information
+#[derive(Debug, Clone)]
+pub struct GraphQLUserContext {
+    pub username: String,
+    pub role: UserRole,
+    pub id: String,
+}
+
+impl Default for GraphQLUserContext {
+    fn default() -> Self {
+        Self {
+            username: "anonymous".to_string(),
+            role: UserRole::ReadOnly,
+            id: "anonymous".to_string(),
+        }
+    }
+}
 
 /// GraphQL schema root
 pub type DnsSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
@@ -609,7 +628,7 @@ impl QueryRoot {
         time_range: Option<TimeRange>,
     ) -> Result<SecurityAnalytics> {
         // Get real security statistics from the security manager
-        let security_stats = self.context.security_manager.get_statistics();
+        let _security_stats = self.context.security_manager.get_statistics();
         
         // Get recent security events (limit to 1000 for performance)
         let events = self.context.security_manager.get_events(1000);
@@ -1695,19 +1714,22 @@ impl MutationRoot {
     }
 
     /// Apply a zone template to create DNS records
-    async fn apply_zone_template(&self, input: TemplateApplicationInput) -> Result<Vec<ZoneTemplateRecord>> {
+    async fn apply_zone_template(&self, ctx: &Context<'_>, input: TemplateApplicationInput) -> Result<Vec<ZoneTemplateRecord>> {
+        // Get user context or use default
+        let user_ctx = ctx.data_opt::<GraphQLUserContext>().cloned().unwrap_or_default();
+        
         // Convert GraphQL input to HashMap
         let mut variables = std::collections::HashMap::new();
         for var in input.variables {
             variables.insert(var.name, var.value);
         }
         
-        // Apply the template
+        // Apply the template with the authenticated user
         match self.context.zone_templates.apply_template(
             &input.template_id,
             &input.zone_name,
             variables,
-            "admin", // TODO: Get actual user from context
+            &user_ctx.username,
         ) {
             Ok(records) => Ok(records.into_iter().map(|r| ZoneTemplateRecord {
                 name: r.name,

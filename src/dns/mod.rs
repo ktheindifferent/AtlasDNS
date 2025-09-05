@@ -81,6 +81,9 @@ pub mod shutdown;
 /// Health check and monitoring
 pub mod health;
 
+/// SQL injection protection framework
+pub mod sql_protection;
+
 /// ACME certificate management for SSL/TLS
 pub mod acme;
 

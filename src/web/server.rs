@@ -926,6 +926,47 @@ impl<'a> WebServer<'a> {
             .collect()
     }
 
+    /// Validate API key from request headers
+    /// Returns (key_id, permissions) if valid, None if invalid or missing
+    fn validate_api_key(&self, request: &Request) -> Option<(String, Vec<crate::dns::api_keys::ApiPermission>)> {
+        // Look for X-API-Key header
+        let api_key = request.headers().iter()
+            .find(|header| {
+                let field_name = header.field.as_str();
+                field_name.to_ascii_lowercase() == "x-api-key"
+            })
+            .map(|header| header.value.as_str().to_string())?;
+
+        // Validate the key with the API key manager
+        let (key_id, permissions) = self.context.api_key_manager.validate_key(&api_key)?;
+        
+        log::debug!("API key authenticated: {} with permissions: {:?}", key_id, permissions);
+        Some((key_id, permissions))
+    }
+
+    /// Check if API key has required permission for an operation
+    fn check_api_permission(&self, request: &Request, required_permission: crate::dns::api_keys::ApiPermission) -> bool {
+        if let Some((_, permissions)) = self.validate_api_key(request) {
+            permissions.contains(&required_permission) || permissions.contains(&crate::dns::api_keys::ApiPermission::Admin)
+        } else {
+            false
+        }
+    }
+
+    /// Return unauthorized response for API requests
+    fn unauthorized_api_response(&self) -> Result<ResponseBox> {
+        let error_response = serde_json::json!({
+            "error": "Unauthorized",
+            "message": "Valid API key required. Include X-API-Key header with your request.",
+            "code": 401
+        });
+
+        Ok(Response::from_string(serde_json::to_string(&error_response).unwrap_or_default())
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .with_status_code(401)
+            .boxed())
+    }
+
     fn response_from_media_type<R>(
         &self,
         request: &Request,
@@ -1086,7 +1127,12 @@ impl<'a> WebServer<'a> {
     }
 
     /// Prometheus-specific metrics endpoint with enhanced statistics
-    fn prometheus_metrics(&self, _request: &Request) -> Result<ResponseBox> {
+    fn prometheus_metrics(&self, request: &Request) -> Result<ResponseBox> {
+        // Check API key authentication for metrics access
+        if !self.check_api_permission(request, crate::dns::api_keys::ApiPermission::Metrics) {
+            return self.unauthorized_api_response();
+        }
+
         // Update all metrics including real-time statistics
         self.update_prometheus_metrics();
         
@@ -1487,13 +1533,32 @@ impl<'a> WebServer<'a> {
     }
     
     fn graphql_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Check API key authentication for GraphQL access
+        // Allow either session authentication OR API key authentication
+        let has_session = self.session_middleware.validate_request(request).is_ok();
+        let has_api_key = self.check_api_permission(request, crate::dns::api_keys::ApiPermission::Read);
+        
+        if !has_session && !has_api_key {
+            return self.unauthorized_api_response();
+        }
+
         // Read the GraphQL request body
         let mut body = String::new();
         request.as_reader().read_to_string(&mut body)?;
         
         // Parse the GraphQL request
-        let graphql_request: async_graphql::Request = serde_json::from_str(&body)
+        let mut graphql_request: async_graphql::Request = serde_json::from_str(&body)
             .map_err(|e| WebError::InvalidInput(format!("Invalid GraphQL JSON: {}", e)))?;
+        
+        // Extract user information from session
+        if let Ok((_, user)) = self.session_middleware.validate_request(request) {
+            let user_ctx = crate::web::graphql::GraphQLUserContext {
+                username: user.username.clone(),
+                role: user.role.clone(),
+                id: user.id.clone(),
+            };
+            graphql_request = graphql_request.data(user_ctx);
+        }
         
         // Execute the GraphQL query synchronously using blocking
         // Since we're in a sync context, we need to use a runtime to execute async code
@@ -1549,6 +1614,11 @@ impl<'a> WebServer<'a> {
     
     /// Handle DNS resolution requests
     fn resolve_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Check API key authentication for DNS resolution
+        if !self.check_api_permission(request, crate::dns::api_keys::ApiPermission::Read) {
+            return self.unauthorized_api_response();
+        }
+
         // Parse request body for DNS query parameters
         let mut body = String::new();
         request.as_reader().read_to_string(&mut body)?;
@@ -1686,7 +1756,12 @@ impl<'a> WebServer<'a> {
     }
     
     /// Handle cache clear requests
-    fn cache_clear_handler(&self, _request: &mut Request) -> Result<ResponseBox> {
+    fn cache_clear_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Check API key authentication for cache operations
+        if !self.check_api_permission(request, ApiPermission::Cache) {
+            return self.unauthorized_api_response();
+        }
+
         // Clear the DNS cache
         let response_data = match self.context.cache.clear() {
             Ok(()) => serde_json::json!({

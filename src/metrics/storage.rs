@@ -4,6 +4,7 @@ use super::{DnsQueryMetric, SystemMetric, SecurityEvent};
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions, Row};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
+use crate::dns::sql_protection::{SqlProtectionManager, SqlProtectionConfig};
 
 /// Time-series data point
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ pub struct TimeSeriesData {
 /// Metrics storage using SQLite
 pub struct MetricsStorage {
     pool: SqlitePool,
+    sql_protection: std::sync::Mutex<SqlProtectionManager>,
 }
 
 impl MetricsStorage {
@@ -28,7 +30,8 @@ impl MetricsStorage {
             .connect(db_path)
             .await?;
 
-        let storage = Self { pool };
+        let sql_protection = std::sync::Mutex::new(SqlProtectionManager::new(SqlProtectionConfig::default()));
+        let storage = Self { pool, sql_protection };
         storage.initialize_schema().await?;
         Ok(storage)
     }
@@ -475,6 +478,70 @@ impl MetricsStorage {
             .await?;
 
         Ok(())
+    }
+
+    /// Get SQL protection statistics
+    pub fn get_sql_protection_stats(&self) -> Option<crate::dns::sql_protection::SqlProtectionStats> {
+        if let Ok(protection) = self.sql_protection.lock() {
+            Some(protection.get_stats().clone())
+        } else {
+            None
+        }
+    }
+
+    /// Validate and sanitize input for dynamic query construction
+    /// This demonstrates the SQL protection framework integration
+    pub async fn get_metrics_by_domain_safe(&self, domain: &str, start_time: SystemTime, end_time: SystemTime) -> Result<Vec<DnsQueryMetric>, Box<dyn std::error::Error>> {
+        // Use SQL protection to validate the domain input
+        let validated_domain = if let Ok(mut protection) = self.sql_protection.lock() {
+            let (_, params) = protection.validate_query_with_params(
+                "SELECT * FROM dns_queries WHERE domain = ?",
+                &[domain],
+            )?;
+            
+            // Extract the sanitized domain from the first parameter
+            if let Some(crate::dns::sql_protection::SafeParameter::Text(sanitized_domain)) = params.first() {
+                sanitized_domain.clone()
+            } else {
+                return Err("Invalid domain parameter type".into());
+            }
+        } else {
+            return Err("SQL protection manager lock failed".into());
+        };
+
+        let start = start_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
+        let end = end_time.duration_since(UNIX_EPOCH)?.as_secs() as i64;
+
+        let rows = sqlx::query(
+            r#"
+            SELECT * FROM dns_queries
+            WHERE domain = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp DESC
+            "#
+        )
+        .bind(&validated_domain)  // Use the sanitized domain
+        .bind(start)
+        .bind(end)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut metrics = Vec::new();
+        for row in rows {
+            metrics.push(DnsQueryMetric {
+                timestamp: UNIX_EPOCH + Duration::from_secs(row.get::<i64, _>("timestamp") as u64),
+                domain: row.get("domain"),
+                query_type: row.get("query_type"),
+                client_ip: row.get("client_ip"),
+                response_code: row.get("response_code"),
+                response_time_ms: row.get("response_time_ms"),
+                cache_hit: row.get("cache_hit"),
+                protocol: row.get::<Option<String>, _>("protocol").unwrap_or_else(|| "UDP".to_string()),
+                upstream_server: row.get("upstream_server"),
+                dnssec_validated: row.get("dnssec_validated"),
+            });
+        }
+
+        Ok(metrics)
     }
 }
 
