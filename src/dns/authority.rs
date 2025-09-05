@@ -471,20 +471,22 @@ impl Authority {
     }
 
     /// List all zone names
-    pub fn list_zones(&self) -> Vec<String> {
-        let zones = self.zones.read().unwrap();
-        zones.zones.keys().cloned().collect()
+    pub fn list_zones(&self) -> Result<Vec<String>> {
+        let zones = self.zones.read().map_err(|_| AuthorityError::PoisonedLock)?;
+        Ok(zones.zones.keys().cloned().collect())
     }
 
     /// Check if a zone exists
     pub fn zone_exists(&self, zone_name: &str) -> bool {
-        let zones = self.zones.read().unwrap();
-        zones.zones.contains_key(zone_name)
+        match self.zones.read() {
+            Ok(zones) => zones.zones.contains_key(zone_name),
+            Err(_) => false, // If lock is poisoned, assume zone doesn't exist
+        }
     }
 
     /// Create a new zone
     pub fn create_zone(&self, zone_name: &str, m_name: &str, r_name: &str) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         if zones.zones.contains_key(zone_name) {
             return Err(AuthorityError::ZoneExists(zone_name.to_string()));
         }
@@ -495,7 +497,7 @@ impl Authority {
 
     /// Delete a zone
     pub fn delete_zone(&self, zone_name: &str) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         if zones.zones.remove(zone_name).is_none() {
             return Err(AuthorityError::NoSuchZone(zone_name.to_string()));
         }
@@ -504,7 +506,7 @@ impl Authority {
 
     /// Add SOA record to a zone
     pub fn add_soa_record(&self, zone_name: &str, m_name: &str, r_name: &str, serial: u32, refresh: u32, retry: u32, expire: u32, minimum: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -526,7 +528,7 @@ impl Authority {
 
     /// Update SOA record
     pub fn update_soa_record(&self, zone_name: &str, serial: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -558,7 +560,7 @@ impl Authority {
 
     /// Add NS record to a zone
     pub fn add_ns_record(&self, zone_name: &str, ns_host: &str) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -574,7 +576,7 @@ impl Authority {
 
     /// Add A record to a zone
     pub fn add_a_record(&self, zone_name: &str, domain: &str, addr: std::net::Ipv4Addr, ttl: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -590,7 +592,7 @@ impl Authority {
 
     /// Add AAAA record to a zone
     pub fn add_aaaa_record(&self, zone_name: &str, domain: &str, addr: std::net::Ipv6Addr, ttl: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -606,7 +608,7 @@ impl Authority {
 
     /// Add CNAME record to a zone
     pub fn add_cname_record(&self, zone_name: &str, domain: &str, host: &str, ttl: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -622,7 +624,7 @@ impl Authority {
 
     /// Add MX record to a zone
     pub fn add_mx_record(&self, zone_name: &str, domain: &str, priority: u16, host: &str, ttl: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -639,7 +641,7 @@ impl Authority {
 
     /// Add TXT record to a zone
     pub fn add_txt_record(&self, zone_name: &str, domain: &str, data: &str, ttl: u32) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -655,7 +657,7 @@ impl Authority {
 
     /// Export zone to string
     pub fn export_zone(&self, zone_name: &str) -> Result<String> {
-        let zones = self.zones.read().unwrap();
+        let zones = self.zones.read().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -700,7 +702,7 @@ impl Authority {
 
     /// Enable DNSSEC for a zone
     pub fn enable_dnssec(&self, zone_name: &str) -> Result<()> {
-        let mut signer = self.dnssec_signer.write().unwrap();
+        let mut signer = self.dnssec_signer.write().map_err(|_| AuthorityError::PoisonedLock)?;
         
         // Get zone records
         let _records = self.get_zone_records(zone_name)
@@ -711,7 +713,7 @@ impl Authority {
             .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
         
         // Store signed zone data
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         if let Some(zone) = zones.zones.get_mut(zone_name) {
             // Collect DNSKEY and RRSIG records first
             let mut dnskey_records = Vec::new();
@@ -766,7 +768,7 @@ impl Authority {
 
     /// Disable DNSSEC for a zone
     pub fn disable_dnssec(&self, zone_name: &str) -> Result<()> {
-        let mut zones = self.zones.write().unwrap();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
         let zone = zones.zones.get_mut(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
@@ -825,7 +827,7 @@ impl Authority {
             return Err(AuthorityError::NoSuchZone(format!("DNSSEC not enabled for zone {}", zone_name)));
         }
         
-        let mut signer = self.dnssec_signer.write().unwrap();
+        let mut signer = self.dnssec_signer.write().map_err(|_| AuthorityError::PoisonedLock)?;
         signer.rollover_keys(zone_name)
             .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
         
@@ -836,17 +838,17 @@ impl Authority {
     }
 
     /// Get DNSSEC statistics
-    pub fn get_dnssec_stats(&self) -> serde_json::Value {
-        let signer = self.dnssec_signer.read().unwrap();
+    pub fn get_dnssec_stats(&self) -> Result<serde_json::Value> {
+        let signer = self.dnssec_signer.read().map_err(|_| AuthorityError::PoisonedLock)?;
         let stats = signer.get_statistics();
         
-        let zones = self.zones.read().unwrap();
+        let zones = self.zones.read().map_err(|_| AuthorityError::PoisonedLock)?;
         let total_zones = zones.zones.len();
         let signed_zones = zones.zones.values()
             .filter(|z| z.dnssec_enabled)
             .count();
         
-        serde_json::json!({
+        Ok(serde_json::json!({
             "total_zones": total_zones,
             "signed_zones": signed_zones,
             "signatures_created": stats.signatures_created,
@@ -854,7 +856,7 @@ impl Authority {
             "key_rollovers": stats.key_rollovers,
             "validation_failures": stats.validation_failures,
             "avg_signing_time_ms": stats.avg_signing_time_ms,
-        })
+        }))
     }
 }
 

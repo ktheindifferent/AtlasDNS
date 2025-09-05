@@ -267,7 +267,8 @@ impl ApiV2Handler {
         let page = params.page.unwrap_or(1);
         let per_page = params.per_page.unwrap_or(20).min(100);
         
-        let zones = self.context.authority.list_zones();
+        let zones = self.context.authority.list_zones()
+            .map_err(|_| WebError::InternalError("Failed to list zones".to_string()))?;
         let total = zones.len();
         
         // Pagination
@@ -750,7 +751,7 @@ impl ApiV2Handler {
             "status": "healthy",
             "version": "2.0",
             "uptime": 0,  // Would calculate actual uptime
-            "zones": self.context.authority.list_zones().len(),
+            "zones": self.context.authority.list_zones().unwrap_or_default().len(),
         });
 
         let response = ApiResponse {
@@ -1040,7 +1041,8 @@ impl ApiV2Handler {
 
     /// Get global DNSSEC statistics
     fn get_dnssec_stats(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        let stats = self.context.authority.get_dnssec_stats();
+        let stats = self.context.authority.get_dnssec_stats()
+            .map_err(|_| WebError::InternalError("Failed to get DNSSEC stats".to_string()))?;
         
         let response = ApiResponse {
             success: true,

@@ -490,7 +490,7 @@ impl QueryRoot {
         let total_queries: u64 = metrics_summary.query_type_distribution.values().map(|(count, _percentage)| *count).sum();
         
         // Get zone statistics from authority
-        let zone_names = authority.list_zones();
+        let zone_names = authority.list_zones().unwrap_or_default();
         for zone_name in zone_names.iter().take(limit as usize) {
             // For now, use estimated metrics based on cache stats
             let estimated_queries = if total_queries > 0 && zone_names.len() > 0 { 
@@ -1005,7 +1005,7 @@ impl QueryRoot {
         let logs = Vec::new();
 
         // Search DNS zones
-        for zone_name in self.context.authority.list_zones() {
+        for zone_name in self.context.authority.list_zones().unwrap_or_default() {
             if zone_name.to_lowercase().contains(&search_term) {
                 zones.push(SearchResult {
                         id: zone_name.clone(),

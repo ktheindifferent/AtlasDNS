@@ -1904,7 +1904,8 @@ impl<'a> WebServer<'a> {
     
     fn dnssec_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get DNSSEC statistics from authority
-        let dnssec_stats = self.context.authority.get_dnssec_stats();
+        let dnssec_stats = self.context.authority.get_dnssec_stats()
+            .unwrap_or_else(|_| serde_json::json!({"total_zones": 0, "signed_zones": 0}));
         
         // Extract values from JSON
         let total_zones = dnssec_stats["total_zones"].as_u64().unwrap_or(0);
@@ -1916,7 +1917,7 @@ impl<'a> WebServer<'a> {
         };
         
         // Get list of zones for DNSSEC wizard
-        let all_zones = self.context.authority.list_zones();
+        let all_zones = self.context.authority.list_zones().unwrap_or_default();
         let unsigned_zones: Vec<serde_json::Value> = all_zones.iter()
             .map(|zone_name| serde_json::json!({
                 "zone_id": zone_name,
