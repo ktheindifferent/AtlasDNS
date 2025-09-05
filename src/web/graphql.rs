@@ -39,6 +39,61 @@ impl Default for GraphQLUserContext {
     }
 }
 
+impl GraphQLUserContext {
+    /// Check if user has admin privileges
+    pub fn is_admin(&self) -> bool {
+        matches!(self.role, UserRole::Admin)
+    }
+    
+    /// Check if user can write/modify data
+    pub fn can_write(&self) -> bool {
+        matches!(self.role, UserRole::Admin | UserRole::User)
+    }
+    
+    /// Check if user is authenticated (not anonymous)
+    pub fn is_authenticated(&self) -> bool {
+        self.username != "anonymous"
+    }
+}
+
+/// Authorization error helper
+fn unauthorized(message: &str) -> Error {
+    Error::new(format!("Unauthorized: {}", message))
+}
+
+/// Get authenticated user context from GraphQL context
+fn require_auth(ctx: &Context<'_>) -> Result<GraphQLUserContext> {
+    let user_ctx = ctx.data_opt::<GraphQLUserContext>().cloned().unwrap_or_default();
+    if !user_ctx.is_authenticated() {
+        log::warn!("GraphQL request denied: Authentication required");
+        return Err(unauthorized("Authentication required"));
+    }
+    log::debug!("GraphQL request authenticated for user: {}", user_ctx.username);
+    Ok(user_ctx)
+}
+
+/// Get authenticated user with admin privileges
+fn require_admin(ctx: &Context<'_>) -> Result<GraphQLUserContext> {
+    let user_ctx = require_auth(ctx)?;
+    if !user_ctx.is_admin() {
+        log::warn!("GraphQL request denied: Admin privileges required for user {}", user_ctx.username);
+        return Err(unauthorized("Admin privileges required"));
+    }
+    log::info!("GraphQL admin operation authorized for user: {}", user_ctx.username);
+    Ok(user_ctx)
+}
+
+/// Get authenticated user with write privileges
+fn require_write_access(ctx: &Context<'_>) -> Result<GraphQLUserContext> {
+    let user_ctx = require_auth(ctx)?;
+    if !user_ctx.can_write() {
+        log::warn!("GraphQL request denied: Write access required for user {} (role: {:?})", user_ctx.username, user_ctx.role);
+        return Err(unauthorized("Write access required"));
+    }
+    log::info!("GraphQL write operation authorized for user: {}", user_ctx.username);
+    Ok(user_ctx)
+}
+
 /// GraphQL schema root
 pub type DnsSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 
@@ -625,8 +680,11 @@ impl QueryRoot {
     /// Get security analytics
     async fn security_analytics(
         &self,
+        ctx: &Context<'_>,
         time_range: Option<TimeRange>,
     ) -> Result<SecurityAnalytics> {
+        // Require authentication to view security analytics
+        let _user_ctx = require_auth(ctx)?;
         // Get real security statistics from the security manager
         let _security_stats = self.context.security_manager.get_statistics();
         
@@ -1117,7 +1175,9 @@ impl QueryRoot {
     }
 
     /// Global search across all resources
-    async fn search(&self, query: String, limit: Option<i32>) -> Result<SearchResults> {
+    async fn search(&self, ctx: &Context<'_>, query: String, limit: Option<i32>) -> Result<SearchResults> {
+        // Require authentication to search
+        let _user_ctx = require_auth(ctx)?;
         let search_term = query.trim().to_lowercase();
         let search_limit = limit.unwrap_or(50).max(1).min(100) as usize;
         
@@ -1586,7 +1646,9 @@ impl MutationRoot {
 #[Object]
 impl MutationRoot {
     /// Clear DNS cache
-    async fn clear_cache(&self, zone: Option<String>) -> Result<bool> {
+    async fn clear_cache(&self, ctx: &Context<'_>, zone: Option<String>) -> Result<bool> {
+        // Require admin privileges to clear cache
+        let _user_ctx = require_admin(ctx)?;
         if let Some(zone_name) = zone {
             // Clear cache entries for specific zone
             match self.context.cache.clear_zone(&zone_name) {
@@ -1615,7 +1677,9 @@ impl MutationRoot {
     }
 
     /// Trigger manual health check
-    async fn trigger_health_check(&self) -> Result<HealthAnalytics> {
+    async fn trigger_health_check(&self, ctx: &Context<'_>) -> Result<HealthAnalytics> {
+        // Require admin privileges to trigger health checks
+        let _user_ctx = require_admin(ctx)?;
         // Trigger health checks with upstream server configuration
         self.context.run_health_checks().await;
         
@@ -1674,7 +1738,9 @@ impl MutationRoot {
     }
 
     /// Reset statistics
-    async fn reset_statistics(&self, category: Option<String>) -> Result<bool> {
+    async fn reset_statistics(&self, ctx: &Context<'_>, category: Option<String>) -> Result<bool> {
+        // Require admin privileges to reset statistics
+        let _user_ctx = require_admin(ctx)?;
         match category.as_deref() {
             Some("dns") => {
                 // Reset DNS query statistics

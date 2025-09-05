@@ -433,7 +433,7 @@ impl AlertManagementHandler {
 
         // Check for existing alert
         let mut active = self.active_alerts.write();
-        if let Some(existing) = active.get(&alert.fingerprint) {
+        if let Some(_existing) = active.get(&alert.fingerprint) {
             // Update existing alert
             return;
         }

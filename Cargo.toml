@@ -57,6 +57,7 @@ serde_yaml = "0.9"
 ipnetwork = "0.20"
 hmac = "0.12"
 hex = "0.4"
+flate2 = "1.0"
 
 # Real-time metrics dependencies
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }

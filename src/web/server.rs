@@ -1926,7 +1926,7 @@ impl<'a> WebServer<'a> {
     /// Handle real-time metrics streaming via Server-Sent Events
     /// Note: tiny_http doesn't support true streaming, so we send a single response
     /// with retry directive to have the client reconnect periodically
-    fn metrics_stream(&self, request: &Request) -> Result<ResponseBox> {
+    fn metrics_stream(&self, _request: &Request) -> Result<ResponseBox> {
         // Get current metrics summary from the basic metrics collector
         let summary = self.context.metrics.get_metrics_summary();
         
@@ -2117,7 +2117,7 @@ impl<'a> WebServer<'a> {
     fn firewall_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get firewall metrics from security manager
         let security_metrics = self.context.security_manager.get_metrics();
-        let security_stats = self.context.security_manager.get_statistics();
+        let _security_stats = self.context.security_manager.get_statistics();
         
         let data = serde_json::json!({
             "title": "DNS Firewall",
@@ -2559,7 +2559,7 @@ impl<'a> WebServer<'a> {
                 crate::dns::acme::AcmeProvider::LetsEncrypt => "Let's Encrypt",
                 crate::dns::acme::AcmeProvider::LetsEncryptStaging => "Let's Encrypt (Staging)",
                 crate::dns::acme::AcmeProvider::ZeroSSL => "ZeroSSL",
-                crate::dns::acme::AcmeProvider::Custom { url } => "Custom",
+                crate::dns::acme::AcmeProvider::Custom { url: _ } => "Custom",
             }
         } else {
             "None"

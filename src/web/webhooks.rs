@@ -603,7 +603,7 @@ impl WebhookHandler {
     }
 
     /// Handle delivery success
-    fn handle_delivery_success(&self, endpoint_id: &str, event_count: usize) {
+    fn handle_delivery_success(&self, endpoint_id: &str, _event_count: usize) {
         let mut states = self.endpoint_states.write();
         if let Some(state) = states.get_mut(endpoint_id) {
             state.consecutive_failures = 0;

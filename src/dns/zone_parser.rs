@@ -9,10 +9,11 @@
 //! - @ symbol for zone apex
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use flate2::read::GzDecoder;
 
 use crate::dns::protocol::{DnsRecord, TransientTtl};
 use super::authority::Zone;
@@ -120,14 +121,31 @@ impl ZoneParser {
             error: e,
         })?;
 
-        // For now, only support uncompressed files
-        // TODO: Add gzip support with flate2 crate
-        let reader = BufReader::new(file);
-        let lines = reader.lines().collect::<std::io::Result<Vec<_>>>()
-            .map_err(|e| ParseError::IoError {
+        // Check if file is gzip compressed by looking at magic bytes and extension
+        let is_gzip = path.extension().map_or(false, |ext| ext == "gz") || self.is_gzip_file(&file)?;
+        
+        let lines = if is_gzip {
+            // Handle gzip compressed files
+            let file = File::open(path).map_err(|e| ParseError::IoError {
                 line: self.line_number,
                 error: e,
             })?;
+            let decoder = GzDecoder::new(file);
+            let reader = BufReader::new(decoder);
+            reader.lines().collect::<std::io::Result<Vec<_>>>()
+                .map_err(|e| ParseError::IoError {
+                    line: self.line_number,
+                    error: e,
+                })?
+        } else {
+            // Handle uncompressed files
+            let reader = BufReader::new(file);
+            reader.lines().collect::<std::io::Result<Vec<_>>>()
+                .map_err(|e| ParseError::IoError {
+                    line: self.line_number,
+                    error: e,
+                })?
+        };
 
         let result = self.parse_lines(&lines);
         self.include_stack.pop();
@@ -305,7 +323,7 @@ impl ZoneParser {
         let mut idx = 0;
         let mut domain = None;
         let mut ttl = None;
-        let mut class = None;
+        let mut _class = None;
 
         // Parse domain (optional, uses last domain if blank)
         if !parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) 
@@ -326,7 +344,7 @@ impl ZoneParser {
 
         // Parse class (optional, defaults to IN)
         if idx < parts.len() && parts[idx].eq_ignore_ascii_case("IN") {
-            class = Some("IN");
+            _class = Some("IN");
             idx += 1;
         }
 
@@ -694,6 +712,27 @@ impl ZoneParser {
             }
         } else {
             domain.trim_end_matches('.').to_string()
+        }
+    }
+
+    /// Check if a file is gzip compressed by reading magic bytes
+    fn is_gzip_file(&self, file: &File) -> Result<bool> {
+        let mut magic = [0u8; 2];
+        let mut file_clone = file.try_clone().map_err(|e| ParseError::IoError {
+            line: self.line_number,
+            error: e,
+        })?;
+        
+        // Read first two bytes
+        match file_clone.read_exact(&mut magic) {
+            Ok(_) => {
+                // Gzip magic number is 0x1f 0x8b
+                Ok(magic == [0x1f, 0x8b])
+            },
+            Err(_) => {
+                // If we can't read magic bytes, assume it's not gzip
+                Ok(false)
+            }
         }
     }
 }

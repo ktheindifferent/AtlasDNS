@@ -749,6 +749,120 @@ impl DnsUdpServer {
             }
         }
     }
+
+    /// Bind UDP socket with retry logic and enhanced error handling
+    fn bind_udp_socket_with_retry(&self) -> Result<UdpSocket> {
+        const MAX_RETRIES: usize = 5;
+        const RETRY_DELAY_MS: u64 = 1000;
+        
+        for attempt in 1..=MAX_RETRIES {
+            match UdpSocket::bind(("0.0.0.0", self.context.dns_port)) {
+                Ok(socket) => {
+                    // Configure socket options for better performance
+                    if let Err(e) = self.configure_udp_socket(&socket) {
+                        log::warn!("Failed to configure UDP socket options: {:?}", e);
+                    }
+                    
+                    log::info!("Successfully bound UDP socket to port {} on attempt {}", 
+                              self.context.dns_port, attempt);
+                    return Ok(socket);
+                }
+                Err(e) => {
+                    let error_msg = match e.kind() {
+                        std::io::ErrorKind::AddrInUse => {
+                            format!("Port {} is already in use by another process", self.context.dns_port)
+                        }
+                        std::io::ErrorKind::PermissionDenied => {
+                            format!("Permission denied binding to port {} (try running as root or use a port > 1024)", 
+                                   self.context.dns_port)
+                        }
+                        std::io::ErrorKind::AddrNotAvailable => {
+                            "The requested address is not available on this system".to_string()
+                        }
+                        _ => format!("Unknown network error: {}", e)
+                    };
+                    
+                    if attempt == MAX_RETRIES {
+                        // Final attempt failed, report to Sentry and return error
+                        sentry::configure_scope(|scope| {
+                            scope.set_tag("component", "dns_server");
+                            scope.set_tag("server_type", "udp");
+                            scope.set_tag("error_type", &format!("{:?}", e.kind()));
+                            scope.set_extra("port", self.context.dns_port.into());
+                            scope.set_extra("attempt", attempt.into());
+                        });
+                        sentry::capture_message(
+                            &format!("Failed to bind UDP DNS server after {} attempts: {}", MAX_RETRIES, error_msg),
+                            sentry::Level::Error
+                        );
+                        
+                        log::error!("Failed to bind UDP socket after {} attempts: {}", MAX_RETRIES, error_msg);
+                        return Err(ServerError::Io(e));
+                    }
+                    
+                    log::warn!("Attempt {} failed to bind UDP socket: {}. Retrying in {}ms...", 
+                              attempt, error_msg, RETRY_DELAY_MS);
+                    
+                    // Wait before retry
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                }
+            }
+        }
+        
+        unreachable!("Loop should have returned or errored")
+    }
+    
+    /// Configure UDP socket with optimal settings
+    fn configure_udp_socket(&self, socket: &UdpSocket) -> std::io::Result<()> {
+        use std::os::unix::io::AsRawFd;
+        use libc::{setsockopt, SOL_SOCKET, SO_REUSEADDR, SO_RCVBUF, SO_SNDBUF};
+        
+        let fd = socket.as_raw_fd();
+        
+        // Enable address reuse
+        let reuse = 1i32;
+        unsafe {
+            if setsockopt(
+                fd,
+                SOL_SOCKET,
+                SO_REUSEADDR,
+                &reuse as *const _ as *const libc::c_void,
+                std::mem::size_of::<i32>() as u32,
+            ) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        
+        // Set receive buffer size (64KB)
+        let recv_buf_size = 65536i32;
+        unsafe {
+            if setsockopt(
+                fd,
+                SOL_SOCKET,
+                SO_RCVBUF,
+                &recv_buf_size as *const _ as *const libc::c_void,
+                std::mem::size_of::<i32>() as u32,
+            ) != 0 {
+                log::warn!("Failed to set UDP receive buffer size: {:?}", std::io::Error::last_os_error());
+            }
+        }
+        
+        // Set send buffer size (64KB)
+        let send_buf_size = 65536i32;
+        unsafe {
+            if setsockopt(
+                fd,
+                SOL_SOCKET,
+                SO_SNDBUF,
+                &send_buf_size as *const _ as *const libc::c_void,
+                std::mem::size_of::<i32>() as u32,
+            ) != 0 {
+                log::warn!("Failed to set UDP send buffer size: {:?}", std::io::Error::last_os_error());
+            }
+        }
+        
+        Ok(())
+    }
 }
 
 impl DnsServer for DnsUdpServer {
@@ -757,8 +871,8 @@ impl DnsServer for DnsUdpServer {
     /// This method takes ownership of the server, preventing the method from
     /// being called multiple times.
     fn run_server(self) -> Result<()> {
-        // Bind the socket
-        let socket = UdpSocket::bind(("0.0.0.0", self.context.dns_port))?;
+        // Bind the socket with enhanced error handling and retry logic
+        let socket = self.bind_udp_socket_with_retry()?;
 
         // Spawn worker threads for handling requests
         for thread_id in 0..self.thread_count {
@@ -828,11 +942,69 @@ impl DnsTcpServer {
         }
         let _ = stream.shutdown(Shutdown::Both);
     }
+
+    /// Bind TCP socket with retry logic and error reporting
+    fn bind_tcp_socket_with_retry(&self) -> Result<TcpListener> {
+        const MAX_RETRIES: usize = 5;
+        const RETRY_DELAY_MS: u64 = 1000;
+        
+        for attempt in 1..=MAX_RETRIES {
+            match TcpListener::bind(("0.0.0.0", self.context.dns_port)) {
+                Ok(listener) => {
+                    log::info!("Successfully bound TCP socket to port {} on attempt {}", 
+                              self.context.dns_port, attempt);
+                    return Ok(listener);
+                }
+                Err(e) => {
+                    let error_msg = match e.kind() {
+                        std::io::ErrorKind::AddrInUse => {
+                            format!("Port {} is already in use by another process", self.context.dns_port)
+                        }
+                        std::io::ErrorKind::PermissionDenied => {
+                            format!("Permission denied binding to port {} (try running as root or use a port > 1024)", 
+                                   self.context.dns_port)
+                        }
+                        std::io::ErrorKind::AddrNotAvailable => {
+                            "The requested address is not available on this system".to_string()
+                        }
+                        _ => format!("Unknown network error: {}", e)
+                    };
+                    
+                    if attempt == MAX_RETRIES {
+                        // Final attempt failed, report to Sentry and return error
+                        sentry::configure_scope(|scope| {
+                            scope.set_tag("component", "dns_server");
+                            scope.set_tag("server_type", "tcp");
+                            scope.set_tag("error_type", &format!("{:?}", e.kind()));
+                            scope.set_extra("port", self.context.dns_port.into());
+                            scope.set_extra("attempt", attempt.into());
+                        });
+                        sentry::capture_message(
+                            &format!("Failed to bind TCP DNS server after {} attempts: {}", MAX_RETRIES, error_msg),
+                            sentry::Level::Error
+                        );
+                        
+                        log::error!("Failed to bind TCP socket after {} attempts: {}", MAX_RETRIES, error_msg);
+                        return Err(ServerError::Io(e));
+                    }
+                    
+                    log::warn!("Attempt {} failed to bind TCP socket: {}. Retrying in {}ms...", 
+                              attempt, error_msg, RETRY_DELAY_MS);
+                    
+                    // Wait before retry
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                }
+            }
+        }
+        
+        // This should never be reached due to the return in the loop
+        unreachable!("bind_tcp_socket_with_retry: exceeded retry loop without returning")
+    }
 }
 
 impl DnsServer for DnsTcpServer {
     fn run_server(mut self) -> Result<()> {
-        let socket = TcpListener::bind(("0.0.0.0", self.context.dns_port))?;
+        let socket = self.bind_tcp_socket_with_retry()?;
 
         // Spawn threads for handling requests, and create the channels
         for thread_id in 0..self.thread_count {

@@ -420,7 +420,7 @@ impl ApiV2Handler {
             return self.error_response("Zone not found", StatusCode(404));
         }
 
-        let params = self.parse_query_params(request);
+        let _params = self.parse_query_params(request);
         let records = self.context.authority.get_zone_records(zone_name)
             .ok_or_else(|| WebError::ZoneNotFound)?;
         
@@ -662,7 +662,7 @@ impl ApiV2Handler {
                 // Extract zone information from data
                 let zone_name = op.data["name"].as_str()
                     .ok_or("Missing zone name in bulk create operation")?;
-                let zone_type = op.data["type"].as_str().unwrap_or("master");
+                let _zone_type = op.data["type"].as_str().unwrap_or("master");
                 
                 // For now, we'll log zone creation since add_zone might not exist in this form
                 // A full implementation would properly create the zone structure
@@ -729,7 +729,7 @@ impl ApiV2Handler {
                     .ok_or("Missing zone name in bulk update operation")?;
                 
                 // For zones, we can update properties like SOA record if provided
-                if let Some(soa_data) = op.data.get("soa") {
+                if let Some(_soa_data) = op.data.get("soa") {
                     // Update SOA record if provided in the operation data
                     log::info!("Bulk updated zone properties: {}", zone_name);
                 }

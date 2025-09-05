@@ -152,7 +152,7 @@ impl WebSocketManager {
 
     /// Create Server-Sent Events stream as WebSocket fallback
     fn create_sse_stream(&self) -> Result<ResponseBox> {
-        let mut receiver = self.sender.subscribe();
+        let _receiver = self.sender.subscribe();
         let context = self.context.clone();
         
         // Create initial snapshot

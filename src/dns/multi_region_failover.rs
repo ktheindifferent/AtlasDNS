@@ -529,14 +529,14 @@ impl MultiRegionFailoverHandler {
     }
 
     /// Execute gradual failback
-    fn execute_gradual_failback(&self, region: &str, ramp_duration: Duration) {
+    fn execute_gradual_failback(&self, region: &str, _ramp_duration: Duration) {
         // Would implement gradual traffic ramping
         // For now, immediate failback
         self.execute_failback(region);
     }
 
     /// Schedule failback
-    fn schedule_failback(&self, region: &str, delay: Duration) {
+    fn schedule_failback(&self, region: &str, _delay: Duration) {
         // Would implement scheduling
         // For now, immediate failback
         self.execute_failback(region);
@@ -544,7 +544,7 @@ impl MultiRegionFailoverHandler {
 
     /// Check consensus for failover
     fn check_consensus_for_failover(&self, failed_region: &str) -> bool {
-        let config = self.config.read();
+        let _config = self.config.read();
         let mut consensus = self.consensus.write();
         
         // Reset consensus state
