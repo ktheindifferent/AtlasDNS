@@ -69,10 +69,16 @@ fn main() {
         sentry::capture_message(&format!("Panic: {}", message), sentry::Level::Fatal);
     }));
     
-    // Initialize logger only if not already initialized by Sentry
-    if let Err(_) = simple_logger::init() {
-        // Logger already initialized, this is expected when Sentry sets up its own
-        log::debug!("Logger already initialized, likely by Sentry integration");
+    // Initialize logger - check if already initialized to avoid double initialization warning
+    match simple_logger::init() {
+        Ok(_) => {
+            log::info!("Logger initialized successfully");
+        }
+        Err(_) => {
+            // Logger already initialized, this is expected when Sentry sets up its own tracing subscriber
+            // Don't log here to avoid potential issues if logging isn't properly set up yet
+            eprintln!("Logger already initialized (likely by Sentry integration)");
+        }
     }
     
     log::info!("Atlas DNS Server starting with Sentry monitoring enabled");

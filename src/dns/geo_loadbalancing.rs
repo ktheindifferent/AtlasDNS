@@ -329,7 +329,7 @@ impl GeoLoadBalancer {
     }
 
     /// Get effective client IP from EDNS client subnet
-    fn get_effective_client_ip(&self, packet: &DnsPacket, default_ip: IpAddr) -> IpAddr {
+    fn get_effective_client_ip(&self, _packet: &DnsPacket, default_ip: IpAddr) -> IpAddr {
         // For now, just use the default IP
         // Full EDNS processing would require mutable packet
         default_ip

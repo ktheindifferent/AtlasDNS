@@ -535,7 +535,7 @@ impl EdnsProcessor {
 
     /// Handle client subnet option for geo-aware responses
     pub fn handle_client_subnet(
-        packet: &DnsPacket,
+        _packet: &DnsPacket,
         edns: &EdnsRecord,
     ) -> Option<IpAddr> {
         for option in &edns.options {

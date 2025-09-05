@@ -618,7 +618,7 @@ impl DynamicUpdateHandler {
             .ok_or(UpdateError::TransactionNotFound)?;
 
         // Restore previous state
-        for record in &entry.previous_state {
+        for _record in &entry.previous_state {
             // Would restore records
         }
 

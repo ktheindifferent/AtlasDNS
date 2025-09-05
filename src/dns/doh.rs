@@ -13,8 +13,6 @@
 //! * **CORS Support** - Cross-origin resource sharing for web clients
 
 use std::sync::Arc;
-// Removed unused imports
-use std::io::Read;
 use std::time::Instant;
 use tiny_http::{Method, Request, Response, Header};
 use base64;

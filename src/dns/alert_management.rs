@@ -46,7 +46,7 @@ impl Default for AlertConfig {
         Self {
             enabled: true,
             evaluation_interval: Duration::from_secs(30),
-            retention_period: Duration::from_days(7),
+            retention_period: Duration::from_secs(7 * 24 * 60 * 60), // 7 days
             channels: Vec::new(),
             routing_rules: Vec::new(),
             suppression_rules: Vec::new(),

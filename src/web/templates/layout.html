@@ -19,80 +19,130 @@
         })();
     </script>
 
-    <!-- Sentry JavaScript SDK for frontend error monitoring -->
-    <script src="https://browser.sentry-cdn.com/7.91.0/bundle.min.js" integrity="sha384-aFgSgUkfTsq3g5/RxShq7tXl1GmwCa8H3EsCFgf8DUoJrDK6dKTJW3UW9JLDm6lq" crossorigin="anonymous"></script>
+    <!-- Sentry JavaScript SDK for frontend error monitoring (with fallback handling) -->
     <script>
-        // Initialize Sentry for frontend error tracking
-        // Using same DSN as backend for unified error tracking
-        Sentry.init({
-            dsn: "http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4",
-            environment: "production",
+        // Fallback Sentry object for when SDK fails to load
+        window.Sentry = window.Sentry || {
+            init: function() { console.log('Sentry SDK not loaded, using fallback'); },
+            addBreadcrumb: function() {},
+            setUser: function() {},
+            captureException: function(error) { console.error('Error (Sentry fallback):', error); },
+            captureMessage: function(msg) { console.log('Message (Sentry fallback):', msg); },
+            configure_scope: function() {}
+        };
+
+        // Dynamically load Sentry SDK with fallback handling
+        (function() {
+            var script = document.createElement('script');
+            script.src = 'https://browser.sentry-cdn.com/7.91.0/bundle.min.js';
+            script.crossOrigin = 'anonymous';
+            script.integrity = 'sha384-aFgSgUkfTsq3g5/RxShq7tXl1GmwCa8H3EsCFgf8DUoJrDK6dKTJW3UW9JLDm6lq';
             
-            // Session tracking for user journeys
-            integrations: [
-                new Sentry.BrowserTracing({
-                    // Track route changes in SPA-like behavior
-                    routingInstrumentation: Sentry.routingInstrumentation,
-                }),
-                new Sentry.Replay({
-                    // Capture replay sessions for debugging UI issues
-                    maskAllText: true,  // Privacy: mask sensitive text
-                    maskAllInputs: true, // Privacy: mask form inputs
-                    blockAllMedia: true, // Privacy: don't capture media
-                }),
-            ],
+            script.onload = function() {
+                // Initialize Sentry when SDK loads successfully
+                initializeSentry();
+            };
             
-            // Performance monitoring
-            tracesSampleRate: 0.1, // 10% of transactions
+            script.onerror = function() {
+                console.warn('Sentry SDK failed to load from CDN - using fallback mode');
+                // Continue without Sentry monitoring
+                initializePage();
+            };
             
-            // Session replay for critical errors
-            replaysSessionSampleRate: 0.01, // 1% of sessions
-            replaysOnErrorSampleRate: 1.0,  // 100% of error sessions
+            document.head.appendChild(script);
             
-            // Tag with frontend context
-            tags: {
-                component: "frontend",
-                service: "atlas-dns-web"
-            },
-            
-            // Set user context from page if available
-            beforeSend: function(event) {
-                // Add page-specific context
-                event.tags = event.tags || {};
-                event.tags.page = window.location.pathname;
-                event.tags.user_agent = navigator.userAgent;
+            // Timeout fallback in case script loading hangs
+            setTimeout(function() {
+                if (typeof window.Sentry.init !== 'function' || !window.Sentry.init.toString().includes('dsn')) {
+                    console.warn('Sentry SDK loading timeout - proceeding with fallback');
+                    initializePage();
+                }
+            }, 3000);
+        })();
+
+        function initializeSentry() {
+            try {
+                // Initialize Sentry for frontend error tracking
+                Sentry.init({
+                    dsn: "http://5ec005d5f2b84ed5a5d4ce190900dc5e@sentry.alpha.opensam.foundation/4",
+                    environment: "production",
+                    
+                    // Session tracking for user journeys
+                    integrations: [
+                        new Sentry.BrowserTracing({
+                            routingInstrumentation: Sentry.routingInstrumentation,
+                        }),
+                        new Sentry.Replay({
+                            maskAllText: true,  // Privacy: mask sensitive text
+                            maskAllInputs: true, // Privacy: mask form inputs
+                            blockAllMedia: true, // Privacy: don't capture media
+                        }),
+                    ],
+                    
+                    // Performance monitoring
+                    tracesSampleRate: 0.1, // 10% of transactions
+                    
+                    // Session replay for critical errors
+                    replaysSessionSampleRate: 0.01, // 1% of sessions
+                    replaysOnErrorSampleRate: 1.0,  // 100% of error sessions
+                    
+                    // Tag with frontend context
+                    tags: {
+                        component: "frontend",
+                        service: "atlas-dns-web"
+                    },
+                    
+                    // Set user context from page if available
+                    beforeSend: function(event) {
+                        event.tags = event.tags || {};
+                        event.tags.page = window.location.pathname;
+                        event.tags.user_agent = navigator.userAgent;
+                        
+                        event.extra = event.extra || {};
+                        event.extra.theme = document.documentElement.getAttribute('data-bs-theme');
+                        
+                        return event;
+                    }
+                });
                 
-                // Add theme information
-                event.extra = event.extra || {};
-                event.extra.theme = document.documentElement.getAttribute('data-bs-theme');
+                // Set user context if authentication info is available
+                {{#if user}}
+                Sentry.setUser({
+                    id: "{{user.id}}",
+                    username: "{{user.username}}",
+                    role: "{{user.role}}"
+                });
+                {{else}}
+                Sentry.setUser({
+                    id: "anonymous"
+                });
+                {{/if}}
                 
-                return event;
+                // Add breadcrumb for page load
+                Sentry.addBreadcrumb({
+                    category: "navigation",
+                    message: "Page loaded: {{#if title}}{{title}}{{else}}Atlas DNS{{/if}}",
+                    level: "info",
+                    data: {
+                        url: window.location.href,
+                        referrer: document.referrer
+                    }
+                });
+                
+                console.log('✅ Sentry frontend monitoring initialized successfully');
+                
+            } catch (error) {
+                console.warn('Sentry initialization failed:', error);
+            } finally {
+                initializePage();
             }
-        });
-        
-        // Set user context if authentication info is available
-        {{#if user}}
-        Sentry.setUser({
-            id: "{{user.id}}",
-            username: "{{user.username}}",
-            role: "{{user.role}}"
-        });
-        {{else}}
-        Sentry.setUser({
-            id: "anonymous"
-        });
-        {{/if}}
-        
-        // Add breadcrumb for page load
-        Sentry.addBreadcrumb({
-            category: "navigation",
-            message: "Page loaded: {{#if title}}{{title}}{{else}}Atlas DNS{{/if}}",
-            level: "info",
-            data: {
-                url: window.location.href,
-                referrer: document.referrer
-            }
-        });
+        }
+
+        function initializePage() {
+            // Page initialization code that should run regardless of Sentry status
+            console.log('✅ Page initialization complete (Sentry status: ' + 
+                (typeof window.Sentry.init === 'function' && window.Sentry.init.toString().includes('dsn') ? 'loaded' : 'fallback') + ')');
+        }
     </script>
 
     <title>{{#if title}}{{title}} - {{/if}}Atlas DNS</title>
