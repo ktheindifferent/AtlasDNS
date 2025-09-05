@@ -45,8 +45,8 @@ Total items: 201 (previously 165)
 - [x] Add audit logging for security events ✅ (2025-01-15) - Comprehensive audit logging with security events, IP tracking, and system logs
 - [x] Fix plaintext password storage in memory ✅ (2025-09-04 - 20250904_183342)
 - [x] Add XSS protection in template rendering (innerHTML usage found in templates) ✅ (2025-01-15) - Implemented HTML escaping, input sanitization, and CSP headers for comprehensive XSS protection
-- [ ] Implement request size limits
-- [ ] Add DNS cache poisoning protection (module exists but empty)
+- [x] Implement request size limits ✅ (2025-09-05 - 828b8c62d)
+- [x] Add DNS cache poisoning protection (comprehensive implementation) ✅ (2025-09-05 - 828b8c62d)
 - [ ] Sanitize user inputs in JavaScript (onclick handlers without escaping)
 - [x] Add Content Security Policy headers ✅ (2025-01-15) - Added CSP, HSTS, frame options, and other security headers to all HTTP responses
 - [ ] Implement API authentication for CLI tool (optional API key)
