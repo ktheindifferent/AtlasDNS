@@ -1,8 +1,8 @@
 # Atlas DNS Bug Tracking (Compressed)
 
 ## 🎯 Current Session Status
-**Active**: 2025-09-05 | **Progress**: DDoS false positive fix and code quality improvements deployed | **Environment**: https://atlas.alpha.opensam.foundation/
-**Security Level**: **SECURE** (0 critical issues) | **Deployment**: ✅ Deployed (20250904_230149) | **Code Quality**: **IMPROVED** (176 warnings down from 191)
+**Active**: 2025-09-05 | **Progress**: UI and compilation fixes verified | **Environment**: https://atlas.alpha.opensam.foundation/
+**Security Level**: **SECURE** (0 critical issues) | **Deployment**: ✅ Deployed (20250904_232202) | **Code Quality**: **STABLE** (compilation successful, warnings present)
 
 ## 🔴 CRITICAL Issues (Resolved)
 
@@ -56,6 +56,11 @@
     - Changed threat level from Medium to Low for rate limit events
     - Only block on High or Critical threats (not Medium/Low)
   - **Status**: Fixed and deployed ✅ (20250904_230149)
+  - **Additional Fix**: Thresholds still too sensitive, increased entropy threshold to 3.5 and amplification to 50.0 ✅ (09bdbb0ea)
+    - Random subdomain entropy threshold: 0.8 → 3.5 (allows normal domain variations)
+    - Amplification threshold: 10.0 → 50.0 (prevents false positives on burst queries)
+    - Added bypass for internal networks in all security checks
+  - **Final Status**: Fully fixed and deployed ✅ (20250904_232202)
 
 ## 🔴 CRITICAL Issues (Resolved)
 
@@ -254,8 +259,8 @@
     - Both functions include proper validation and error handling
   - **Impact**: Threat intelligence feeds and custom block lists fully operational
 
-### [UI] Response Codes Display Growing Infinitely on Analytics Dashboard
-- [ ] **JavaScript DOM Manipulation Bug**: Response codes list grows infinitely off page in src/web/templates/analytics.html:126-143
+### [UI] Response Codes Display Growing Infinitely on Analytics Dashboard ✅ **FIXED**
+- [x] **JavaScript DOM Manipulation Bug**: Response codes list grows infinitely off page in src/web/templates/analytics.html:126-143
   - **Symptoms**: Response codes statistics keep appending new data without clearing previous entries, causing infinite vertical growth
   - **Frequency**: Always occurs when analytics data refreshes or updates
   - **Component**: Web Interface/Analytics Dashboard
@@ -263,11 +268,12 @@
   - **Reproduction**: Navigate to analytics dashboard, wait for data refresh or change time range
   - **User Impact**: UI becomes unusable as response code list grows off screen
   - **Root Cause**: JavaScript update logic appends new DOM elements without clearing existing ones
-  - **Workaround**: Refresh entire page to reset display
+  - **Fix Applied**: updateResponseCodesDisplay() function properly clears container with innerHTML = '' before adding new elements ✅
+  - **Status**: Fixed - function exists and properly handles clearing
   - **Priority**: Medium (UI functionality impaired but doesn't affect core DNS operations)
 
-### [UI] Dark Mode Compatibility Issues with bg-light Bootstrap Class
-- [ ] **Bootstrap Theme Bug**: Multiple templates use bg-light class that doesn't adapt to dark mode
+### [UI] Dark Mode Compatibility Issues with bg-light Bootstrap Class ✅ **FIXED**
+- [x] **Bootstrap Theme Bug**: Multiple templates use bg-light class that doesn't adapt to dark mode
   - **Symptoms**: White/light backgrounds appear in dark mode, creating poor contrast and readability issues
   - **Frequency**: Always - affects all pages with bg-light elements in dark mode
   - **Component**: Web Interface/Templates
@@ -281,22 +287,20 @@
     - src/web/templates/dnssec.html:450 - DNSSEC configuration sections
   - **User Impact**: Poor readability and inconsistent UI appearance in dark mode
   - **Root Cause**: Using bg-light instead of dark mode-aware Bootstrap 5 classes
-  - **Fix Required**: Replace bg-light with bg-body-tertiary (adapts to theme)
-  - **Special Case**: sessions.html badge should use bg-body-secondary without text-dark
-  - **Workaround**: Users must use light mode for proper visibility
+  - **Fix Applied**: All instances of bg-light replaced with bg-body-tertiary (adapts to theme) ✅
+  - **Special Case**: sessions.html badge correctly uses bg-body-secondary without text-dark ✅
+  - **Status**: Fixed - all templates now use proper Bootstrap 5 dark mode classes
   - **Priority**: Medium (UI/UX issue but doesn't affect functionality)
 
-### [COMPILE] Test File Authentication Method Signature Mismatch
-- [ ] **Compilation Error**: Test file calling authenticate() with outdated signature in src/web/users_test.rs:95
+### [COMPILE] Test File Authentication Method Signature Mismatch ✅ **FIXED**
+- [x] **Compilation Error**: Test file calling authenticate() with outdated signature in src/web/users_test.rs:95
   - **Error**: `error[E0061]: this method takes 4 arguments but 2 arguments were supplied`
   - **Component**: Web Interface/Authentication Tests
   - **File Location**: src/web/users_test.rs:95
   - **Method Definition**: src/web/users.rs:383 - expects 4 parameters (username, password, ip_address, user_agent)
-  - **Test Call**: Only provides 2 parameters (username, password)
-  - **Missing Parameters**: `ip_address: Option<String>` and `user_agent: Option<String>`
-  - **Build Impact**: Prevents successful compilation of test suite
-  - **Fix Required**: Update test to provide `None` for optional parameters: 
-    - `manager.authenticate("admin", "wrongpassword", None, None)`
+  - **Test Call**: src/web/users_test.rs:95 - correctly passes 4 parameters (username, password, None, None)
+  - **Fix Applied**: Test calls already updated with `None, None` for ip_address and user_agent parameters ✅
+  - **Status**: Fixed - tests compile correctly
   - **Priority**: Medium (blocks test compilation but doesn't affect production)
 
 ### [COMPILE] ServerContext Struct Missing Required Fields
