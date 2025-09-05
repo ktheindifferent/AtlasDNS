@@ -78,7 +78,7 @@ Total items: 201 (previously 165)
 - [ ] Implement metrics aggregation pipeline (collector exists, aggregator incomplete)
 - [ ] Add WebSocket support for real-time updates
 - [ ] Implement proper OpenTelemetry tracing (dependency added but unused)
-- [ ] Add Prometheus metrics exporter (dependency added but not integrated)
+- [x] Add Prometheus metrics exporter (dependency added but not integrated) ✅ (2025-09-05 - Enhanced with /prometheus endpoint and system metrics)
 - [ ] Complete GraphQL API implementation (async-graphql added but partial)
 - [ ] Implement SQLite storage backend (sqlx added but unused)
 

@@ -359,6 +359,7 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["authority"]) => self.zone_list(request),
             (Method::Get, ["cache"]) => self.cacheinfo(request),
             (Method::Get, ["metrics"]) => self.metrics(request),
+            (Method::Get, ["prometheus"]) => self.prometheus_metrics(request),
             (Method::Get, ["graphql"]) => self.graphql_playground(request),
             (Method::Post, ["graphql"]) => self.graphql_handler(request),
             (Method::Get, ["dns-query"]) => self.doh_handler(request),
@@ -1084,6 +1085,22 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
 
+    /// Prometheus-specific metrics endpoint with enhanced statistics
+    fn prometheus_metrics(&self, _request: &Request) -> Result<ResponseBox> {
+        // Update all metrics including real-time statistics
+        self.update_prometheus_metrics();
+        
+        let metrics_output = self.metrics_collector.export_metrics()
+            .map_err(|e| WebError::InternalError(format!("Failed to export Prometheus metrics: {}", e)))?;
+        
+        // Add Prometheus-specific headers for optimal scraping
+        Ok(Response::from_string(metrics_output)
+            .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/plain; version=0.0.4; charset=utf-8"))
+            .with_header::<tiny_http::Header>(Self::safe_header("Cache-Control: no-cache, must-revalidate"))
+            .with_header::<tiny_http::Header>(Self::safe_header("Expires: 0"))
+            .boxed())
+    }
+
     fn update_current_metrics(&self) {
         // Update zone statistics
         if let Ok(zones) = self.context.authority.read() {
@@ -1121,6 +1138,70 @@ impl<'a> WebServer<'a> {
         self.metrics_collector.update_user_sessions("admin", admin_sessions);
         self.metrics_collector.update_user_sessions("user", user_sessions);
         self.metrics_collector.update_user_sessions("readonly", readonly_sessions);
+    }
+
+    /// Enhanced metrics update for Prometheus with additional system statistics
+    fn update_prometheus_metrics(&self) {
+        // Include all standard metrics
+        self.update_current_metrics();
+        
+        // Add DoT statistics if available
+        if let Some(ref dot_manager) = self.context.dot_manager {
+            let stats = dot_manager.get_statistics();
+            self.metrics_collector.update_connection_stats("dot", stats.get_active_connections() as i64);
+            self.metrics_collector.update_query_stats("dot_queries", stats.get_total_queries() as i64);
+            self.metrics_collector.update_query_stats("dot_qps", stats.get_qps() as i64);
+        }
+        
+        // Add DoQ statistics if available
+        if let Some(ref doq_manager) = self.context.doq_manager {
+            let stats = doq_manager.get_statistics();
+            self.metrics_collector.update_connection_stats("doq", stats.get_active_connections() as i64);
+            self.metrics_collector.update_connection_stats("doq_streams", stats.get_active_streams() as i64);
+            self.metrics_collector.update_query_stats("doq_queries", stats.get_total_queries() as i64);
+            self.metrics_collector.update_query_stats("doq_qps", stats.get_qps() as i64);
+            self.metrics_collector.update_query_stats("doq_zero_rtt", stats.get_zero_rtt_connections() as i64);
+        }
+        
+        // Add system memory and performance metrics
+        self.update_system_metrics();
+        
+        // Update health check statistics
+        let healthy_count = self.context.health_check_analytics.get_healthy_count() as i64;
+        let degraded_count = self.context.health_check_analytics.get_degraded_count() as i64;
+        let total_endpoints = healthy_count + degraded_count;
+        
+        self.metrics_collector.update_health_stats("healthy_endpoints", healthy_count);
+        self.metrics_collector.update_health_stats("degraded_endpoints", degraded_count);
+        self.metrics_collector.update_health_stats("total_endpoints", total_endpoints);
+    }
+    
+    /// Update system-level metrics for Prometheus monitoring
+    fn update_system_metrics(&self) {
+        use sysinfo::{System, SystemExt, CpuExt};
+        
+        let sys = System::new_all();
+        
+        // Memory usage
+        let used_memory = sys.used_memory() as i64;
+        let total_memory = sys.total_memory() as i64;
+        let memory_usage_percent = if total_memory > 0 {
+            (used_memory * 100) / total_memory
+        } else {
+            0
+        };
+        
+        self.metrics_collector.update_system_stats("memory_used_bytes", used_memory);
+        self.metrics_collector.update_system_stats("memory_total_bytes", total_memory);
+        self.metrics_collector.update_system_stats("memory_usage_percent", memory_usage_percent);
+        
+        // CPU usage
+        let cpu_usage = sys.global_cpu_info().cpu_usage() as i64;
+        self.metrics_collector.update_system_stats("cpu_usage_percent", cpu_usage);
+        
+        // Uptime
+        let uptime = sys.uptime() as i64;
+        self.metrics_collector.update_system_stats("uptime_seconds", uptime);
     }
 
     fn not_found(&self, _request: &Request) -> Result<ResponseBox> {

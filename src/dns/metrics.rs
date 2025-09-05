@@ -384,6 +384,18 @@ lazy_static! {
         // Continue without metrics - return a dummy metric
         GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
+
+    /// System and component metrics gauge
+    pub static ref SYSTEM_METRICS: IntGaugeVec = register_int_gauge_vec!(
+        "atlas_system_metrics",
+        "System and component metrics",
+        &["metric_name"]
+    ).unwrap_or_else(|e| {
+        log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
+        log::warn!("DNS server will continue without metrics support");
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+    });
 }
 
 /// Comprehensive metrics summary structure
@@ -1010,6 +1022,35 @@ impl MetricsCollector {
     /// Get metrics registry
     pub fn registry(&self) -> &Registry {
         &self.registry
+    }
+
+    /// Update connection statistics for protocols
+    pub fn update_connection_stats(&self, protocol: &str, count: i64) {
+        ACTIVE_CONNECTIONS
+            .with_label_values(&[protocol, "server"])
+            .set(count);
+    }
+
+    /// Update query statistics
+    pub fn update_query_stats(&self, metric_name: &str, value: i64) {
+        // Use generic gauge for various query statistics
+        SYSTEM_METRICS
+            .with_label_values(&[metric_name])
+            .set(value);
+    }
+
+    /// Update health check statistics  
+    pub fn update_health_stats(&self, metric_name: &str, value: i64) {
+        SYSTEM_METRICS
+            .with_label_values(&[&format!("health_{}", metric_name)])
+            .set(value);
+    }
+
+    /// Update system-level statistics
+    pub fn update_system_stats(&self, metric_name: &str, value: i64) {
+        SYSTEM_METRICS
+            .with_label_values(&[&format!("system_{}", metric_name)])
+            .set(value);
     }
 }
 
