@@ -243,12 +243,12 @@ impl MetricsCollector {
     }
 
     /// Update active connection count
-    pub async fn update_active_connections(&self, count: u32) {
+    pub async fn update_active_connections(&self, _count: u32) {
         // This will be called by the connection pool
     }
 
     /// Update cache entry count
-    pub async fn update_cache_entries(&self, count: u64) {
+    pub async fn update_cache_entries(&self, _count: u64) {
         // This will be called by the cache manager
     }
 

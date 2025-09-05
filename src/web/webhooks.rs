@@ -760,7 +760,7 @@ impl WebhookHandler {
     /// Test endpoint
     pub async fn test_endpoint(&self, endpoint_id: &str) -> Result<(), String> {
         let endpoints = self.endpoints.read();
-        let endpoint = endpoints.get(endpoint_id)
+        let _endpoint = endpoints.get(endpoint_id)
             .ok_or("Endpoint not found")?
             .clone();
         

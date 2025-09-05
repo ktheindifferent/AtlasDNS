@@ -218,7 +218,7 @@ impl TimeoutHandler {
     pub async fn query_with_retry<F, Fut>(
         &self,
         domain: &str,
-        query_type: QueryType,
+        _query_type: QueryType,
         server: SocketAddr,
         query_fn: F,
     ) -> Result<DnsPacket, ClientError>

@@ -477,7 +477,7 @@ impl QueryRoot {
     /// Get top queried domains
     async fn top_domains(
         &self,
-        time_range: Option<TimeRange>,
+        _time_range: Option<TimeRange>,
         limit: Option<i32>,
     ) -> Result<Vec<TopDomain>> {
         let limit = limit.unwrap_or(10);
@@ -606,7 +606,7 @@ impl QueryRoot {
     /// Get security analytics
     async fn security_analytics(
         &self,
-        time_range: Option<TimeRange>,
+        _time_range: Option<TimeRange>,
     ) -> Result<SecurityAnalytics> {
         // TODO: Aggregate from security logs
         Ok(SecurityAnalytics {
@@ -635,7 +635,7 @@ impl QueryRoot {
     /// Get performance analytics
     async fn performance_analytics(
         &self,
-        time_range: Option<TimeRange>,
+        _time_range: Option<TimeRange>,
     ) -> Result<PerformanceAnalytics> {
         // Get real metrics from the metrics collector
         let metrics_summary = self.context.metrics.get_metrics_summary();
@@ -674,7 +674,7 @@ impl QueryRoot {
     async fn zone_analytics(
         &self,
         zone_name: String,
-        time_range: Option<TimeRange>,
+        _time_range: Option<TimeRange>,
     ) -> Result<ZoneAnalytics> {
         // Get real zone-specific metrics
         let zone_metrics = self.context.metrics.get_zone_metrics(&zone_name);

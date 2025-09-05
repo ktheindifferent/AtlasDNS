@@ -35,6 +35,28 @@
     - Applied to both ddos_protection.rs and source_validation.rs
   - **Status**: Fixed and deployed ✅ (20250904_224741)
 
+## 🟠 HIGH Priority Issues (Active)
+
+### [DNS] DDoS Protection False Positives Blocking Legitimate Queries
+- [ ] **Aggressive Rate Limiting**: Connection counter never resets causing false DDoS detection in src/dns/security/ddos_protection.rs:528-529
+  - **Impact**: Legitimate DNS queries from laptop blocked after just a few queries
+  - **Error**: "Security blocked query from 10.0.0.2: Some(\"Potential DDoS attack detected\")"
+  - **DNS Protocol**: UDP/TCP (both affected)
+  - **Query Types**: All types (A, AAAA, Unknown(65))
+  - **Symptoms**: After ~10 queries, all subsequent queries return REFUSED with DDoS detection message
+  - **Frequency**: Always after threshold reached
+  - **Client Impact**: Complete DNS resolution failure, cannot browse any websites
+  - **Server Logs**: Shows legitimate domains (duckduckgo.com, github.com, spotify.com, etc.) being blocked
+  - **Root Cause**: `active_connections` counter incremented but never decremented, causing cumulative count
+  - **Reproduction**: Set laptop DNS to Atlas server and browse normally for 30 seconds
+  - **Performance Impact**: None - queries are instantly refused
+  - **Fix Applied**: 
+    - Changed from cumulative connection count to rate-based limiting (50 QPS per IP)
+    - Track queries in 1-second sliding window instead of cumulative count
+    - Changed threat level from Medium to Low for rate limit events
+    - Only block on High or Critical threats (not Medium/Low)
+  - **Status**: Fixed locally, needs testing and deployment
+
 ## 🔴 CRITICAL Issues (Resolved)
 
 ### [CRASH] Sentry Breadcrumb Zero-Initialization Panic ✅ **FIXED**

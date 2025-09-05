@@ -296,7 +296,7 @@ impl DDoSProtection {
             connection_limiter: Arc::new(RwLock::new(ConnectionLimiter {
                 connections: HashMap::new(),
                 max_connections: 100,
-                rate_per_second: 10,
+                rate_per_second: 50,  // Allow 50 queries per second per IP (reasonable for normal DNS usage)
             })),
             entropy_detector: Arc::new(RwLock::new(EntropyDetector {
                 entropy_threshold: 3.5,
@@ -342,13 +342,14 @@ impl DDoSProtection {
         let mut events = Vec::new();
         let mut threat_level = ThreatLevel::None;
 
-        // Check connection limits
+        // Check connection limits (but don't trigger on Medium for rate limiting)
         if let Some(action) = self.check_connection_limits(client_ip) {
             events.push(SecurityEvent::ConnectionLimitExceeded {
                 client_ip,
                 connections: self.get_connection_count(client_ip),
             });
-            threat_level = ThreatLevel::Medium;
+            // Only trigger if rate is significantly high
+            threat_level = ThreatLevel::Low;  // Reduced from Medium to avoid blocking normal usage
         }
 
         // Check for amplification attacks
@@ -435,7 +436,8 @@ impl DDoSProtection {
         metrics.current_threat_level = threat_level;
         metrics.active_attacks = self.get_active_attack_count();
 
-        if threat_level >= ThreatLevel::Medium {
+        // Only block on High or Critical threats, not Medium or Low
+        if threat_level >= ThreatLevel::High {
             metrics.blocked_queries += 1;
             SecurityCheckResult {
                 allowed: false,
@@ -515,21 +517,35 @@ impl DDoSProtection {
         let mut limiter = self.connection_limiter.write();
         let config = self.config.read();
         
+        let now = Instant::now();
         let info = limiter.connections.entry(client_ip).or_insert_with(|| {
             ConnectionInfo {
                 active_connections: 0,
                 connection_rate: VecDeque::new(),
-                first_seen: Instant::now(),
-                last_seen: Instant::now(),
+                first_seen: now,
+                last_seen: now,
                 total_queries: 0,
             }
         });
         
-        info.active_connections += 1;
+        // Track query rate instead of cumulative connections
+        info.connection_rate.push_back(now);
         info.total_queries += 1;
-        info.last_seen = Instant::now();
+        info.last_seen = now;
         
-        if info.active_connections > config.max_connections_per_ip {
+        // Clean old rate entries (keep only last second)
+        let cutoff = now - Duration::from_secs(1);
+        while let Some(&front_time) = info.connection_rate.front() {
+            if front_time < cutoff {
+                info.connection_rate.pop_front();
+            } else {
+                break;
+            }
+        }
+        
+        // Check queries per second instead of cumulative connections
+        let current_rate = info.connection_rate.len() as u32;
+        if current_rate > limiter.rate_per_second {
             Some(MitigationAction::RateLimit)
         } else {
             None
@@ -709,7 +725,7 @@ impl DDoSProtection {
     fn get_connection_count(&self, client_ip: IpAddr) -> u32 {
         let limiter = self.connection_limiter.read();
         limiter.connections.get(&client_ip)
-            .map(|info| info.active_connections)
+            .map(|info| info.connection_rate.len() as u32)  // Return rate count, not cumulative connections
             .unwrap_or(0)
     }
 

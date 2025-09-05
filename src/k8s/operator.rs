@@ -653,7 +653,7 @@ impl KubernetesOperator {
     }
 
     /// Reconcile Kubernetes service
-    async fn reconcile_service(&self, request: &ReconcileRequest) -> ReconcileResult {
+    async fn reconcile_service(&self, _request: &ReconcileRequest) -> ReconcileResult {
         let config = self.service_discovery.read();
         
         if !config.enabled {
@@ -677,7 +677,7 @@ impl KubernetesOperator {
     }
 
     /// Reconcile Ingress
-    async fn reconcile_ingress(&self, request: &ReconcileRequest) -> ReconcileResult {
+    async fn reconcile_ingress(&self, _request: &ReconcileRequest) -> ReconcileResult {
         let config = self.config.read();
         
         if !config.ingress_integration {
@@ -698,31 +698,31 @@ impl KubernetesOperator {
     }
 
     /// Sync zone to DNS server
-    async fn sync_zone_to_dns(&self, zone: &DnsZone) -> Result<(), String> {
+    async fn sync_zone_to_dns(&self, _zone: &DnsZone) -> Result<(), String> {
         // Would make API call to DNS server
         Ok(())
     }
 
     /// Delete zone from DNS server
-    async fn delete_zone_from_dns(&self, zone_name: &str) -> Result<(), String> {
+    async fn delete_zone_from_dns(&self, _zone_name: &str) -> Result<(), String> {
         // Would make API call to DNS server
         Ok(())
     }
 
     /// Sync record to DNS server
-    async fn sync_record_to_dns(&self, record: &DnsRecord) -> Result<(), String> {
+    async fn sync_record_to_dns(&self, _record: &DnsRecord) -> Result<(), String> {
         // Would make API call to DNS server
         Ok(())
     }
 
     /// Delete record from DNS server
-    async fn delete_record_from_dns(&self, record: &DnsRecord) -> Result<(), String> {
+    async fn delete_record_from_dns(&self, _record: &DnsRecord) -> Result<(), String> {
         // Would make API call to DNS server
         Ok(())
     }
 
     /// Apply policy to DNS server
-    async fn apply_policy_to_dns(&self, policy: &DnsPolicy) -> Result<(), String> {
+    async fn apply_policy_to_dns(&self, _policy: &DnsPolicy) -> Result<(), String> {
         // Would make API call to DNS server
         Ok(())
     }
