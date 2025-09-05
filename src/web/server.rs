@@ -1138,8 +1138,13 @@ impl<'a> WebServer<'a> {
     }
     
     fn login(&self, request: &mut Request) -> Result<ResponseBox> {
+        // Read the entire request body once to avoid EOF errors
+        let mut body = Vec::new();
+        request.as_reader().read_to_end(&mut body)
+            .map_err(|e| WebError::Io(e))?;
+        
         let login_request: LoginRequest = if request.json_input() {
-            match serde_json::from_reader(request.as_reader()) {
+            match serde_json::from_slice(&body) {
                 Ok(req) => req,
                 Err(e) => {
                     log::warn!("JSON parsing failed for login request: {}", e);
@@ -1147,7 +1152,9 @@ impl<'a> WebServer<'a> {
                 }
             }
         } else {
-            parse_formdata(&mut request.as_reader())
+            // Parse as form data from the body bytes
+            let mut cursor = std::io::Cursor::new(body);
+            parse_formdata(&mut cursor)
                 .and_then(LoginRequest::from_formdata)?
         };
         
