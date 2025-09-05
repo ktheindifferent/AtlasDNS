@@ -194,6 +194,9 @@ impl PacketBuffer for VectorPacketBuffer {
     }
 
     fn read(&mut self) -> Result<u8> {
+        if self.pos >= self.buffer.len() {
+            return Err(BufferError::EndOfBuffer);
+        }
         let res = self.buffer[self.pos];
         self.pos += 1;
 

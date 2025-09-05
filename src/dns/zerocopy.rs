@@ -121,6 +121,11 @@ impl ZeroCopyBuffer {
     #[inline(always)]
     pub unsafe fn read_direct(&self, offset: usize, len: usize) -> &[u8] {
         debug_assert!(offset + len <= PACKET_SIZE);
+        // Add runtime check for release builds
+        if offset + len > PACKET_SIZE {
+            // Return empty slice instead of potentially reading out of bounds
+            return &[];
+        }
         slice::from_raw_parts(self.data.as_ptr().add(offset), len)
     }
 }

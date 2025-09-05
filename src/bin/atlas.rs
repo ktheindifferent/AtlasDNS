@@ -135,7 +135,11 @@ fn main() {
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!("{}", f.to_string()),
+        Err(f) => {
+            eprintln!("Error parsing arguments: {}", f.to_string());
+            print_usage(&program, opts);
+            std::process::exit(1);
+        }
     };
 
     if opt_matches.opt_present("h") {
