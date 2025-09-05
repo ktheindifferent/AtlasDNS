@@ -381,6 +381,32 @@
 
 {{#*inline "header"}}
 <script>
+    // Define global functions that need to be accessible from HTML onclick handlers
+    function refreshDashboardData() {
+        // Simulate fetching new data
+        const statValues = document.querySelectorAll('.stat-value');
+        statValues.forEach(stat => {
+            stat.style.opacity = '0.5';
+            setTimeout(() => {
+                stat.style.opacity = '1';
+                // Add a subtle pulse animation
+                stat.style.animation = 'pulse 0.5s ease';
+            }, 500);
+        });
+        
+        // Update last refresh time
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        updateLastRefreshTime(timeString);
+    }
+    
+    function updateLastRefreshTime(time) {
+        const refreshIndicator = document.getElementById('lastRefresh');
+        if (refreshIndicator) {
+            refreshIndicator.textContent = `Last updated: ${time}`;
+        }
+    }
+
     // Real-time dashboard updates
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize dashboard with loading states
@@ -423,31 +449,6 @@
                 this.style.transform = 'translateX(0)';
             });
         });
-    }
-    
-    function refreshDashboardData() {
-        // Simulate fetching new data
-        const statValues = document.querySelectorAll('.stat-value');
-        statValues.forEach(stat => {
-            stat.style.opacity = '0.5';
-            setTimeout(() => {
-                stat.style.opacity = '1';
-                // Add a subtle pulse animation
-                stat.style.animation = 'pulse 0.5s ease';
-            }, 500);
-        });
-        
-        // Update last refresh time
-        const now = new Date();
-        const timeString = now.toLocaleTimeString();
-        updateLastRefreshTime(timeString);
-    }
-    
-    function updateLastRefreshTime(time) {
-        const refreshIndicator = document.getElementById('lastRefresh');
-        if (refreshIndicator) {
-            refreshIndicator.textContent = `Last updated: ${time}`;
-        }
     }
     
     // Add pulse animation
