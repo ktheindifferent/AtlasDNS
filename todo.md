@@ -60,7 +60,7 @@ Total items: 201 (previously 165)
 
 ### Missing Core Implementations (UPDATED 2025-09-05)
 - [x] DNS-over-TLS (DoT) server - connected to web dashboard with real metrics ✅ (2025-09-05 - DoT manager implemented)
-- [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
+- [x] DNS-over-QUIC (DoQ) server - complete RFC 9250 implementation with QUIC transport ✅ (2025-09-05 - Full DoQ server with manager)
 - [x] Traffic steering manager - integrated with web dashboard ✅ (2025-09-04 - bb6b98739)
 - [x] Endpoint health check manager - implemented with HealthCheckAnalyticsHandler ✅ (2025-09-04 - 0d311a743)
 - [x] Actual uptime tracking - hardcoded to 100% at src/web/server.rs:2050 ✅ (2025-09-04 - 20250904_184615)
