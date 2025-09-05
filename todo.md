@@ -73,7 +73,7 @@ Total items: 201 (previously 165)
 - [ ] Implement proper DNS notify mechanism (zone_transfer.rs:551)
 - [ ] Complete zero-copy implementation (zerocopy.rs partially done)
 - [ ] Complete CLI tool commands (traffic, stats, config commands stubbed)
-- [ ] Implement API v2 endpoints (api_v2.rs exists but incomplete)
+- [x] Implement API v2 endpoints (api_v2.rs exists but incomplete) ✅ (2025-09-05 - 2f95b2afc)
 - [ ] Complete Kubernetes operator (basic structure, no K8s API integration)
 - [ ] Implement metrics aggregation pipeline (collector exists, aggregator incomplete)
 - [ ] Add WebSocket support for real-time updates
@@ -124,7 +124,7 @@ Total items: 201 (previously 165)
 - [ ] Implement split-horizon DNS (module exists, needs work)
 - [ ] Add GeoDNS functionality (geodns.rs incomplete)
 - [ ] Complete webhook system (basic structure, no actual webhook calls)
-- [ ] Add bulk DNS operations support (bulk_operations.rs stubbed)
+- [x] Add bulk DNS operations support (bulk_operations.rs stubbed) ✅ (2025-09-05 - 2f95b2afc)
 - [ ] Implement DNS query logging with rotation
 - [ ] Add support for CAA records
 - [ ] Implement DNS response policy zones (RPZ module empty)
