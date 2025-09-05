@@ -22,7 +22,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::dns::protocol::{DnsPacket, QueryType};
 use crate::dns::cache::SynchronizedCache;
-use crate::dns::memory_pool::{BufferPool, BufferSize};
+use crate::dns::memory_pool::BufferPool;
 
 /// Performance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

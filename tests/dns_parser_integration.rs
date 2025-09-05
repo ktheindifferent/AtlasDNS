@@ -1,8 +1,7 @@
 //! Integration tests for DNS record parsers with real DNS packet data
 
-use atlas::dns::buffer::{BytePacketBuffer, PacketBuffer, VectorPacketBuffer};
-use atlas::dns::protocol::{DnsPacket, DnsRecord, QueryType, TransientTtl};
-use atlas::dns::record_parsers::RecordParser;
+use atlas::dns::buffer::{BytePacketBuffer, PacketBuffer};
+use atlas::dns::protocol::{DnsPacket, DnsRecord};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Helper to create a DNS packet from raw bytes

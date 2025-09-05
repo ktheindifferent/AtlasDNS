@@ -2,7 +2,7 @@
 
 use proptest::prelude::*;
 use atlas::dns::buffer::{PacketBuffer, VectorPacketBuffer};
-use atlas::dns::protocol::{DnsRecord, TransientTtl};
+use atlas::dns::protocol::DnsRecord;
 use atlas::dns::record_parsers::RecordParser;
 use std::net::{Ipv4Addr, Ipv6Addr};
 

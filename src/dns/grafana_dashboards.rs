@@ -13,7 +13,6 @@
 //! * **Responsive Layout** - Mobile and desktop optimized
 //! * **Dark/Light Themes** - Theme-aware visualizations
 
-use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
 

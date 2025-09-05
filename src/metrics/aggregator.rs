@@ -4,9 +4,8 @@ use super::storage::MetricsStorage;
 use super::{QueryTypeDistribution, ResponseCodeDistribution, TopDomain};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 
 /// Time range for queries
 #[derive(Debug, Clone, Serialize, Deserialize)]

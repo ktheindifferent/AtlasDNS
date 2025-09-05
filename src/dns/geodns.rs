@@ -14,8 +14,8 @@
 //! * **Performance Caching** - Cache geo lookups for speed
 
 use std::sync::Arc;
-use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};

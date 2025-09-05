@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, DnsQuestion, TransientTtl};
+use crate::dns::protocol::{DnsRecord, DnsQuestion, TransientTtl};
 use crate::dns::errors::DnsError;
 
 /// Split-horizon configuration

@@ -13,7 +13,7 @@
 //! * **CORS Support** - Cross-origin resource sharing for web clients
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+// Removed unused imports
 use std::io::Read;
 use std::time::Instant;
 use tiny_http::{Method, Request, Response, Header};

@@ -13,12 +13,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use parking_lot::RwLock;
 
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode, DnsRecord};
 use crate::dns::client::DnsClient;
-use crate::dns::cache::SynchronizedCache;
 use crate::dns::context::ServerContext;
 use crate::dns::errors::DnsError;
 

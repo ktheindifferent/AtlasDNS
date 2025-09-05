@@ -6,7 +6,7 @@
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::thread;
-use tiny_http::{Request, Response, StatusCode};
+use tiny_http::{Request, Response};
 use serde_json::json;
 
 /// Panic handler middleware

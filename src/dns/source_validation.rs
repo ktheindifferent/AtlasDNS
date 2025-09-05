@@ -13,15 +13,14 @@
 //! * **TCP Fallback** - Force suspicious clients to TCP
 //! * **Cookie-Based Validation** - DNS cookies for return path validation
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
-use crate::dns::errors::DnsError;
+use crate::dns::protocol::DnsPacket;
 
 /// Source validation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

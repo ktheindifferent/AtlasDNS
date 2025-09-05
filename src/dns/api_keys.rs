@@ -154,7 +154,7 @@ impl ApiKeyManager {
     
     /// Generate a new API key
     pub fn generate_key(&self, name: String, description: String, permissions: Vec<ApiPermission>) -> Result<(String, String), String> {
-        let (mut api_key, raw_key) = ApiKey::new(name, description, permissions);
+        let (api_key, raw_key) = ApiKey::new(name, description, permissions);
         
         // Store in both maps
         {

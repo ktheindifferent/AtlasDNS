@@ -2,7 +2,6 @@
 
 use atlas::metrics::{
     MetricsManager, DnsQueryMetric, SecurityEvent, TimeRange, AggregationInterval,
-    QueryTypeDistribution, ResponseCodeDistribution, TopDomain, GeographicDistribution,
 };
 use std::time::{Duration, SystemTime};
 use tokio;

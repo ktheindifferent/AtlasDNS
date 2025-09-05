@@ -21,7 +21,7 @@ use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 use crate::dns::security::SecurityAction;
 use crate::dns::dnssec::DnssecSigner;
-use crate::dns::metrics::{THREAD_POOL_THREADS, THREAD_POOL_QUEUE_SIZE, THREAD_POOL_TASKS, THREAD_POOL_UTILIZATION};
+use crate::dns::metrics::{THREAD_POOL_THREADS, THREAD_POOL_QUEUE_SIZE, THREAD_POOL_TASKS};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {

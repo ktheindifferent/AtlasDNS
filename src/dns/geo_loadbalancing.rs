@@ -12,16 +12,15 @@
 //! * **Failover Support** - Automatic failover to next best location
 //! * **Custom Policies** - Define routing rules per zone
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, TransientTtl};
 use crate::dns::errors::DnsError;
-use crate::dns::edns0::{EdnsProcessor, EdnsRecord};
 
 /// Geographic region identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -401,7 +400,7 @@ impl GeoLoadBalancer {
         let dcs = self.datacenters.read();
         
         // Filter active and healthy datacenters
-        let mut available_dcs: Vec<&Datacenter> = dcs
+        let available_dcs: Vec<&Datacenter> = dcs
             .values()
             .filter(|dc| dc.active && self.is_datacenter_healthy(dc))
             .collect();

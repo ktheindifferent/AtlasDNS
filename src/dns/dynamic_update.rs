@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion, TransientTtl};
+use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
 use crate::dns::authority::Authority;
 use crate::dns::errors::DnsError;
 

@@ -10,7 +10,7 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use base64;
 use uuid::Uuid;
-use tiny_http::{Request, Header};
+use tiny_http::Request;
 
 use crate::web::{WebError, Result};
 

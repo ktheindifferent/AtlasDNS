@@ -15,14 +15,14 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 use std::collections::VecDeque;
-use std::mem::{self, MaybeUninit};
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::slice;
 use std::net::{SocketAddr, UdpSocket};
 use parking_lot::{RwLock, Mutex};
 
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
-use crate::dns::buffer::BytePacketBuffer;
+// BytePacketBuffer import removed - unused
 use crate::dns::errors::DnsError;
 
 /// Zero-copy buffer that owns its memory

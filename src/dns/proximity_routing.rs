@@ -14,8 +14,8 @@
 //! * **Client Subnet Awareness** - EDNS Client Subnet support
 
 use std::sync::Arc;
-use std::collections::{HashMap, BTreeMap};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};

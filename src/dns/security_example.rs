@@ -32,8 +32,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::net::{IpAddr, SocketAddr};
 use crate::dns::context::ServerContext;
-use crate::dns::request_limits::{RequestLimiter, RequestLimitsConfig};
-use crate::dns::cache_poisoning::{CachePoisonProtection, PoisonProtectionConfig};
+use crate::dns::request_limits::RequestLimitsConfig;
+use crate::dns::cache_poisoning::PoisonProtectionConfig;
 use crate::dns::protocol::DnsPacket;
 
 /// Example configuration for production security settings

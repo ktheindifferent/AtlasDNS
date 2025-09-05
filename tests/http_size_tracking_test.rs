@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    
     
     #[test]
     fn test_http_size_tracking_implementation() {

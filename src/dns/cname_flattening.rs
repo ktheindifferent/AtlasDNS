@@ -15,12 +15,12 @@
 
 use std::sync::Arc;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion, TransientTtl};
+use crate::dns::protocol::{DnsRecord, QueryType, DnsQuestion, TransientTtl};
 use crate::dns::client::DnsNetworkClient;
 use crate::dns::errors::DnsError;
 

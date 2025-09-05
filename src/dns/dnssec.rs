@@ -17,18 +17,18 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
-use openssl::pkey::{PKey, Private, Public};
+use openssl::pkey::{PKey, Private};
 use openssl::sign::{Signer, Verifier};
 use openssl::hash::MessageDigest;
 use openssl::ec::{EcGroup, EcKey};
 use openssl::nid::Nid;
 use openssl::rsa::Rsa;
 use sha2::{Sha256, Digest};
-use base64;
+// base64 import removed - unused
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType};
 use crate::dns::authority::Authority;
-use crate::dns::context::ServerContext;
+// ServerContext import removed - unused
 
 /// DNSSEC algorithm types
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

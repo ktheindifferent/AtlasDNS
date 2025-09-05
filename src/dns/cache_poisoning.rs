@@ -15,13 +15,12 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
-use rand::{Rng, thread_rng};
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, DnsQuestion};
+use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
 use crate::dns::errors::DnsError;
 
 /// Cache poisoning protection configuration

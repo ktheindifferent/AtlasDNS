@@ -343,9 +343,6 @@ impl SynchronizedCache {
     }
     
     pub fn get_stats(&self) -> Result<CacheStats> {
-        use crate::dns::metrics::DNS_CACHE_OPERATIONS;
-        use prometheus::Encoder;
-        
         // Get actual hit/miss counts from Prometheus metrics
         let mut total_hits = 0u64;
         let mut total_misses = 0u64;

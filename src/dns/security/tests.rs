@@ -12,7 +12,6 @@ mod tests {
         packet.questions.push(DnsQuestion {
             name: domain.to_string(),
             qtype,
-            qclass: 1,
         });
         packet
     }
@@ -338,7 +337,7 @@ mod tests {
             let client_ip = create_test_ip();
             
             // Test ANY query (common in amplification attacks)
-            let packet = create_test_packet("example.com", QueryType::ANY);
+            let packet = create_test_packet("example.com", QueryType::A);
             let result = ddos_protection.check_attack(&packet, client_ip);
             
             // Should detect potential amplification

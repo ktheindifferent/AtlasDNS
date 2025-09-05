@@ -14,13 +14,13 @@
 //! * **EDNS Client Subnet** - Honor ECS for accurate view selection
 
 use std::sync::Arc;
-use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Local, Timelike, Datelike};
-use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
+use chrono::{Local, Timelike, Datelike};
+use ipnetwork::IpNetwork;
 
 /// DNS Views configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

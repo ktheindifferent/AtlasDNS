@@ -277,7 +277,7 @@ impl QueryRoot {
 
     /// Get real cache metrics from Prometheus
     fn get_cache_metrics(&self) -> (i32, i32, f64) {
-        use crate::dns::metrics::DNS_CACHE_OPERATIONS;
+        
         
         let mut total_hits = 0;
         let mut total_misses = 0;
@@ -401,9 +401,9 @@ impl QueryRoot {
         let nxdomain_rate = metrics_summary.response_code_distribution.get("NXDOMAIN").map(|(count, _)| *count).unwrap_or(0);
         let servfail_rate = metrics_summary.response_code_distribution.get("SERVFAIL").map(|(count, _)| *count).unwrap_or(0);
         
-        let success_percentage = if total_responses > 0 { (success_rate as f64 / total_responses as f64) } else { 0.9 };
-        let nxdomain_percentage = if total_responses > 0 { (nxdomain_rate as f64 / total_responses as f64) } else { 0.05 };
-        let servfail_percentage = if total_responses > 0 { (servfail_rate as f64 / total_responses as f64) } else { 0.02 };
+        let success_percentage = if total_responses > 0 { success_rate as f64 / total_responses as f64 } else { 0.9 };
+        let nxdomain_percentage = if total_responses > 0 { nxdomain_rate as f64 / total_responses as f64 } else { 0.05 };
+        let servfail_percentage = if total_responses > 0 { servfail_rate as f64 / total_responses as f64 } else { 0.02 };
         
         // Get estimated query count based on cache stats
         let estimated_queries_per_interval = if metrics_summary.cache_hits + metrics_summary.cache_misses > 0 {
@@ -1000,9 +1000,9 @@ impl QueryRoot {
         }
 
         let mut zones = Vec::new();
-        let mut records = Vec::new();
+        let records = Vec::new();
         let users = Vec::new(); // Skip users for now - complex API
-        let mut logs = Vec::new();
+        let logs = Vec::new();
 
         // Search DNS zones
         for zone_name in self.context.authority.list_zones() {

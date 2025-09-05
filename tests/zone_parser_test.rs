@@ -1,10 +1,9 @@
 use std::fs;
-use std::net::{Ipv4Addr, Ipv6Addr};
-use std::path::Path;
+use std::net::Ipv4Addr;
 
-use dns_server::dns::zone_parser::{ZoneParser, ParseError, validate_zone};
-use dns_server::dns::protocol::{DnsRecord, TransientTtl};
-use dns_server::dns::authority::Zone;
+use atlas::dns::zone_parser::{ZoneParser, ParseError, validate_zone};
+use atlas::dns::protocol::{DnsRecord, TransientTtl};
+use atlas::dns::authority::Zone;
 
 #[test]
 fn test_parse_example_zone() {
@@ -150,7 +149,7 @@ fn test_parse_minimal_zone() {
 
 #[test]
 fn test_ttl_parsing() {
-    let mut parser = ZoneParser::new("test.com");
+    let parser = ZoneParser::new("test.com");
     
     // Test various TTL formats
     assert_eq!(parser.parse_ttl("60").unwrap(), 60);

@@ -19,8 +19,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 use crate::dns::authority::Authority;
-use crate::dns::protocol::{DnsRecord, DnsPacket};
-use crate::dns::query_type::QueryType;
 
 /// Bulk operation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,7 +726,7 @@ impl BulkOperationsHandler {
 
     /// Check dependencies
     fn check_dependencies(&self, operations: &[Operation]) -> Vec<String> {
-        let mut operation_ids: HashSet<String> = operations.iter()
+        let operation_ids: HashSet<String> = operations.iter()
             .map(|op| op.id.clone())
             .collect();
         

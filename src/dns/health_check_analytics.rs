@@ -14,8 +14,8 @@
 //! * **SLA Tracking** - Service level agreement monitoring
 
 use std::sync::Arc;
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use std::net::{IpAddr, SocketAddr};
+use std::collections::{HashMap, VecDeque};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};

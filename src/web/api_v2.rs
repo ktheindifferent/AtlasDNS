@@ -15,14 +15,12 @@
 //! * **OpenAPI** - Auto-generated documentation
 
 use std::sync::Arc;
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
-use tiny_http::{Request, Response, Header, Method, StatusCode};
+use tiny_http::{Request, Response, Method, StatusCode};
 
-use crate::dns::authority::Authority;
-use crate::dns::protocol::{DnsRecord, QueryType, TransientTtl};
+use crate::dns::protocol::DnsRecord;
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
 
@@ -1054,4 +1052,3 @@ impl ApiV2Handler {
     }
 }
 
-use std::io::Read;

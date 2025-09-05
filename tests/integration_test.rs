@@ -67,7 +67,7 @@ fn test_user_authentication_flow() {
     let user_manager = UserManager::new();
     
     // Test default admin exists
-    let admin = user_manager.authenticate("admin", "admin123").unwrap();
+    let admin = user_manager.authenticate("admin", "admin123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
     assert_eq!(admin.role, UserRole::Admin);
     
     // Create a new user
@@ -81,7 +81,7 @@ fn test_user_authentication_flow() {
     let user = user_manager.create_user(create_request).unwrap();
     
     // Test authentication with new user
-    let authenticated_user = user_manager.authenticate("testuser", "testpass123").unwrap();
+    let authenticated_user = user_manager.authenticate("testuser", "testpass123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
     assert_eq!(authenticated_user.id, user.id);
     assert_eq!(authenticated_user.role, UserRole::User);
     
@@ -202,7 +202,7 @@ fn test_user_role_permissions() {
         assert_eq!(user.role, role);
         
         // Test authentication works for all roles
-        let authenticated = user_manager.authenticate(username, "password123").unwrap();
+        let authenticated = user_manager.authenticate(username, "password123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
         assert_eq!(authenticated.role, role);
     }
 }
@@ -234,7 +234,7 @@ fn test_session_lifecycle() {
     let user_manager = UserManager::new();
     
     // Authenticate and create session
-    let user = user_manager.authenticate("admin", "admin123").unwrap();
+    let user = user_manager.authenticate("admin", "admin123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
     let session = user_manager.create_session(
         user.id.clone(),
         Some("192.168.1.100".to_string()),
@@ -266,8 +266,8 @@ fn test_error_handling() {
     let user_manager = UserManager::new();
     
     // Test authentication with invalid credentials
-    assert!(user_manager.authenticate("nonexistent", "password").is_err());
-    assert!(user_manager.authenticate("admin", "wrongpassword").is_err());
+    assert!(user_manager.authenticate("nonexistent", "password", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).is_err());
+    assert!(user_manager.authenticate("admin", "wrongpassword", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).is_err());
     
     // Test session validation with invalid token
     assert!(user_manager.validate_session("invalid-token").is_err());

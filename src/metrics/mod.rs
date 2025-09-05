@@ -16,7 +16,6 @@ pub use streaming::{MetricsStream, MetricsSubscriber};
 pub use geoip::{GeoIpAnalyzer, GeographicDistribution};
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use std::time::{Duration, SystemTime};
 use serde::{Deserialize, Serialize};
 

@@ -16,12 +16,12 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, QueryType};
 use crate::dns::errors::DnsError;
 use crate::dns::rate_limit::RateLimiter;
 

@@ -18,7 +18,6 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
-use tokio::time::sleep;
 use reqwest;
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};

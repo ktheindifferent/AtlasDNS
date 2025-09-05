@@ -13,7 +13,7 @@ use crate::dns::acme::AcmeCertificateManager;
 use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{CorrelationContext, HttpRequestLog};
 use crate::dns::doh::{DohServer, DohConfig};
-use crate::dns::api_keys::{ApiPermission, ApiKey, ApiKeyStatus};
+use crate::dns::api_keys::ApiPermission;
 use crate::web::graphql::{create_schema, graphql_playground};
 use crate::web::{
     activity::ActivityLogger,
@@ -1753,7 +1753,7 @@ impl<'a> WebServer<'a> {
     
     /// Handle real-time metrics streaming via Server-Sent Events
     fn metrics_stream(&self, request: &Request) -> Result<ResponseBox> {
-        use std::io::Cursor;
+        
         
         // Get current metrics summary from the basic metrics collector
         let summary = self.context.metrics.get_metrics_summary();

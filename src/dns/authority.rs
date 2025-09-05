@@ -531,7 +531,7 @@ impl Authority {
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
         // Find and update SOA record
-        let mut records = zone.records.clone();
+        let records = zone.records.clone();
         for record in &records {
             if let DnsRecord::Soa { domain, ttl, m_name, r_name, serial: _, refresh, retry, expire, minimum } = record {
                 // Remove old SOA record

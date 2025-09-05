@@ -5,12 +5,10 @@
 
 use clap::{Parser, Subcommand, Args, ValueEnum};
 use colored::*;
-use comfy_table::{Table, Cell, Attribute, Color as TableColor};
+use comfy_table::Table;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest;
-use serde::{Serialize, Deserialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;

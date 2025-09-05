@@ -1,6 +1,6 @@
 //! Real-time metrics collection implementation
 
-use super::{DnsQueryMetric, SystemMetric, SecurityEvent};
+use super::{DnsQueryMetric, SecurityEvent};
 use crate::metrics::storage::MetricsStorage;
 use std::collections::HashMap;
 use std::sync::Arc;

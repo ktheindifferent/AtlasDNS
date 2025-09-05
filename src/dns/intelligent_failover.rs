@@ -22,7 +22,6 @@ use serde::{Serialize, Deserialize};
 use tokio::time::interval;
 
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
-use crate::dns::errors::DnsError;
 use crate::dns::client::{DnsNetworkClient, DnsClient};
 
 /// Failover configuration

@@ -13,11 +13,9 @@
 //! * **Padding** - RFC 7830 for privacy protection
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode};
-use crate::dns::buffer::BytePacketBuffer;
+use crate::dns::protocol::{DnsPacket, DnsRecord};
 use crate::dns::errors::DnsError;
 
 /// EDNS0 Option codes

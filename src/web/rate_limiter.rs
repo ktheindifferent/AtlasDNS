@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
 /// Rate limit error types

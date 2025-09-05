@@ -18,7 +18,6 @@ use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::errors::DnsError;
 
 /// Request size limits configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
