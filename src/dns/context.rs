@@ -28,6 +28,7 @@ use crate::dns::request_limits::RequestLimiter;
 use crate::dns::cache_poisoning::CachePoisonProtection;
 use crate::dns::dot_manager::DotManager;
 use crate::dns::doq_manager::DoqManager;
+use crate::dns::shutdown::{ShutdownCoordinator, ShutdownConfig};
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -125,6 +126,7 @@ pub struct ServerContext {
     pub cache_poison_protection: Option<Arc<CachePoisonProtection>>,
     pub dot_manager: Option<Arc<DotManager>>,
     pub doq_manager: Option<Arc<DoqManager>>,
+    pub shutdown_coordinator: Arc<ShutdownCoordinator>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -234,6 +236,7 @@ impl Default for ServerContext {
             cache_poison_protection: None,
             dot_manager: None,
             doq_manager: None,
+            shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
         }
     }
 }
@@ -303,6 +306,7 @@ impl ServerContext {
             cache_poison_protection: None, // Will be initialized based on configuration
             dot_manager: None, // Will be initialized based on configuration
             doq_manager: None, // Will be initialized based on configuration
+            shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
         })
     }
 

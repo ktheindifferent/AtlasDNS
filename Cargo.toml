@@ -64,6 +64,14 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 maxminddb = "0.23"
 axum = { version = "0.6", features = ["ws"] }
 
+# Kubernetes operator dependencies
+kube = { version = "0.87", features = ["runtime", "derive", "client", "ws"] }
+k8s-openapi = { version = "0.20", features = ["v1_28"] }
+kube-derive = "0.87"
+kube-runtime = "0.87"
+futures = "0.3"
+schemars = "0.8"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.48", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }
 
