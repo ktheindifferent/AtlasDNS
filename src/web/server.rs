@@ -67,6 +67,7 @@ pub struct WebServer<'a> {
     pub api_v2_handler: Arc<ApiV2Handler>,
     pub alert_manager: Arc<crate::dns::alert_management::AlertManagementHandler>,
     pub webhook_handler: Arc<crate::web::webhooks::WebhookHandler>,
+    pub websocket_manager: Arc<crate::web::websocket::WebSocketManager>,
     pub ssl_enabled: bool,
 }
 
@@ -166,6 +167,11 @@ impl<'a> WebServer<'a> {
             crate::web::webhooks::WebhookConfig::default()
         ));
         
+        // Initialize WebSocket Manager for real-time updates
+        let websocket_manager = Arc::new(crate::web::websocket::WebSocketManager::new(
+            context.clone()
+        ));
+        
         let mut server = WebServer {
             context,
             handlebars,
@@ -178,6 +184,7 @@ impl<'a> WebServer<'a> {
             api_v2_handler,
             alert_manager,
             webhook_handler,
+            websocket_manager,
             ssl_enabled: false,
         };
 
@@ -374,7 +381,10 @@ impl<'a> WebServer<'a> {
             (Method::Delete, ["api", "keys", key_id]) => self.delete_api_key(request, key_id),
             (Method::Post, ["api", "keys", key_id, "revoke"]) => self.revoke_api_key(request, key_id),
             
-            // Real-time metrics streaming
+            // Real-time WebSocket streaming
+            (Method::Get, ["api", "websocket"]) => self.websocket_upgrade(request),
+            
+            // Real-time metrics streaming (Server-Sent Events fallback)
             (Method::Get, ["api", "metrics", "stream"]) => self.metrics_stream(request),
             
             // API v2 routes
@@ -1793,12 +1803,12 @@ impl<'a> WebServer<'a> {
         // Convert permission strings to ApiPermission enum
         let permissions: std::result::Result<Vec<ApiPermission>, String> = req.permissions.iter()
             .map(|p| match p.as_str() {
-                "read" => Ok(ApiPermission::Read),
-                "write" => Ok(ApiPermission::Write),
-                "admin" => Ok(ApiPermission::Admin),
-                "metrics" => Ok(ApiPermission::Metrics),
-                "cache" => Ok(ApiPermission::Cache),
-                "users" => Ok(ApiPermission::Users),
+                "read" => Ok(crate::dns::api_keys::ApiPermission::Read),
+                "write" => Ok(crate::dns::api_keys::ApiPermission::Write),
+                "admin" => Ok(crate::dns::api_keys::ApiPermission::Admin),
+                "metrics" => Ok(crate::dns::api_keys::ApiPermission::Metrics),
+                "cache" => Ok(crate::dns::api_keys::ApiPermission::Cache),
+                "users" => Ok(crate::dns::api_keys::ApiPermission::Users),
                 _ => Err(format!("Invalid permission: {}", p)),
             })
             .collect();
@@ -1946,6 +1956,11 @@ impl<'a> WebServer<'a> {
         .with_header(Self::safe_header("Access-Control-Allow-Origin: *"))
         .with_header(Self::safe_header("X-Accel-Buffering: no"))
         .boxed())
+    }
+
+    /// Handle WebSocket upgrade requests for real-time updates
+    fn websocket_upgrade(&self, request: &Request) -> Result<ResponseBox> {
+        self.websocket_manager.handle_websocket_upgrade(request)
     }
     
     // New page handlers

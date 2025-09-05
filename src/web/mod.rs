@@ -18,6 +18,7 @@ pub mod rate_limiter;
 pub mod panic_handler;
 pub mod token_rotation;
 pub mod secure_password;
+pub mod websocket;
 
 #[derive(Debug)]
 pub enum WebError {
