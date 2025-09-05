@@ -58,8 +58,8 @@ impl Default for MemoryPoolConfig {
             max_pool_size: 10000,
             min_pool_size: 50,
             growth_factor: 1.5,
-            shrink_threshold: 0.25,
-            resize_interval: Duration::from_secs(60),
+            shrink_threshold: 0.10,  // Only shrink when less than 10% utilized
+            resize_interval: Duration::from_secs(300),  // Check every 5 minutes instead of every minute
             numa_aware: false,
         }
     }
@@ -366,17 +366,20 @@ impl BufferPool {
             }
         }
 
-        // Check if we need to shrink
+        // Check if we need to shrink (only if significantly underutilized for a while)
         let usage_ratio = in_use as f64 / total as f64;
         if usage_ratio < config.shrink_threshold && total > config.min_pool_size {
-            let shrink_count = ((total as f64 * (1.0 - config.shrink_threshold)) as usize)
+            // Be conservative - only shrink 25% of unused buffers at a time
+            let unused = available;
+            let shrink_count = (unused / 4)  // Shrink only 25% of unused buffers
                 .min(total - config.min_pool_size)
-                .min(available);
+                .max(0);
             
-            if shrink_count > 0 {
+            if shrink_count > 10 {  // Only shrink if it's worth it (more than 10 buffers)
                 pool.shrink(shrink_count);
                 self.stats.write().resize_operations += 1;
-                log::debug!("Shrinking pool by {} buffers (total: {})", shrink_count, total - shrink_count);
+                log::debug!("Shrinking pool by {} buffers (usage: {:.1}%, total: {})", 
+                          shrink_count, usage_ratio * 100.0, total - shrink_count);
             }
         }
     }

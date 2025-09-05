@@ -419,7 +419,7 @@ impl ZeroCopyProcessor {
         &self,
         data: &[u8],
         offset: usize,
-        records: &mut Vec<crate::dns::protocol::DnsRecord>,
+        _records: &mut Vec<crate::dns::protocol::DnsRecord>,
     ) -> Result<usize, DnsError> {
         // Simplified - would implement full record parsing
         Ok(offset)

@@ -342,7 +342,7 @@ impl DynamicUpdateHandler {
     }
 
     /// Parse TSIG record
-    fn parse_tsig(&self, records: &[DnsRecord]) -> Option<TsigRecord> {
+    fn parse_tsig(&self, _records: &[DnsRecord]) -> Option<TsigRecord> {
         // Simplified - would parse actual TSIG record
         None
     }

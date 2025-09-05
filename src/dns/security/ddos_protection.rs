@@ -6,7 +6,6 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
-use sha2::Digest;
 
 use crate::dns::protocol::{DnsPacket, QueryType};
 use crate::dns::errors::DnsError;
