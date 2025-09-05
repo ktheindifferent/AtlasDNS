@@ -1752,9 +1752,9 @@ impl<'a> WebServer<'a> {
     }
     
     /// Handle real-time metrics streaming via Server-Sent Events
+    /// Note: tiny_http doesn't support true streaming, so we send a single response
+    /// with retry directive to have the client reconnect periodically
     fn metrics_stream(&self, request: &Request) -> Result<ResponseBox> {
-        
-        
         // Get current metrics summary from the basic metrics collector
         let summary = self.context.metrics.get_metrics_summary();
         
@@ -1770,9 +1770,10 @@ impl<'a> WebServer<'a> {
             "cache_misses": summary.cache_misses
         });
         
-        // Format as Server-Sent Events
+        // Format as Server-Sent Events with retry directive
+        // The retry tells the client to reconnect after 5 seconds
         let sse_data = format!(
-            "event: metrics\ndata: {}\n\n",
+            "retry: 5000\nevent: metrics\ndata: {}\n\n",
             serde_json::to_string(&snapshot)?
         );
         
