@@ -484,3 +484,37 @@
 - Status: Successfully deployed and operational
 
 **Current Status:** DNS service fully operational with improved rate limiting
+
+## 🟠 HIGH Priority Issues (NEW - Sept 5, 2025)
+
+### [DNS] DDoS Protection Still Blocking Legitimate Queries After Rate Limit Fix
+- [ ] **False Positive Detection**: DDoS protection blocking all queries from 10.0.0.2 despite rate limit fix in src/dns/security/ddos_protection.rs:439-448
+  - **Impact**: DNS service still refusing legitimate queries from internal network
+  - **Error**: "Security blocked query from 10.0.0.2: Some(\"Potential DDoS attack detected\")"
+  - **DNS Protocol**: All protocols affected (UDP/TCP)
+  - **Query Types**: All types - A, AAAA, Unknown(65), etc.
+  - **Symptoms**: Every query from laptop gets REFUSED response despite being under rate limit
+  - **Frequency**: 100% of queries blocked
+  - **Client Impact**: DNS completely non-functional for normal usage
+  - **Server Logs**: Shows blocking legitimate services:
+    - o1158394.ingest.us.sentry.io (Sentry monitoring)
+    - api.anthropic.com (Claude API)
+    - storage.googleapis.com (Google services)
+    - 35-courier.push.apple.com (Apple push notifications)
+    - signaler-pa.clients6.google.com (Google signaling)
+    - vscode-sync.trafficmanager.net (VS Code sync)
+    - ap.spotify.com, gue1-spclient.spotify.com (Spotify)
+    - gspe1-ssl.ls.apple.com (Apple services)
+    - starlink-1.emiimaging.com (Starlink)
+    - lp-push-server-1736.lastpass.com (LastPass)
+  - **Query Pattern**: Normal desktop usage generates ~10-20 queries per second
+  - **Root Cause**: Line 439-448 blocks on threat_level >= ThreatLevel::High but something else is triggering High threat level
+  - **Investigation Needed**:
+    - Why is threat level being set to High for normal queries?
+    - Check entropy detection (lines 369-380) - may be too sensitive
+    - Check pattern analysis (lines 398-407) - might match false positives
+    - Check amplification detection (lines 356-365) - threshold might be too low
+  - **Reproduction**: Set DNS to Atlas server and use normally for browsing
+  - **Performance Impact**: Zero - queries instantly refused
+  - **Workaround**: None - DNS unusable
+  - **Priority**: HIGH - Production DNS service non-functional

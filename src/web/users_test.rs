@@ -92,11 +92,11 @@ mod tests {
         let manager = UserManager::new();
         
         // Wrong password
-        let result = manager.authenticate("admin", "wrongpassword");
+        let result = manager.authenticate("admin", "wrongpassword", None, None);
         assert!(result.is_err());
         
         // Non-existent user
-        let result = manager.authenticate("nonexistent", "password");
+        let result = manager.authenticate("nonexistent", "password", None, None);
         assert!(result.is_err());
     }
 

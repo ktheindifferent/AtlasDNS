@@ -51,8 +51,8 @@ impl Default for DDoSConfig {
             enable_entropy_detection: true,
             enable_pattern_analysis: true,
             max_connections_per_ip: 100,
-            amplification_threshold: 10.0,
-            random_subdomain_threshold: 0.8,
+            amplification_threshold: 50.0,  // Increased from 10.0 - only flag extreme amplification
+            random_subdomain_threshold: 3.5,  // Increased from 0.8 - normal domains have entropy 2-3
             auto_mitigation: true,
             mitigation_duration: Duration::from_secs(300),
             whitelist: Vec::new(),
@@ -325,8 +325,8 @@ impl DDoSProtection {
             };
         }
 
-        // Check whitelist
-        if config.whitelist.contains(&client_ip) {
+        // Check whitelist or internal networks - bypass all security checks
+        if config.whitelist.contains(&client_ip) || self.is_internal_network(client_ip) {
             return SecurityCheckResult {
                 allowed: true,
                 action: SecurityAction::Allow,
