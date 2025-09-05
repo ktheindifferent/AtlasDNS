@@ -447,7 +447,7 @@ impl RpzEngine {
     }
 
     /// Remove policy from engine
-    pub fn remove_policy(&self, domain: &str) -> bool {
+    pub fn remove_policy(&self, _domain: &str) -> bool {
         // Would need to implement removal in trie
         // For now, just rebuild the trie without the domain
         false

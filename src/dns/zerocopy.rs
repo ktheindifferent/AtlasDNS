@@ -244,7 +244,7 @@ impl ZeroCopyProcessor {
 
     /// Process a DNS packet with zero-copy
     #[inline(always)]
-    pub fn process_packet(&self, packet: &mut DnsPacket) -> Result<(), DnsError> {
+    pub fn process_packet(&self, _packet: &mut DnsPacket) -> Result<(), DnsError> {
         // Note: This is a simplified implementation
         // In production, would use actual buffer pool
         
@@ -359,7 +359,7 @@ impl ZeroCopyProcessor {
         
         // Parse type and class
         let qtype = u16::from_be_bytes([data[offset], data[offset + 1]]);
-        let qclass = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
+        let _qclass = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
         offset += 4;
         
         packet.questions.push(crate::dns::protocol::DnsQuestion {
@@ -417,7 +417,7 @@ impl ZeroCopyProcessor {
     #[inline(always)]
     unsafe fn parse_record_zerocopy(
         &self,
-        data: &[u8],
+        _data: &[u8],
         offset: usize,
         _records: &mut Vec<crate::dns::protocol::DnsRecord>,
     ) -> Result<usize, DnsError> {
@@ -551,7 +551,7 @@ impl ZeroCopyHandler {
     }
 
     /// Serialize packet directly to buffer
-    fn serialize_to_buffer(&self, packet: &DnsPacket) -> Result<usize, DnsError> {
+    fn serialize_to_buffer(&self, _packet: &DnsPacket) -> Result<usize, DnsError> {
         // Simplified - would implement actual serialization
         Ok(512)
     }

@@ -321,7 +321,7 @@ impl BufferPool {
     }
 
     /// Return buffer to pool (called automatically by PooledBuffer::drop)
-    fn return_buffer(&self, size: BufferSize) {
+    fn return_buffer(&self, _size: BufferSize) {
         // Statistics are updated in SizePool::release
     }
 

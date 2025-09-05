@@ -638,7 +638,7 @@ impl DnssecSigner {
     /// Validate DNSSEC signatures
     pub fn validate(
         &self,
-        packet: &DnsPacket,
+        _packet: &DnsPacket,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         // Simplified validation - would need full chain validation
         // Check for RRSIG records and validate signatures

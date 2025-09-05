@@ -407,7 +407,7 @@ impl DynamicUpdateHandler {
                         return Ok(false);
                     }
                 }
-                Prerequisite::RRsetValueExists { name, record } => {
+                Prerequisite::RRsetValueExists { name: _, record } => {
                     if !self.record_exists(zone, record) {
                         return Ok(false);
                     }
