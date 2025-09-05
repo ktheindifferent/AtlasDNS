@@ -254,23 +254,23 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
            .with_metadata("query_id", &request.header.id.to_string());
 
     // Add Sentry breadcrumb for DNS query processing
-    sentry::add_breadcrumb(sentry::Breadcrumb {
-        ty: "dns".to_string(),
-        category: Some("dns.query.start".to_string()),
-        message: Some(format!("Processing DNS query for {} ({})", domain, query_type)),
-        level: sentry::Level::Info,
-        timestamp: chrono::Utc::now(),
-        data: {
-            let mut map = std::collections::BTreeMap::new();
-            map.insert("domain".to_string(), domain.clone().into());
-            map.insert("query_type".to_string(), query_type.clone().into());
-            map.insert("query_id".to_string(), request.header.id.into());
-            if let Some(ip) = client_ip {
-                map.insert("client_ip".to_string(), ip.to_string().into());
-            }
-            map
-        },
-        ..Default::default()
+    let mut data = std::collections::BTreeMap::new();
+    data.insert("domain".to_string(), domain.clone().into());
+    data.insert("query_type".to_string(), query_type.clone().into());
+    data.insert("query_id".to_string(), request.header.id.into());
+    if let Some(ip) = client_ip {
+        data.insert("client_ip".to_string(), ip.to_string().into());
+    }
+    
+    sentry::add_breadcrumb(|| {
+        sentry::Breadcrumb {
+            ty: "dns".to_string(),
+            category: Some("dns.query.start".to_string()),
+            message: Some(format!("Processing DNS query for {} ({})", domain, query_type)),
+            level: sentry::Level::Info,
+            data,
+            ..Default::default()
+        }
     });
     
     // Perform security checks first if client IP is available
@@ -476,19 +476,19 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
     }
     
     // Add success breadcrumb
-    sentry::add_breadcrumb(sentry::Breadcrumb {
-        ty: "dns".to_string(),
-        category: Some("dns.query.complete".to_string()),
-        message: Some(format!("DNS query completed: {} ({}ms)", domain, elapsed.as_millis())),
-        level: sentry::Level::Info,
-        timestamp: chrono::Utc::now(),
-        data: {
-            let mut map = std::collections::BTreeMap::new();
-            map.insert("duration_ms".to_string(), (elapsed.as_millis() as u64).into());
-            map.insert("cache_hit".to_string(), cache_hit.into());
-            map
-        },
-        ..Default::default()
+    let mut data = std::collections::BTreeMap::new();
+    data.insert("duration_ms".to_string(), (elapsed.as_millis() as u64).into());
+    data.insert("cache_hit".to_string(), cache_hit.into());
+    
+    sentry::add_breadcrumb(|| {
+        sentry::Breadcrumb {
+            ty: "dns".to_string(),
+            category: Some("dns.query.complete".to_string()),
+            message: Some(format!("DNS query completed: {} ({}ms)", domain, elapsed.as_millis())),
+            level: sentry::Level::Info,
+            data,
+            ..Default::default()
+        }
     });
 
     packet

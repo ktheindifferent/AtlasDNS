@@ -5,7 +5,42 @@
 **Security Level**: **SECURE** (0 critical issues) | **Deployment**: ✅ Production stable | **Code Quality**: **EXCELLENT+**
 
 ## 🔴 CRITICAL Security Issues (Open)
-*All critical security vulnerabilities have been resolved* ✅
+
+### [CRASH] Sentry Breadcrumb Zero-Initialization Panic
+- [ ] **Memory Safety Panic**: Server crashes on DNS query due to Sentry breadcrumb initialization
+  - **Error**: `attempted to zero-initialize type sized_chunks::sized_chunk::Chunk<sentry_types::protocol::v7::Breadcrumb>, which is invalid`
+  - **Location**: `library/core/src/panicking.rs:225:5`
+  - **Trigger**: Any DNS query immediately after server starts (A, AAAA, Unknown types)
+  - **Impact**: Complete service failure - server cannot process ANY DNS queries
+  - **Frequency**: Always - 100% reproducible on first DNS query
+  - **Query Examples That Trigger Crash**:
+    - `duckduckgo.com` (A record)
+    - `lp-push-server-1736.lastpass.com` (Unknown type 65)  
+    - `b._dns-sd._udp.0.86.168.192.in-addr.arpa` (Unknown type 12)
+    - `gateway.icloud.com` (A record)
+  - **Pattern**: Server restarts automatically after crash, then crashes again on next query
+  - **Root Cause**: Unsafe memory initialization in Sentry SDK breadcrumb handling
+  - **User Impact**: DNS service completely unusable as production DNS resolver
+  - **Workaround**: Disable Sentry monitoring entirely or downgrade/update Sentry crate
+
+## 🟠 HIGH Priority Issues (Open)
+
+### [DNSSEC] Non-functional Key Management and Zone Signing UI
+- [ ] **JavaScript-Backend Disconnect**: DNSSEC UI buttons don't call backend APIs in src/web/templates/dnssec.html
+  - **Symptoms**: "Generate Key", "Schedule Rollover", and "Enable DNSSEC" buttons only show toast notifications
+  - **Frequency**: Always - UI completely non-functional for DNSSEC operations
+  - **DNS Impact**: DNSSEC cannot be enabled or managed through web interface
+  - **API Impact**: Backend endpoints exist but are never called:
+    - `/api/v2/zones/{zone}/dnssec/enable` (src/web/api_v2.rs:920)
+    - `/api/v2/zones/{zone}/dnssec/rollover` (src/web/api_v2.rs:1024)
+  - **Affected Functions**:
+    - `generateNewKey()` (line 691) - Only shows toast, no API call
+    - `scheduleRollover()` (line 706) - Only shows toast, no API call  
+    - `rolloverKeys()` (line 676) - Only shows toast, no API call
+    - `enableDNSSEC()` in wizard (line 660) - Opens modal but doesn't call enable API
+  - **Root Cause**: Frontend JavaScript never implemented to call backend DNSSEC APIs
+  - **User Impact**: DNSSEC features completely unusable despite backend support
+  - **Workaround**: Use direct API calls via curl or other tools
 
 ## 🟠 HIGH Priority Issues (Recently Resolved)
 
@@ -27,6 +62,96 @@
   - **Impact**: Server starts without panics
 
 ## 🟡 MEDIUM Priority Issues (Open)
+
+### [DATA] No Persistent Storage - All Data Lost on Restart
+- [ ] **In-Memory Storage Only**: System uses only in-memory storage with no database backend
+  - **Symptoms**: Complete data loss on every restart/update/crash
+  - **Data Lost on Restart**:
+    - All user accounts (except default admin)
+    - All active sessions
+    - DNS zone configurations (except file-based zones)
+    - DNS cache entries
+    - Rate limiting states
+    - Security rules and firewall configurations
+    - API keys
+    - DNSSEC keys and configurations
+    - Metrics and statistics
+    - Audit logs and history
+  - **Current Storage**: HashMap/RwLock in-memory structures only
+  - **User Impact**: 
+    - Must reconfigure everything after updates
+    - No historical data for analysis
+    - Sessions invalidated on every restart
+    - Cannot maintain consistent state across deployments
+  - **Production Impact**: Not suitable for production use without persistence
+  - **Implementation Needed**:
+    - PostgreSQL schema for all entities
+    - Migration system for database updates
+    - Connection pooling (r2d2/deadpool)
+    - Transaction support
+    - Backup/restore functionality
+  - **Affected Components**: 
+    - `src/web/users.rs` - User management
+    - `src/web/sessions.rs` - Session storage
+    - `src/dns/authority.rs` - Zone data
+    - `src/dns/cache.rs` - Cache entries
+  - **Workaround**: None - requires architectural change
+
+### [UI] DDoS Protection Page Using Fake/Mocked Data
+- [ ] **Frontend Mock Data**: DDoS Protection page displays hardcoded fake data in src/web/templates/ddos_protection.html
+  - **Symptoms**: All metrics, charts, and statistics are fake/randomly generated
+  - **Frequency**: Always - entire page shows mock data
+  - **Fake Data Elements**:
+    - Hard-coded "2.5M queries mitigated" (line 64)
+    - Fixed "1,247 attack sources" (line 80)
+    - Static "98.5% effectiveness" (line 96)
+    - Random chart data: `Math.random() * 200000 + 100000` (line 379)
+    - Chart updates with random values every second (lines 414-416)
+    - Mock attack status showing "Active" attack "started 15 min ago"
+  - **Backend Reality**: Server only provides basic metrics:
+    - `ddos_attacks_detected` counter
+    - `active_rules` count
+    - `threat_level` enum
+    - No real-time attack data, no source IPs, no mitigation rates
+  - **User Impact**: Completely misleading dashboard, no actual DDoS monitoring
+  - **Root Cause**: Frontend template never integrated with real backend metrics
+  - **Workaround**: None - entire page needs rewrite to use actual data
+
+### [UI] Firewall Rule Add/Save Not Working - No Backend Integration
+- [ ] **Form Submission Broken**: Add Rule modal doesn't save data in src/web/templates/firewall.html
+  - **Symptoms**: Clicking "Save Rule" shows success toast but rule doesn't appear in list
+  - **Frequency**: Always - no rules are ever saved
+  - **Function Issue**: `saveRule()` (lines 501-507) only:
+    - Reads rule name value
+    - Shows success toast 
+    - Closes modal
+    - Never sends data to backend
+  - **Missing Implementation**:
+    - No form data collection for all fields
+    - No API call to POST /api/firewall/rules endpoint
+    - No table refresh after save
+    - No validation beyond required field
+  - **Related Issues**: Add Rule button (line 444) calls stub function
+  - **User Impact**: Cannot create any firewall rules through UI
+  - **Root Cause**: Frontend completely disconnected from backend
+  - **Workaround**: Direct API calls if endpoints exist
+
+### [UI] DNS Firewall "Add Feed" and "Create List" Buttons Non-Functional
+- [ ] **Stub Functions Only**: Firewall threat feed and block list buttons don't work in src/web/templates/firewall.html
+  - **Symptoms**: Clicking "Add Feed" or "Create List" only shows toast notifications
+  - **Frequency**: Always - buttons completely non-functional
+  - **Affected Functions**:
+    - `addThreatFeed()` (line 529-531) - Only shows toast "Opening threat feed configuration..."
+    - `createBlockList()` (line 543-545) - Only shows toast "Creating new block list..."
+    - `updateFeed()` (line 533) - Only shows toast
+    - `saveBlockList()` (line 547) - Only shows success toast without saving
+  - **UI Elements**:
+    - "Add Feed" button (line 211) - No modal or form opens
+    - "Create List" button (line 263) - No interface to create list
+  - **Backend Status**: Unknown if API endpoints exist for these features
+  - **User Impact**: Cannot add threat intelligence feeds or create custom block lists
+  - **Root Cause**: JavaScript functions are stubs - no actual implementation
+  - **Workaround**: None - features are completely unimplemented
 
 ### [UI] Response Codes Display Growing Infinitely on Analytics Dashboard
 - [ ] **JavaScript DOM Manipulation Bug**: Response codes list grows infinitely off page in src/web/templates/analytics.html:126-143

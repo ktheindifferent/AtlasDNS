@@ -41,20 +41,20 @@ pub trait DnsResolver {
     /// A DNS packet containing the response, or an error if resolution fails
     fn resolve(&mut self, qname: &str, qtype: QueryType, recursive: bool) -> Result<DnsPacket> {
         // Add Sentry breadcrumb for DNS resolution
-        sentry::add_breadcrumb(sentry::Breadcrumb {
-            ty: "dns".to_string(),
-            category: Some("dns.resolve".to_string()),
-            message: Some(format!("Resolving {} {:?} (recursive: {})", qname, qtype, recursive)),
-            level: sentry::Level::Info,
-            timestamp: chrono::Utc::now(),
-            data: {
-                let mut map = std::collections::BTreeMap::new();
-                map.insert("qname".to_string(), qname.into());
-                map.insert("qtype".to_string(), format!("{:?}", qtype).into());
-                map.insert("recursive".to_string(), recursive.into());
-                map
-            },
-            ..Default::default()
+        let mut data = std::collections::BTreeMap::new();
+        data.insert("qname".to_string(), qname.into());
+        data.insert("qtype".to_string(), format!("{:?}", qtype).into());
+        data.insert("recursive".to_string(), recursive.into());
+        
+        sentry::add_breadcrumb(|| {
+            sentry::Breadcrumb {
+                ty: "dns".to_string(),
+                category: Some("dns.resolve".to_string()),
+                message: Some(format!("Resolving {} {:?} (recursive: {})", qname, qtype, recursive)),
+                level: sentry::Level::Info,
+                data,
+                ..Default::default()
+            }
         });
 
         log::info!("attempting to resolve: {:?}", qname);
@@ -124,21 +124,21 @@ impl DnsResolver for ForwardingDnsResolver {
         let &(ref host, port) = &self.server;
         
         // Add breadcrumb for forwarding query
-        sentry::add_breadcrumb(sentry::Breadcrumb {
-            ty: "dns".to_string(),
-            category: Some("dns.forward".to_string()),
-            message: Some(format!("Forwarding query to {}:{}", host, port)),
-            level: sentry::Level::Info,
-            timestamp: chrono::Utc::now(),
-            data: {
-                let mut map = std::collections::BTreeMap::new();
-                map.insert("qname".to_string(), qname.into());
-                map.insert("qtype".to_string(), format!("{:?}", qtype).into());
-                map.insert("forward_host".to_string(), host.clone().into());
-                map.insert("forward_port".to_string(), port.into());
-                map
-            },
-            ..Default::default()
+        let mut data = std::collections::BTreeMap::new();
+        data.insert("qname".to_string(), qname.into());
+        data.insert("qtype".to_string(), format!("{:?}", qtype).into());
+        data.insert("forward_host".to_string(), host.clone().into());
+        data.insert("forward_port".to_string(), port.into());
+        
+        sentry::add_breadcrumb(|| {
+            sentry::Breadcrumb {
+                ty: "dns".to_string(),
+                category: Some("dns.forward".to_string()),
+                message: Some(format!("Forwarding query to {}:{}", host, port)),
+                level: sentry::Level::Info,
+                data,
+                ..Default::default()
+            }
         });
         
         let result = self
@@ -161,18 +161,18 @@ impl DnsResolver for ForwardingDnsResolver {
             })?;
 
         // Success breadcrumb
-        sentry::add_breadcrumb(sentry::Breadcrumb {
-            ty: "dns".to_string(),
-            category: Some("dns.forward.success".to_string()),
-            message: Some(format!("Successfully forwarded query for {}", qname)),
-            level: sentry::Level::Info,
-            timestamp: chrono::Utc::now(),
-            data: {
-                let mut map = std::collections::BTreeMap::new();
-                map.insert("answer_count".to_string(), result.answers.len().into());
-                map
-            },
-            ..Default::default()
+        let mut data = std::collections::BTreeMap::new();
+        data.insert("answer_count".to_string(), result.answers.len().into());
+        
+        sentry::add_breadcrumb(|| {
+            sentry::Breadcrumb {
+                ty: "dns".to_string(),
+                category: Some("dns.forward.success".to_string()),
+                message: Some(format!("Successfully forwarded query for {}", qname)),
+                level: sentry::Level::Info,
+                data,
+                ..Default::default()
+            }
         });
 
         if let Err(e) = self.context.cache.store(&result.answers) {
