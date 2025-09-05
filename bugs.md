@@ -195,6 +195,26 @@
   - **Workaround**: Refresh entire page to reset display
   - **Priority**: Medium (UI functionality impaired but doesn't affect core DNS operations)
 
+### [UI] Dark Mode Compatibility Issues with bg-light Bootstrap Class
+- [ ] **Bootstrap Theme Bug**: Multiple templates use bg-light class that doesn't adapt to dark mode
+  - **Symptoms**: White/light backgrounds appear in dark mode, creating poor contrast and readability issues
+  - **Frequency**: Always - affects all pages with bg-light elements in dark mode
+  - **Component**: Web Interface/Templates
+  - **Affected Files and Instances**:
+    - src/web/templates/api.html:248,327 - API Playground response sections
+    - src/web/templates/certificates.html:520,661 - Certificate details displays
+    - src/web/templates/logs.html:203,362 - Log viewer headers and pre-formatted text
+    - src/web/templates/sessions.html:49 - IP address badges (also uses text-dark)
+    - src/web/templates/webhooks.html:531,542 - Webhook response preview sections
+    - src/web/templates/doh.html:391 - Code examples
+    - src/web/templates/dnssec.html:450 - DNSSEC configuration sections
+  - **User Impact**: Poor readability and inconsistent UI appearance in dark mode
+  - **Root Cause**: Using bg-light instead of dark mode-aware Bootstrap 5 classes
+  - **Fix Required**: Replace bg-light with bg-body-tertiary (adapts to theme)
+  - **Special Case**: sessions.html badge should use bg-body-secondary without text-dark
+  - **Workaround**: Users must use light mode for proper visibility
+  - **Priority**: Medium (UI/UX issue but doesn't affect functionality)
+
 ### Code Quality (Non-blocking)
 - [ ] Clean up remaining 70+ unused import warnings (src/dns/ modules, src/web/ modules)  
 - [ ] Replace 382 unwrap() calls in DNS modules (record_parsers.rs:52, metrics.rs:42, authority.rs:22)

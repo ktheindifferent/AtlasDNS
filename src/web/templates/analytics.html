@@ -123,7 +123,7 @@
             </div>
             <div class="card-body">
                 <canvas id="responseCodesChart" height="300"></canvas>
-                <div class="mt-3">
+                <div class="mt-3" id="responseCodesDisplay">
                     <div class="d-flex justify-content-between mb-2">
                         <span class="badge bg-success">NOERROR</span>
                         <span>{{noerror_count}} ({{noerror_percent}}%)</span>
@@ -578,6 +578,55 @@ function exportAnalytics() {
 function refreshQueryTypes() {
     showToast('Refreshing query types...', 'info');
     // Implement refresh functionality
+}
+
+// Function to update response codes display
+function updateResponseCodesDisplay(data) {
+    const container = document.getElementById('responseCodesDisplay');
+    if (!container) return;
+    
+    // Clear existing content before adding new data
+    container.innerHTML = '';
+    
+    // Add new data
+    const responseTypes = [
+        { key: 'noerror', label: 'NOERROR', class: 'bg-success' },
+        { key: 'nxdomain', label: 'NXDOMAIN', class: 'bg-warning' },
+        { key: 'servfail', label: 'SERVFAIL', class: 'bg-danger' },
+        { key: 'other', label: 'Other', class: 'bg-info' }
+    ];
+    
+    responseTypes.forEach((type, index) => {
+        const div = document.createElement('div');
+        div.className = `d-flex justify-content-between${index < responseTypes.length - 1 ? ' mb-2' : ''}`;
+        
+        const count = data[type.key + '_count'] || 0;
+        const percent = data[type.key + '_percent'] || 0;
+        
+        div.innerHTML = `
+            <span class="badge ${type.class}">${type.label}</span>
+            <span>${count} (${percent}%)</span>
+        `;
+        
+        container.appendChild(div);
+    });
+}
+
+// Example usage for real-time updates
+function simulateResponseCodesUpdate() {
+    // This would be called when new data arrives
+    const mockData = {
+        noerror_count: Math.floor(Math.random() * 1000),
+        noerror_percent: Math.floor(Math.random() * 100),
+        nxdomain_count: Math.floor(Math.random() * 100),
+        nxdomain_percent: Math.floor(Math.random() * 20),
+        servfail_count: Math.floor(Math.random() * 50),
+        servfail_percent: Math.floor(Math.random() * 10),
+        other_count: Math.floor(Math.random() * 25),
+        other_percent: Math.floor(Math.random() * 5)
+    };
+    
+    updateResponseCodesDisplay(mockData);
 }
 
 function viewAnomaly(id) {
