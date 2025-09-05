@@ -515,6 +515,31 @@ impl DnsUdpServer {
             thread_count,
         }
     }
+
+    /// Send error response to client
+    fn send_error_response(
+        &self,
+        socket: &UdpSocket,
+        src: std::net::SocketAddr,
+        query_id: u16,
+        error_code: crate::dns::protocol::ResultCode,
+    ) {
+        use crate::dns::protocol::DnsPacket;
+        use crate::dns::buffer::VectorPacketBuffer;
+
+        let mut error_packet = DnsPacket::new();
+        error_packet.header.id = query_id;
+        error_packet.header.response = true;
+        error_packet.header.rescode = error_code;
+        
+        let mut res_buffer = VectorPacketBuffer::new();
+        if error_packet.write(&mut res_buffer, 512).is_ok() {
+            let len = res_buffer.pos();
+            if let Ok(data) = res_buffer.get_range(0, len) {
+                let _ = socket.send_to(data, src);
+            }
+        }
+    }
 }
 
 impl DnsUdpServer {
@@ -619,13 +644,44 @@ impl DnsUdpServer {
 
                     // Read a query packet
                     let mut req_buffer = BytePacketBuffer::new();
-                    let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
+                    let (packet_size, src) = match socket.recv_from(&mut req_buffer.buf) {
                         Ok(x) => x,
                         Err(e) => {
                             log::info!("Failed to read from UDP socket: {:?}", e);
                             continue;
                         }
                     };
+
+                    // Validate request size before parsing
+                    if let Some(ref request_limiter) = self.context.request_limiter {
+                        use crate::dns::request_limits::SizeValidationResult;
+                        
+                        match request_limiter.validate_dns_udp_request(packet_size, Some(src.ip())) {
+                            SizeValidationResult::Valid => {
+                                // Request size is acceptable, continue processing
+                            }
+                            SizeValidationResult::TooLarge { actual_size, limit, request_type } => {
+                                log::warn!(
+                                    "Rejected oversized UDP DNS request from {}: {} bytes (limit: {} bytes, type: {})",
+                                    src.ip(), actual_size, limit, request_type
+                                );
+                                
+                                // Send FORMERR response for oversized requests
+                                self.send_error_response(&socket, src, 0, crate::dns::protocol::ResultCode::FORMERR);
+                                continue;
+                            }
+                            SizeValidationResult::ClientBlocked { blocked_until } => {
+                                log::warn!(
+                                    "Blocked UDP DNS request from {} (blocked until: {:?})",
+                                    src.ip(), blocked_until
+                                );
+                                
+                                // Send REFUSED response for blocked clients
+                                self.send_error_response(&socket, src, 0, crate::dns::protocol::ResultCode::REFUSED);
+                                continue;
+                            }
+                        }
+                    }
 
                     // Parse it
                     let request = match DnsPacket::from_buffer(&mut req_buffer) {
@@ -635,6 +691,31 @@ impl DnsUdpServer {
                             continue;
                         }
                     };
+
+                    // Additional content validation
+                    if let Some(ref request_limiter) = self.context.request_limiter {
+                        let domain_names: Vec<String> = request.questions
+                            .iter()
+                            .map(|q| q.name.clone())
+                            .collect();
+                        
+                        if let crate::dns::request_limits::SizeValidationResult::TooLarge { 
+                            actual_size, limit, request_type 
+                        } = request_limiter.validate_dns_packet_content(
+                            request.questions.len(), 
+                            &domain_names, 
+                            Some(src.ip())
+                        ) {
+                            log::warn!(
+                                "Rejected DNS request with invalid content from {}: {} (limit: {}, type: {})",
+                                src.ip(), actual_size, limit, request_type
+                            );
+                            
+                            self.send_error_response(&socket, src, request.header.id, 
+                                crate::dns::protocol::ResultCode::FORMERR);
+                            continue;
+                        }
+                    }
 
                     // Add request to queue and notify waiting threads
                     self.enqueue_request(src, request);
@@ -709,6 +790,34 @@ impl DnsTcpServer {
             thread_count,
         }
     }
+
+    /// Send error response over TCP connection
+    fn send_tcp_error_response(
+        stream: &mut TcpStream,
+        query_id: u16,
+        error_code: crate::dns::protocol::ResultCode,
+    ) {
+        use crate::dns::protocol::DnsPacket;
+        use crate::dns::buffer::VectorPacketBuffer;
+        use crate::dns::netutil::write_packet_length;
+        use std::io::Write;
+
+        let mut error_packet = DnsPacket::new();
+        error_packet.header.id = query_id;
+        error_packet.header.response = true;
+        error_packet.header.rescode = error_code;
+        
+        let mut res_buffer = VectorPacketBuffer::new();
+        if error_packet.write(&mut res_buffer, 0xFFFF).is_ok() {
+            let len = res_buffer.pos();
+            if write_packet_length(stream, len).is_ok() {
+                if let Ok(data) = res_buffer.get_range(0, len) {
+                    let _ = stream.write_all(data);
+                }
+            }
+        }
+        let _ = stream.shutdown(Shutdown::Both);
+    }
 }
 
 impl DnsServer for DnsTcpServer {
@@ -740,12 +849,43 @@ impl DnsServer for DnsTcpServer {
                     THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).dec();
 
                     // When DNS packets are sent over TCP, they're prefixed with a two byte
-                    // length. We don't really need to know the length in advance, so we
-                    // just move past it and continue reading as usual
-                    ignore_or_report!(
+                    // length. Read and validate the packet length first
+                    let packet_length = return_or_report!(
                         read_packet_length(&mut stream),
                         "Failed to read query packet length"
                     );
+
+                    // Validate request size before parsing
+                    let src_ip = stream.peer_addr().ok().map(|addr| addr.ip());
+                    if let Some(ref request_limiter) = context.request_limiter {
+                        use crate::dns::request_limits::SizeValidationResult;
+                        
+                        match request_limiter.validate_dns_tcp_request(packet_length as usize, src_ip) {
+                            SizeValidationResult::Valid => {
+                                // Request size is acceptable, continue processing
+                            }
+                            SizeValidationResult::TooLarge { actual_size, limit, request_type } => {
+                                log::warn!(
+                                    "Rejected oversized TCP DNS request from {:?}: {} bytes (limit: {} bytes, type: {})",
+                                    src_ip, actual_size, limit, request_type
+                                );
+                                
+                                // Send FORMERR response and close connection
+                                Self::send_tcp_error_response(&mut stream, 0, crate::dns::protocol::ResultCode::FORMERR);
+                                continue;
+                            }
+                            SizeValidationResult::ClientBlocked { blocked_until } => {
+                                log::warn!(
+                                    "Blocked TCP DNS request from {:?} (blocked until: {:?})",
+                                    src_ip, blocked_until
+                                );
+                                
+                                // Send REFUSED response and close connection
+                                Self::send_tcp_error_response(&mut stream, 0, crate::dns::protocol::ResultCode::REFUSED);
+                                continue;
+                            }
+                        }
+                    }
 
                     let request = {
                         let mut stream_buffer = StreamPacketBuffer::new(&mut stream);
@@ -754,6 +894,31 @@ impl DnsServer for DnsTcpServer {
                             "Failed to read query packet"
                         )
                     };
+
+                    // Additional content validation
+                    if let Some(ref request_limiter) = context.request_limiter {
+                        let domain_names: Vec<String> = request.questions
+                            .iter()
+                            .map(|q| q.name.clone())
+                            .collect();
+                        
+                        if let crate::dns::request_limits::SizeValidationResult::TooLarge { 
+                            actual_size, limit, request_type 
+                        } = request_limiter.validate_dns_packet_content(
+                            request.questions.len(), 
+                            &domain_names, 
+                            src_ip
+                        ) {
+                            log::warn!(
+                                "Rejected TCP DNS request with invalid content from {:?}: {} (limit: {}, type: {})",
+                                src_ip, actual_size, limit, request_type
+                            );
+                            
+                            Self::send_tcp_error_response(&mut stream, request.header.id, 
+                                crate::dns::protocol::ResultCode::FORMERR);
+                            continue;
+                        }
+                    }
 
                     let mut res_buffer = VectorPacketBuffer::new();
                     log::info!("req: {:?}", request.clone());

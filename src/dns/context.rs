@@ -24,6 +24,8 @@ use crate::dns::zone_templates::{ZoneTemplatesHandler, ZoneTemplateConfig};
 use crate::dns::health::HealthMonitor;
 use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthCheckConfig};
 use crate::dns::traffic_steering::{TrafficSteeringHandler, TrafficSteeringConfig};
+use crate::dns::request_limits::RequestLimiter;
+use crate::dns::cache_poisoning::CachePoisonProtection;
 use crate::metrics::{MetricsManager};
 
 #[derive(Debug, Display, From, Error)]
@@ -117,6 +119,8 @@ pub struct ServerContext {
     pub health_monitor: Arc<HealthMonitor>,
     pub health_check_analytics: Arc<HealthCheckAnalyticsHandler>,
     pub traffic_steering: Arc<TrafficSteeringHandler>,
+    pub request_limiter: Option<Arc<RequestLimiter>>,
+    pub cache_poison_protection: Option<Arc<CachePoisonProtection>>,
 }
 
 impl Default for ServerContext {
@@ -186,6 +190,8 @@ impl ServerContext {
             health_monitor: Arc::new(HealthMonitor::new()),
             health_check_analytics: Arc::new(HealthCheckAnalyticsHandler::new(HealthCheckConfig::default())),
             traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
+            request_limiter: None, // Will be initialized based on configuration
+            cache_poison_protection: None, // Will be initialized based on configuration
         })
     }
 
@@ -215,6 +221,32 @@ impl ServerContext {
         self.authority.load(&self.zones_dir)?;
 
         Ok(())
+    }
+
+    /// Enable request size limits with custom configuration
+    pub fn enable_request_limits(&mut self, config: crate::dns::request_limits::RequestLimitsConfig) {
+        let limiter = Arc::new(RequestLimiter::new(config));
+        self.request_limiter = Some(limiter);
+        log::info!("Request size limits enabled");
+    }
+
+    /// Enable request size limits with default configuration
+    pub fn enable_default_request_limits(&mut self) {
+        let config = crate::dns::request_limits::RequestLimitsConfig::default();
+        self.enable_request_limits(config);
+    }
+
+    /// Enable cache poisoning protection with custom configuration
+    pub fn enable_cache_poison_protection(&mut self, config: crate::dns::cache_poisoning::PoisonProtectionConfig) {
+        let protection = Arc::new(CachePoisonProtection::new(config));
+        self.cache_poison_protection = Some(protection);
+        log::info!("Cache poisoning protection enabled");
+    }
+
+    /// Enable cache poisoning protection with default configuration
+    pub fn enable_default_cache_poison_protection(&mut self) {
+        let config = crate::dns::cache_poisoning::PoisonProtectionConfig::default();
+        self.enable_cache_poison_protection(config);
     }
 
     /// Initialize enhanced metrics system (async)

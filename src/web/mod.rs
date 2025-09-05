@@ -35,6 +35,8 @@ pub enum WebError {
     SessionExpired,
     UserNotFound,
     InternalError(String),
+    RequestTooLarge(String),
+    TooManyRequests(String),
 }
 
 impl std::fmt::Display for WebError {
@@ -54,6 +56,8 @@ impl std::fmt::Display for WebError {
             WebError::SessionExpired => write!(f, "Session expired"),
             WebError::UserNotFound => write!(f, "User not found"),
             WebError::InternalError(msg) => write!(f, "Internal error: {}", msg),
+            WebError::RequestTooLarge(msg) => write!(f, "Request too large: {}", msg),
+            WebError::TooManyRequests(msg) => write!(f, "Too many requests: {}", msg),
         }
     }
 }
@@ -65,7 +69,8 @@ impl WebError {
             WebError::Authority(_) | WebError::Io(_) | WebError::Serialization(_) 
             | WebError::Template(_) | WebError::LockError | WebError::InternalError(_) => sentry::Level::Error,
             WebError::AuthenticationError(_) | WebError::AuthorizationError(_) 
-            | WebError::InvalidRequest | WebError::InvalidInput(_) => sentry::Level::Warning,
+            | WebError::InvalidRequest | WebError::InvalidInput(_) 
+            | WebError::RequestTooLarge(_) | WebError::TooManyRequests(_) => sentry::Level::Warning,
             WebError::MissingField(_) | WebError::ZoneNotFound | WebError::SessionExpired 
             | WebError::UserNotFound => sentry::Level::Info,
         };
@@ -86,6 +91,8 @@ impl WebError {
                 WebError::SessionExpired => "session_expired",
                 WebError::UserNotFound => "user_not_found",
                 WebError::InternalError(_) => "internal_error",
+                WebError::RequestTooLarge(_) => "request_too_large",
+                WebError::TooManyRequests(_) => "too_many_requests",
             });
             
             scope.set_tag("component", "web");
@@ -96,7 +103,8 @@ impl WebError {
                     scope.set_extra("field", (*field).into());
                 }
                 WebError::InvalidInput(msg) | WebError::AuthenticationError(msg) 
-                | WebError::AuthorizationError(msg) | WebError::InternalError(msg) => {
+                | WebError::AuthorizationError(msg) | WebError::InternalError(msg)
+                | WebError::RequestTooLarge(msg) | WebError::TooManyRequests(msg) => {
                     scope.set_extra("message", msg.clone().into());
                 }
                 WebError::Authority(err) => {

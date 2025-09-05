@@ -312,33 +312,58 @@ impl CachePoisonProtection {
 
     /// Generate cryptographically secure query ID
     fn generate_secure_id(&self) -> u16 {
-        let mut rng = thread_rng();
-        rng.gen()
+        use rand::rngs::OsRng;
+        use rand::RngCore;
+        
+        let mut rng = OsRng;
+        let mut bytes = [0u8; 2];
+        rng.fill_bytes(&mut bytes);
+        
+        // Convert bytes to u16
+        u16::from_be_bytes(bytes)
     }
 
-    /// Get random port from pool
+    /// Get random port from pool using cryptographically secure randomness
     fn get_random_port(&self) -> u16 {
         let pool = self.port_pool.read();
         if pool.is_empty() {
             return 0;
         }
         
-        let mut rng = thread_rng();
-        let index = rng.gen_range(0, pool.len());
+        use rand::rngs::OsRng;
+        use rand::RngCore;
+        
+        let mut rng = OsRng;
+        let mut bytes = [0u8; 4];
+        rng.fill_bytes(&mut bytes);
+        let random_value = u32::from_be_bytes(bytes);
+        
+        let index = (random_value as usize) % pool.len();
         pool[index]
     }
 
-    /// Apply 0x20 bit encoding to domain name
+    /// Apply 0x20 bit encoding to domain name with secure randomness
     fn apply_0x20_encoding(&self, name: &str) -> String {
-        let mut rng = thread_rng();
+        use rand::rngs::OsRng;
+        use rand::RngCore;
+        
+        let mut rng = OsRng;
         let mut encoded = String::new();
         
         for ch in name.chars() {
-            if ch.is_ascii_alphabetic() && rng.gen_bool(0.5) {
-                if ch.is_ascii_lowercase() {
-                    encoded.push(ch.to_ascii_uppercase());
+            if ch.is_ascii_alphabetic() {
+                let mut random_byte = [0u8; 1];
+                rng.fill_bytes(&mut random_byte);
+                
+                // Use bit 0 for randomization (50% chance)
+                if (random_byte[0] & 1) == 1 {
+                    if ch.is_ascii_lowercase() {
+                        encoded.push(ch.to_ascii_uppercase());
+                    } else {
+                        encoded.push(ch.to_ascii_lowercase());
+                    }
                 } else {
-                    encoded.push(ch.to_ascii_lowercase());
+                    encoded.push(ch);
                 }
             } else {
                 encoded.push(ch);
@@ -396,10 +421,29 @@ impl CachePoisonProtection {
         }
     }
 
-    /// Validate DNSSEC signatures (simplified)
-    fn validate_dnssec_simple(&self, _packet: &DnsPacket) -> bool {
-        // Simplified - would perform full DNSSEC validation
-        // In production, this would check RRSIG records
+    /// Validate DNSSEC signatures (enhanced)
+    fn validate_dnssec_simple(&self, packet: &DnsPacket) -> bool {
+        // Enhanced DNSSEC validation with better logging
+        if !packet.header.authed_data {
+            // If no DNSSEC data is present, this is not necessarily invalid
+            return true;
+        }
+
+        // Check for presence of DNSSEC records
+        let has_rrsig = packet.answers.iter().any(|r| matches!(r, DnsRecord::Rrsig { .. }));
+        let has_dnskey = packet.answers.iter().any(|r| matches!(r, DnsRecord::Dnskey { .. }));
+        
+        if packet.header.authed_data && !has_rrsig {
+            log::warn!("DNSSEC: Authenticated data flag set but no RRSIG records present");
+            return false;
+        }
+
+        if has_rrsig && !has_dnskey {
+            log::debug!("DNSSEC: RRSIG present but no DNSKEY - may be valid if key is cached");
+        }
+
+        // TODO: Implement full cryptographic DNSSEC validation
+        // For now, accept if basic structural validation passes
         true
     }
 

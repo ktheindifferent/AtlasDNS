@@ -126,6 +126,9 @@ pub mod ddos_protection;
 /// Cache Poisoning Protection with multiple defense layers
 pub mod cache_poisoning;
 
+/// Request Size Limits and DoS Protection for oversized packet prevention
+pub mod request_limits;
+
 /// Response Policy Zones (RPZ) for threat intelligence
 pub mod rpz;
 
@@ -188,6 +191,9 @@ pub mod dns_views;
 
 /// API Key Management for secure API access control
 pub mod api_keys;
+
+/// Comprehensive security implementation examples and utilities
+pub mod security_example;
 
 #[cfg(test)]
 mod cache_test;

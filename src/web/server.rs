@@ -454,14 +454,67 @@ impl<'a> WebServer<'a> {
             .find(|h| h.field.as_str().to_ascii_lowercase() == "referer")
             .map(|h| h.value.as_str().to_string());
         
-        // Calculate request size
+        // Calculate request size and validate
         let request_size = self.calculate_request_size(&request);
         
         ctx = ctx.with_metadata("method", &method)
                .with_metadata("path", &path)
                .with_metadata("user_agent", &user_agent);
 
-        let response = self.route_request(&mut request);
+        // Validate request size before processing
+        let response = if let Some(ref request_limiter) = self.context.request_limiter {
+            // Get client IP
+            let client_ip = request.remote_addr().map(|addr| addr.ip());
+            
+            // Calculate individual components for validation
+            let body_size = request.body_length().unwrap_or(0);
+            let header_size = self.calculate_headers_size(&request);
+            let header_count = request.headers().len();
+            let url_length = request.url().len();
+            
+            match request_limiter.validate_http_request(
+                body_size,
+                header_size,
+                header_count,
+                url_length,
+                client_ip,
+            ) {
+                crate::dns::request_limits::SizeValidationResult::Valid => {
+                    // Request is valid, proceed with normal processing
+                    self.route_request(&mut request)
+                }
+                crate::dns::request_limits::SizeValidationResult::TooLarge { 
+                    actual_size, limit, request_type 
+                } => {
+                    log::warn!(
+                        "Rejected oversized HTTP request from {:?}: {} (limit: {}, type: {})",
+                        client_ip, actual_size, limit, request_type
+                    );
+                    
+                    self.context.metrics.record_error("web_server", "request_too_large");
+                    
+                    // Return 413 Payload Too Large
+                    Err(WebError::RequestTooLarge(format!(
+                        "{} size {} exceeds limit of {} bytes",
+                        request_type, actual_size, limit
+                    )))
+                }
+                crate::dns::request_limits::SizeValidationResult::ClientBlocked { blocked_until } => {
+                    log::warn!(
+                        "Blocked HTTP request from {:?} (blocked until: {:?})",
+                        client_ip, blocked_until
+                    );
+                    
+                    self.context.metrics.record_error("web_server", "client_blocked");
+                    
+                    // Return 429 Too Many Requests
+                    Err(WebError::TooManyRequests("Client temporarily blocked due to repeated violations".to_string()))
+                }
+            }
+        } else {
+            // No request limiter configured, proceed normally
+            self.route_request(&mut request)
+        };
         
         // Extract status code from response
         let status_code = match &response {
@@ -469,6 +522,8 @@ impl<'a> WebServer<'a> {
             Err(WebError::AuthenticationError(_)) => 401,
             Err(WebError::AuthorizationError(_)) => 403,
             Err(WebError::UserNotFound) | Err(WebError::ZoneNotFound) => 404,
+            Err(WebError::RequestTooLarge(_)) => 413, // Payload Too Large
+            Err(WebError::TooManyRequests(_)) => 429, // Too Many Requests
             Err(_) => 500,
         };
         
@@ -534,6 +589,22 @@ impl<'a> WebServer<'a> {
             size += content_length;
         }
         
+        size
+    }
+
+    /// Calculate the size of HTTP headers in bytes
+    fn calculate_headers_size(&self, request: &tiny_http::Request) -> usize {
+        let mut size = 0;
+        
+        for header in request.headers() {
+            // Each header: "Name: Value\r\n"
+            size += header.field.as_str().len();
+            size += 2; // ": "
+            size += header.value.as_str().len();
+            size += 2; // "\r\n"
+        }
+        
+        size += 2; // Final "\r\n"
         size
     }
     
