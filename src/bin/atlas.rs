@@ -287,25 +287,39 @@ fn main() {
 
     log::info!("Listening on port {}", context.dns_port);
 
-    // Start DNS servers
+    // Start DNS servers in background threads
+    let mut dns_handles = Vec::new();
+
     if context.enable_udp {
-        let udp_server = DnsUdpServer::new(context.clone(), 20);
-        if let Err(e) = udp_server.run_server() {
-            log::error!("Failed to bind UDP DNS server on port {}: {:?}", context.dns_port, e);
-            sentry::capture_message(&format!("UDP DNS server failed to bind on port {}: {:?}", context.dns_port, e), sentry::Level::Error);
-        } else {
-            log::info!("UDP DNS server started successfully on port {}", context.dns_port);
-        }
+        let ctx = context.clone();
+        let handle = thread::spawn(move || {
+            let udp_server = DnsUdpServer::new(ctx.clone(), 20);
+            match udp_server.run_server() {
+                Ok(_) => log::info!("UDP DNS server completed"),
+                Err(e) => {
+                    log::error!("Failed to bind UDP DNS server on port {}: {:?}", ctx.dns_port, e);
+                    sentry::capture_message(&format!("UDP DNS server failed to bind on port {}: {:?}", ctx.dns_port, e), sentry::Level::Error);
+                }
+            }
+        });
+        dns_handles.push(handle);
+        log::info!("UDP DNS server started successfully on port {}", context.dns_port);
     }
 
     if context.enable_tcp {
-        let tcp_server = DnsTcpServer::new(context.clone(), 20);
-        if let Err(e) = tcp_server.run_server() {
-            log::error!("Failed to bind TCP DNS server on port {}: {:?}", context.dns_port, e);
-            sentry::capture_message(&format!("TCP DNS server failed to bind on port {}: {:?}", context.dns_port, e), sentry::Level::Error);
-        } else {
-            log::info!("TCP DNS server started successfully on port {}", context.dns_port);
-        }
+        let ctx = context.clone();
+        let handle = thread::spawn(move || {
+            let tcp_server = DnsTcpServer::new(ctx.clone(), 20);
+            match tcp_server.run_server() {
+                Ok(_) => log::info!("TCP DNS server completed"),
+                Err(e) => {
+                    log::error!("Failed to bind TCP DNS server on port {}: {:?}", ctx.dns_port, e);
+                    sentry::capture_message(&format!("TCP DNS server failed to bind on port {}: {:?}", ctx.dns_port, e), sentry::Level::Error);
+                }
+            }
+        });
+        dns_handles.push(handle);
+        log::info!("TCP DNS server started successfully on port {}", context.dns_port);
     }
 
     // Start web server (this blocks to keep the process alive)
@@ -314,11 +328,14 @@ fn main() {
         log::info!("Starting web server - this will keep the process alive for DNS servers");
         webserver.run_webserver(true);
     } else {
-        log::info!("Web server disabled, keeping process alive for DNS servers only...");
-        // Keep the process running indefinitely so DNS servers can continue to work
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(3600));
+        log::info!("Web server disabled, waiting for DNS servers to complete...");
+        // Wait for all DNS server threads to complete
+        for handle in dns_handles {
+            if let Err(e) = handle.join() {
+                log::error!("DNS server thread panicked: {:?}", e);
+            }
         }
+        log::info!("All DNS servers have stopped");
     }
 }
 

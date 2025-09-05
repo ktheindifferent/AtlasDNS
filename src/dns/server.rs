@@ -629,10 +629,10 @@ impl DnsUdpServer {
         Ok(())
     }
 
-    /// Spawn the main incoming request handler thread
+    /// Spawn the main incoming request handler thread and block until completion
     fn spawn_incoming_handler(self, socket: UdpSocket) -> std::io::Result<()> {
         log::info!("DnsUdpServer-incoming");
-        Builder::new()
+        let join_handle = Builder::new()
             .name("DnsUdpServer-incoming".into())
             .spawn(move || {
                 loop {
@@ -722,7 +722,17 @@ impl DnsUdpServer {
                 }
             })?;
         
-        Ok(())
+        // Block on the main incoming handler thread - this keeps the DNS server alive
+        match join_handle.join() {
+            Ok(_) => {
+                log::info!("DnsUdpServer incoming handler thread completed");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("DnsUdpServer incoming handler thread panicked: {:?}", e);
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "DNS server thread panicked").into())
+            }
+        }
     }
 
     /// Add a request to the queue and notify waiting threads
@@ -961,7 +971,7 @@ impl DnsServer for DnsTcpServer {
         THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "idle"]).set(self.thread_count as i64);
         THREAD_POOL_THREADS.with_label_values(&["tcp_dns", "active"]).set(0);
 
-        let _ = Builder::new()
+        let join_handle = Builder::new()
             .name("DnsTcpServer-incoming".into())
             .spawn(move || {
                 for wrap_stream in socket.incoming() {
@@ -987,7 +997,17 @@ impl DnsServer for DnsTcpServer {
                 }
             })?;
 
-        Ok(())
+        // Block on the main incoming handler thread - this keeps the TCP DNS server alive
+        match join_handle.join() {
+            Ok(_) => {
+                log::info!("DnsTcpServer incoming handler thread completed");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("DnsTcpServer incoming handler thread panicked: {:?}", e);
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "TCP DNS server thread panicked").into())
+            }
+        }
     }
 }
 
