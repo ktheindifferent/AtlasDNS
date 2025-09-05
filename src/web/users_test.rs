@@ -82,7 +82,7 @@ mod tests {
         let manager = UserManager::new();
         
         // Test default admin authentication
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         assert_eq!(user.username, "admin");
         assert_eq!(user.role, UserRole::Admin);
     }
@@ -123,7 +123,7 @@ mod tests {
         let manager = UserManager::new();
         
         // First authenticate to get a user
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         
         // Create a session for the user
         let session = manager.create_session(
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn test_session_invalidation() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         let session = manager.create_session(user.id, None, None).unwrap();
         
         // Session should be valid initially
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_update_user() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         
         let update_request = UpdateUserRequest {
             email: Some("newemail@example.com".to_string()),
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_list_sessions() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         
         // Initially no sessions
         let sessions = manager.list_sessions(Some(&user.id)).unwrap();
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_cleanup_expired_sessions() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123").unwrap();
+        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
         
         // Create a session
         let _session = manager.create_session(user.id, None, None).unwrap();

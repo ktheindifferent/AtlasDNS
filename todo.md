@@ -41,14 +41,14 @@ Total items: 201 (previously 165)
 - [x] Add CSRF protection for web forms ✅ (2025-09-04 - 20250904_175332)
 - [x] Implement secure session token rotation ✅ (2025-09-04 - 20250904_183342)
 - [x] Add password complexity requirements (currently using simple SHA256) ✅ (2025-09-04) - Already using bcrypt
-- [ ] Implement account lockout after failed attempts
-- [ ] Add audit logging for security events
+- [x] Implement account lockout after failed attempts ✅ (2025-01-15) - Account locks for 30 minutes after 5 failed login attempts
+- [x] Add audit logging for security events ✅ (2025-01-15) - Comprehensive audit logging with security events, IP tracking, and system logs
 - [x] Fix plaintext password storage in memory ✅ (2025-09-04 - 20250904_183342)
-- [ ] Add XSS protection in template rendering (innerHTML usage found in templates)
+- [x] Add XSS protection in template rendering (innerHTML usage found in templates) ✅ (2025-01-15) - Implemented HTML escaping, input sanitization, and CSP headers for comprehensive XSS protection
 - [ ] Implement request size limits
 - [ ] Add DNS cache poisoning protection (module exists but empty)
 - [ ] Sanitize user inputs in JavaScript (onclick handlers without escaping)
-- [ ] Add Content Security Policy headers
+- [x] Add Content Security Policy headers ✅ (2025-01-15) - Added CSP, HSTS, frame options, and other security headers to all HTTP responses
 - [ ] Implement API authentication for CLI tool (optional API key)
 - [ ] Fix privilege escalation on Windows (untested implementation)
 - [ ] Add SQL injection protection for future database queries

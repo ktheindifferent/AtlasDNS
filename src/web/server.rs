@@ -291,7 +291,10 @@ impl<'a> WebServer<'a> {
             .with_header(Self::safe_header("X-Content-Type-Options: nosniff"))
             .with_header(Self::safe_header("X-XSS-Protection: 1; mode=block"))
             .with_header(Self::safe_header("Referrer-Policy: strict-origin-when-cross-origin"))
-            .with_header(Self::safe_header("Cache-Control: no-cache, no-store, must-revalidate"));
+            .with_header(Self::safe_header("Cache-Control: no-cache, no-store, must-revalidate"))
+            .with_header(Self::safe_header(&format!("Content-Security-Policy: {}", crate::web::users::XSSProtection::generate_csp_header())))
+            .with_header(Self::safe_header("Permissions-Policy: geolocation=(), microphone=(), camera=()"))
+            .with_header(Self::safe_header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"));
         response
     }
 
@@ -867,10 +870,47 @@ impl<'a> WebServer<'a> {
                 .with_header(Self::safe_header("Content-Type: application/json"));
             Ok(Self::add_security_headers(response).boxed())
         } else {
-            let html_string = self.handlebars.render(template, &data)?;
+            // Sanitize data before rendering HTML template
+            let sanitized_data = self.sanitize_template_data(data)?;
+            let html_string = self.handlebars.render(template, &sanitized_data)?;
             let response = Response::from_string(html_string)
                 .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/html"));
             Ok(Self::add_security_headers(response).boxed())
+        }
+    }
+    
+    /// Sanitize data before rendering in templates to prevent XSS
+    fn sanitize_template_data<R>(&self, data: R) -> Result<serde_json::Value>
+    where
+        R: serde::Serialize,
+    {
+        let mut json_data = serde_json::to_value(data)?;
+        self.sanitize_json_value(&mut json_data);
+        Ok(json_data)
+    }
+    
+    /// Recursively sanitize JSON values to prevent XSS
+    fn sanitize_json_value(&self, value: &mut serde_json::Value) {
+        use crate::web::users::XSSProtection;
+        
+        match value {
+            serde_json::Value::String(s) => {
+                *s = XSSProtection::escape_html(&XSSProtection::sanitize_input(s));
+            },
+            serde_json::Value::Array(arr) => {
+                for item in arr.iter_mut() {
+                    self.sanitize_json_value(item);
+                }
+            },
+            serde_json::Value::Object(obj) => {
+                for (key, val) in obj.iter_mut() {
+                    // Don't sanitize keys that are known safe HTML content
+                    if !matches!(key.as_str(), "html_content" | "raw_html" | "safe_html") {
+                        self.sanitize_json_value(val);
+                    }
+                }
+            },
+            _ => {} // Numbers, booleans, and null don't need sanitization
         }
     }
 
@@ -1041,9 +1081,10 @@ impl<'a> WebServer<'a> {
         };
         
         let ip_address = self.session_middleware.get_ip_address(request);
+        let user_agent = self.session_middleware.get_user_agent(request);
         
         let user = match self.user_manager
-            .authenticate(&login_request.username, &login_request.password) {
+            .authenticate(&login_request.username, &login_request.password, ip_address.clone(), user_agent.clone()) {
             Ok(u) => {
                 // Log successful login
                 self.activity_logger.log_login(
@@ -1065,8 +1106,6 @@ impl<'a> WebServer<'a> {
                 return Err(WebError::AuthenticationError(e));
             }
         };
-        
-        let user_agent = self.session_middleware.get_user_agent(request);
         
         let session = self.user_manager
             .create_session(user.id.clone(), ip_address, user_agent)

@@ -166,3 +166,6 @@ pub type Result<T> = std::result::Result<T, WebError>;
 
 #[cfg(test)]
 mod users_test;
+
+#[cfg(test)]
+mod security_tests;
