@@ -31,7 +31,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// DNS response counters by response code
@@ -42,7 +43,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// DNS query duration histogram
@@ -54,7 +56,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Cache hit/miss counters
@@ -65,7 +68,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Cache size gauge
@@ -76,7 +80,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Active connections gauge
@@ -87,7 +92,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Rate limiting counters
@@ -98,7 +104,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Security threat counters
@@ -109,7 +116,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Memory usage gauges
@@ -120,7 +128,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Zone statistics
@@ -131,7 +140,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Upstream DNS server metrics
@@ -142,7 +152,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Upstream response times
@@ -154,7 +165,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// DNSSEC operations
@@ -165,7 +177,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Health check metrics
@@ -176,7 +189,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Server uptime
@@ -186,7 +200,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGauge::new("dummy", "dummy").unwrap()
     });
 
     /// Configuration reload events
@@ -197,7 +212,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Error counters by component
@@ -208,7 +224,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Web interface metrics
@@ -219,7 +236,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Web request duration
@@ -231,7 +249,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// User sessions
@@ -242,7 +261,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
     /// Unique clients gauge
     pub static ref UNIQUE_CLIENTS: IntGauge = register_int_gauge!(
@@ -251,7 +271,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGauge::new("dummy", "dummy").unwrap()
     });
 
     /// Response time percentiles
@@ -262,7 +283,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Protocol usage counters
@@ -273,7 +295,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Cache hit rate gauge
@@ -284,7 +307,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
     
     /// Web request size in bytes
@@ -296,7 +320,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
     
     /// Web response size in bytes
@@ -308,7 +333,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Thread pool statistics gauges
@@ -319,7 +345,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Thread pool queue size gauge
@@ -330,7 +357,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Thread pool task counters
@@ -341,7 +369,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 
     /// Thread pool utilization gauge
@@ -352,7 +381,8 @@ lazy_static! {
     ).unwrap_or_else(|e| {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
-        panic!("Critical: Metrics initialization failed: {}. Ensure Prometheus registry is available.", e);
+        // Continue without metrics - return a dummy metric
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
     });
 }
 
