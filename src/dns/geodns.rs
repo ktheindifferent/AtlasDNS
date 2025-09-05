@@ -524,7 +524,12 @@ impl GeoDnsHandler {
                     let zone_lon = 0.0;
                     let distance = self.haversine_distance(lat, lon, zone_lat, zone_lon);
                     
-                    if nearest.is_none() || distance < nearest.as_ref().unwrap().1 {
+                    let should_update = match &nearest {
+                        None => true,
+                        Some((_, prev_distance, _)) => distance < *prev_distance,
+                    };
+                    
+                    if should_update {
                         nearest = Some((zone_id.clone(), distance, records.clone()));
                     }
                 }

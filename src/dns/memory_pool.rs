@@ -400,12 +400,10 @@ impl BufferPool {
 
         stats.total_memory_bytes = small_memory + medium_memory + large_memory;
         stats.peak_memory_bytes = stats.peak_memory_bytes.max(stats.total_memory_bytes);
-        stats.last_resize_time = Some(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-        );
+        stats.last_resize_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .ok(); // Handle potential system time errors gracefully
     }
 
     /// Get statistics

@@ -535,16 +535,15 @@ pub struct DohClient {
 
 impl DohClient {
     /// Create a new DoH client
-    pub fn new(server_url: String) -> Self {
+    pub fn new(server_url: String) -> std::result::Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .unwrap();
+            .build()?;
 
-        Self {
+        Ok(Self {
             server_url,
             client,
-        }
+        })
     }
 
     /// Query DNS over HTTPS using POST method
