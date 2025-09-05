@@ -703,7 +703,7 @@ impl Authority {
         let mut signer = self.dnssec_signer.write().unwrap();
         
         // Get zone records
-        let records = self.get_zone_records(zone_name)
+        let _records = self.get_zone_records(zone_name)
             .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))?;
         
         // Sign the zone

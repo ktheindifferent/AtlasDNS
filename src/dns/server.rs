@@ -205,7 +205,7 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 }
 
 /// Validate DNSSEC signatures in a response packet
-fn validate_dnssec(context: &Arc<ServerContext>, packet: &DnsPacket) -> std::result::Result<bool, Box<dyn std::error::Error>> {
+fn validate_dnssec(_context: &Arc<ServerContext>, packet: &DnsPacket) -> std::result::Result<bool, Box<dyn std::error::Error>> {
     // Check if the response contains DNSSEC records
     let has_dnssec = packet.answers.iter().any(|r| matches!(r, 
         DnsRecord::Rrsig { .. } | 
