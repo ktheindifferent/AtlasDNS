@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 use reqwest;
-use sha2::{Sha256, Digest};
+use sha2::Sha256;
 use hmac::{Hmac, Mac};
 use uuid::Uuid;
 

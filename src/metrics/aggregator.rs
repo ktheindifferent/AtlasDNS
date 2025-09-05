@@ -293,7 +293,7 @@ impl MetricsAggregator {
     /// Get geographic distribution of queries
     pub async fn get_geographic_distribution(
         &self,
-        time_range: TimeRange,
+        _time_range: TimeRange,
     ) -> Result<Vec<super::GeographicDistribution>, Box<dyn std::error::Error>> {
         // This will be implemented when we add GeoIP support
         Ok(Vec::new())
@@ -374,7 +374,7 @@ impl MetricsAggregator {
     /// Get security events summary
     pub async fn get_security_summary(
         &self,
-        time_range: TimeRange,
+        _time_range: TimeRange,
     ) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
         // This will be implemented when we have security event tracking
         Ok(HashMap::new())
