@@ -2,7 +2,7 @@
 FROM rust:bookworm AS builder
 
 # Code version argument - automatically updated by atlas_bug_fix command
-ARG CODE_VERSION=20250905_092735
+ARG CODE_VERSION=20250905_093842
 ENV CODE_VERSION=${CODE_VERSION}
 RUN echo "Code version: ${CODE_VERSION}"
 
@@ -31,7 +31,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Code version for runtime
-ARG CODE_VERSION=20250905_092735
+ARG CODE_VERSION=20250905_093842
 ENV CODE_VERSION=${CODE_VERSION}
 
 # Install runtime dependencies

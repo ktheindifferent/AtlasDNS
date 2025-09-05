@@ -1024,8 +1024,8 @@ impl QueryRoot {
             // Search DNS records within zones
             if let Some(zone_records) = self.context.authority.get_zone_records(&zone_name) {
                 for record in zone_records {
-                    let record_name = record.get_name();
-                    let record_type = format!("{:?}", record.get_record_type());
+                    let record_name = record.get_domain().unwrap_or_else(|| "unknown".to_string());
+                    let record_type = format!("{:?}", record.get_querytype());
                     
                     if record_name.to_lowercase().contains(&search_term) ||
                        record_type.to_lowercase().contains(&search_term) {

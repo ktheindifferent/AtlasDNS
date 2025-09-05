@@ -59,7 +59,7 @@ Total items: 201 (previously 165)
 ## High Priority (Priority 2)
 
 ### Missing Core Implementations (UPDATED 2025-09-05)
-- [ ] DNS-over-TLS (DoT) server - currently stubbed at src/web/server.rs:1943
+- [x] DNS-over-TLS (DoT) server - connected to web dashboard with real metrics ✅ (2025-09-05 - DoT manager implemented)
 - [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
 - [x] Traffic steering manager - integrated with web dashboard ✅ (2025-09-04 - bb6b98739)
 - [x] Endpoint health check manager - implemented with HealthCheckAnalyticsHandler ✅ (2025-09-04 - 0d311a743)
@@ -67,7 +67,7 @@ Total items: 201 (previously 165)
 - [x] Query timestamp storage - TODO at src/web/server.rs:2065 ✅ (2025-09-04 - 20250904_184615)
 - [x] Upstream DNS health checks - TODO at src/dns/health.rs:260 ✅ (2025-09-04 - 20250904_184615)
 - [x] Zone-specific metrics aggregation - real-time zone metrics tracking ✅ (2025-09-04 - 0d311a743)
-- [ ] Record search functionality - TODO at src/web/graphql.rs:992
+- [x] Record search functionality - fully implemented with zone and log search ✅ (2025-09-05 - Record and log search working)
 - [x] Statistics reset functionality - TODO at src/web/graphql.rs:1468 ✅ (2025-09-04 - 20250904_184615)
 - [ ] TCP/UDP socket management improvements (context.rs:37-47)
 - [ ] Implement proper DNS notify mechanism (zone_transfer.rs:551)
