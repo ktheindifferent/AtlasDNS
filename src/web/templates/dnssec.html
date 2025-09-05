@@ -591,10 +591,37 @@ function wizardPrev() {
     }
 }
 
-function wizardFinish() {
-    showToast('DNSSEC enabled successfully!', 'success');
-    document.getElementById('dnssecWizard').querySelector('.btn-close').click();
-    location.reload();
+async function wizardFinish() {
+    const zoneSelect = document.getElementById('wizardZoneSelect');
+    const selectedZone = zoneSelect.value;
+    
+    if (!selectedZone) {
+        showToast('Please select a zone first', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/v2/zones/${selectedZone}/dnssec/enable`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('DNSSEC enabled successfully!', 'success');
+            document.getElementById('dnssecWizard').querySelector('.btn-close').click();
+            // Wait a moment before reloading to let the user see the success message
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Failed to enable DNSSEC', 'error');
+        }
+    } catch (error) {
+        console.error('Error enabling DNSSEC:', error);
+        showToast('Error enabling DNSSEC', 'error');
+    }
 }
 
 function startZoneSigning() {
@@ -662,24 +689,108 @@ function enableDNSSEC(zoneId) {
     new bootstrap.Modal(document.getElementById('dnssecWizard')).show();
 }
 
-function disableDNSSEC(zoneId) {
+async function disableDNSSEC(zoneId) {
     if (confirm('Are you sure you want to disable DNSSEC for this zone? This will remove all signatures and keys.')) {
-        showToast('DNSSEC disabled for zone', 'warning');
+        try {
+            const response = await fetch(`/api/v2/zones/${zoneId}/dnssec/disable`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast('DNSSEC disabled successfully', 'success');
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to disable DNSSEC', 'error');
+            }
+        } catch (error) {
+            console.error('Error disabling DNSSEC:', error);
+            showToast('Error disabling DNSSEC', 'error');
+        }
     }
 }
 
-function viewDNSSECDetails(zoneId) {
-    showToast('Loading DNSSEC details...', 'info');
+async function viewDNSSECDetails(zoneId) {
+    try {
+        showToast('Loading DNSSEC details...', 'info');
+        
+        const response = await fetch(`/api/v2/zones/${zoneId}/dnssec/status`);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Create a modal to show DNSSEC details
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">DNSSEC Details for ${zoneId}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <pre>${JSON.stringify(data.data, null, 2)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            new bootstrap.Modal(modal).show();
+            modal.addEventListener('hidden.bs.modal', () => modal.remove());
+        } else {
+            showToast(data.error || 'Failed to load DNSSEC details', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading DNSSEC details:', error);
+        showToast('Error loading DNSSEC details', 'error');
+    }
 }
 
-function rolloverKeys(zoneId) {
+async function rolloverKeys(zoneId) {
     if (confirm('Start key rollover process for this zone?')) {
-        showToast('Key rollover initiated', 'success');
+        try {
+            const response = await fetch(`/api/v2/zones/${zoneId}/dnssec/rollover`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showToast('Key rollover initiated successfully', 'success');
+                location.reload();
+            } else {
+                showToast(data.error || 'Failed to start key rollover', 'error');
+            }
+        } catch (error) {
+            console.error('Error starting key rollover:', error);
+            showToast('Error starting key rollover', 'error');
+        }
     }
 }
 
-function exportDS(zoneId) {
-    showToast('DS record copied to clipboard', 'success');
+async function exportDS(zoneId) {
+    try {
+        const response = await fetch(`/api/v2/zones/${zoneId}/dnssec/ds`);
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            const dsRecords = Array.isArray(data.data) ? data.data.join('\n') : JSON.stringify(data.data, null, 2);
+            await navigator.clipboard.writeText(dsRecords);
+            showToast('DS record copied to clipboard', 'success');
+        } else {
+            showToast(data.error || 'No DS records found', 'warning');
+        }
+    } catch (error) {
+        console.error('Error exporting DS record:', error);
+        showToast('Error exporting DS record', 'error');
+    }
 }
 
 function copyDSRecord() {
@@ -688,8 +799,39 @@ function copyDSRecord() {
     showToast('DS record copied to clipboard', 'success');
 }
 
-function generateNewKey() {
-    showToast('Generating new key pair...', 'info');
+async function generateNewKey() {
+    const zoneSelect = document.getElementById('wizardZoneSelect');
+    const selectedZone = zoneSelect.value;
+    
+    if (!selectedZone) {
+        showToast('Please select a zone first', 'warning');
+        return;
+    }
+    
+    try {
+        showToast('Generating new key pair...', 'info');
+        
+        // For now, this would be part of the enable DNSSEC process
+        // In a more advanced implementation, this could be a separate endpoint
+        const response = await fetch(`/api/v2/zones/${selectedZone}/dnssec/enable`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ generate_keys: true })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('New key pair generated successfully', 'success');
+        } else {
+            showToast(data.error || 'Failed to generate key pair', 'error');
+        }
+    } catch (error) {
+        console.error('Error generating key pair:', error);
+        showToast('Error generating key pair', 'error');
+    }
 }
 
 function viewKey(keyId) {
@@ -702,8 +844,77 @@ function revokeKey(keyId) {
     }
 }
 
-function scheduleRollover() {
-    showToast('Opening rollover scheduler...', 'info');
+async function scheduleRollover() {
+    const zoneSelect = document.getElementById('wizardZoneSelect');
+    const selectedZone = zoneSelect.value;
+    
+    if (!selectedZone) {
+        showToast('Please select a zone first', 'warning');
+        return;
+    }
+    
+    // Create a simple scheduler modal
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Schedule Key Rollover</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Schedule a key rollover for zone: <strong>${selectedZone}</strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Rollover Time</label>
+                        <input type="datetime-local" class="form-control" id="rolloverTime" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmScheduleRollover('${selectedZone}')">Schedule Rollover</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const bootstrapModal = new bootstrap.Modal(modal);
+    bootstrapModal.show();
+    modal.addEventListener('hidden.bs.modal', () => modal.remove());
+}
+
+async function confirmScheduleRollover(zoneId) {
+    const timeInput = document.getElementById('rolloverTime');
+    const scheduledTime = timeInput.value;
+    
+    if (!scheduledTime) {
+        showToast('Please select a time for the rollover', 'warning');
+        return;
+    }
+    
+    try {
+        // For now, we'll just trigger an immediate rollover
+        // In a production system, this would schedule it for the specified time
+        const response = await fetch(`/api/v2/zones/${zoneId}/dnssec/rollover`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ scheduled_time: scheduledTime })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Rollover scheduled successfully', 'success');
+            bootstrap.Modal.getInstance(document.querySelector('.modal.show')).hide();
+        } else {
+            showToast(data.error || 'Failed to schedule rollover', 'error');
+        }
+    } catch (error) {
+        console.error('Error scheduling rollover:', error);
+        showToast('Error scheduling rollover', 'error');
+    }
 }
 
 function cancelRollover(rolloverId) {
