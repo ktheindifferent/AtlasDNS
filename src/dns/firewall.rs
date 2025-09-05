@@ -535,7 +535,7 @@ impl DnsFirewall {
     }
 
     /// Record blocked query
-    fn record_blocked(&self, domain: &str, client_ip: IpAddr, category: ThreatCategory, action: FirewallAction) {
+    fn record_blocked(&self, _domain: &str, _client_ip: IpAddr, category: ThreatCategory, action: FirewallAction) {
         let mut stats = self.stats.write();
         stats.total_blocked += 1;
         *stats.blocked_by_category.entry(category).or_insert(0) += 1;

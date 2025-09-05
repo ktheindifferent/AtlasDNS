@@ -689,7 +689,7 @@ impl DnsFirewall {
         None
     }
 
-    fn apply_rpz_policy(&self, policy: RpzPolicy, packet: &DnsPacket, client_ip: IpAddr) -> SecurityCheckResult {
+    fn apply_rpz_policy(&self, policy: RpzPolicy, _packet: &DnsPacket, _client_ip: IpAddr) -> SecurityCheckResult {
         let action = match policy.action {
             RpzAction::Nxdomain => SecurityAction::BlockNxDomain,
             RpzAction::Nodata => SecurityAction::BlockServfail,

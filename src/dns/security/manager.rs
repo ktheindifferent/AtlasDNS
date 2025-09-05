@@ -264,8 +264,8 @@ impl SecurityManager {
     /// Get security statistics
     pub fn get_statistics(&self) -> SecurityStatistics {
         let metrics = self.metrics.read();
-        let firewall_metrics = self.firewall.get_metrics();
-        let rate_limit_metrics = self.rate_limiter.get_metrics();
+        let _firewall_metrics = self.firewall.get_metrics();
+        let _rate_limit_metrics = self.rate_limiter.get_metrics();
         let ddos_metrics = self.ddos_protection.get_metrics();
 
         SecurityStatistics {

@@ -425,7 +425,7 @@ impl SynchronizedCache {
         
         let mut cache = match self.cache.write() {
             Ok(x) => x,
-            Err(e) => {
+            Err(_e) => {
                 // Report cache lock error to Sentry
                 sentry::configure_scope(|scope| {
                     scope.set_tag("component", "dns_cache");
@@ -468,7 +468,7 @@ impl SynchronizedCache {
         let start_time = std::time::Instant::now();
         let record_count = records.len();
         
-        let mut cache = self.cache.write().map_err(|e| {
+        let mut cache = self.cache.write().map_err(|_e| {
             // Report cache lock error to Sentry
             sentry::configure_scope(|scope| {
                 scope.set_tag("component", "dns_cache");
