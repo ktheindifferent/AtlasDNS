@@ -70,9 +70,9 @@ enum ConnectionState {
 }
 
 /// Pooled connection wrapper
-struct PooledConnection {
+pub struct PooledConnection {
     /// The actual TCP or TLS connection
-    stream: ConnectionStream,
+    pub stream: ConnectionStream,
     /// Connection state
     state: ConnectionState,
     /// Server address
@@ -88,23 +88,25 @@ struct PooledConnection {
 }
 
 /// Wrapper for TCP or TLS connections
-enum ConnectionStream {
+pub enum ConnectionStream {
     Tcp(TcpStream),
     Tls(SslStream<TcpStream>),
 }
 
-impl ConnectionStream {
-    fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
+impl std::io::Read for ConnectionStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self {
-            ConnectionStream::Tcp(stream) => stream.read_exact(buf),
-            ConnectionStream::Tls(stream) => stream.read_exact(buf),
+            ConnectionStream::Tcp(stream) => stream.read(buf),
+            ConnectionStream::Tls(stream) => stream.read(buf),
         }
     }
+}
 
-    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+impl std::io::Write for ConnectionStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
-            ConnectionStream::Tcp(stream) => stream.write_all(buf),
-            ConnectionStream::Tls(stream) => stream.write_all(buf),
+            ConnectionStream::Tcp(stream) => stream.write(buf),
+            ConnectionStream::Tls(stream) => stream.write(buf),
         }
     }
 
@@ -114,15 +116,31 @@ impl ConnectionStream {
             ConnectionStream::Tls(stream) => stream.flush(),
         }
     }
+}
 
-    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+impl ConnectionStream {
+    pub fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
+        match self {
+            ConnectionStream::Tcp(stream) => stream.read_exact(buf),
+            ConnectionStream::Tls(stream) => stream.read_exact(buf),
+        }
+    }
+
+    pub fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        match self {
+            ConnectionStream::Tcp(stream) => stream.write_all(buf),
+            ConnectionStream::Tls(stream) => stream.write_all(buf),
+        }
+    }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
         match self {
             ConnectionStream::Tcp(stream) => stream.set_read_timeout(timeout),
             ConnectionStream::Tls(stream) => stream.get_ref().set_read_timeout(timeout),
         }
     }
 
-    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
         match self {
             ConnectionStream::Tcp(stream) => stream.set_write_timeout(timeout),
             ConnectionStream::Tls(stream) => stream.get_ref().set_write_timeout(timeout),

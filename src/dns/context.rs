@@ -207,10 +207,17 @@ impl ServerContext {
         if let ResolveStrategy::Forward { ref host, port } = self.resolve_strategy {
             let pool_config = PoolConfig::default();
             let pool_manager = Arc::new(ConnectionPoolManager::new(
-                pool_config,
+                pool_config.clone(),
                 self.metrics.clone(),
             ));
-            self.connection_pool = Some(pool_manager);
+            self.connection_pool = Some(pool_manager.clone());
+            
+            // Enable connection pooling in the DNS client
+            if let Some(client) = self.client.as_any_mut().downcast_mut::<DnsNetworkClient>() {
+                client.enable_connection_pooling(pool_config, self.metrics.clone());
+                log::info!("Connection pool enabled for DNS client forwarding to {}:{}", host, port);
+            }
+            
             log::info!("Connection pool initialized for forwarding to {}:{}", host, port);
         }
 

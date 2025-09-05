@@ -464,10 +464,10 @@ impl<'a> WebServer<'a> {
         // Validate request size before processing
         let response = if let Some(ref request_limiter) = self.context.request_limiter {
             // Get client IP
-            let client_ip = request.remote_addr().map(|addr| addr.ip());
+            let client_ip = Some(request.remote_addr().ip());
             
             // Calculate individual components for validation
-            let body_size = request.body_length().unwrap_or(0);
+            let body_size = request.body_length().unwrap_or(0) as u64;
             let header_size = self.calculate_headers_size(&request);
             let header_count = request.headers().len();
             let url_length = request.url().len();

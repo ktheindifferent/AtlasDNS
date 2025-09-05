@@ -27,6 +27,19 @@
   - **Impact**: Server starts without panics
 
 ## 🟡 MEDIUM Priority Issues (Open)
+
+### [UI] Response Codes Display Growing Infinitely on Analytics Dashboard
+- [ ] **JavaScript DOM Manipulation Bug**: Response codes list grows infinitely off page in src/web/templates/analytics.html:126-143
+  - **Symptoms**: Response codes statistics keep appending new data without clearing previous entries, causing infinite vertical growth
+  - **Frequency**: Always occurs when analytics data refreshes or updates
+  - **Component**: Web Interface/Analytics Dashboard
+  - **File Location**: src/web/templates/analytics.html (lines 126-143, JavaScript section)
+  - **Reproduction**: Navigate to analytics dashboard, wait for data refresh or change time range
+  - **User Impact**: UI becomes unusable as response code list grows off screen
+  - **Root Cause**: JavaScript update logic appends new DOM elements without clearing existing ones
+  - **Workaround**: Refresh entire page to reset display
+  - **Priority**: Medium (UI functionality impaired but doesn't affect core DNS operations)
+
 ### Code Quality (Non-blocking)
 - [ ] Clean up remaining 70+ unused import warnings (src/dns/ modules, src/web/ modules)  
 - [ ] Replace 382 unwrap() calls in DNS modules (record_parsers.rs:52, metrics.rs:42, authority.rs:22)

@@ -58,7 +58,7 @@ Total items: 201 (previously 165)
 
 ## High Priority (Priority 2)
 
-### Missing Core Implementations
+### Missing Core Implementations (UPDATED 2025-09-05)
 - [ ] DNS-over-TLS (DoT) server - currently stubbed at src/web/server.rs:1943
 - [ ] DNS-over-QUIC (DoQ) server - currently stubbed at src/web/server.rs:1956
 - [x] Traffic steering manager - integrated with web dashboard ✅ (2025-09-04 - bb6b98739)
@@ -99,9 +99,9 @@ Total items: 201 (previously 165)
 ## Medium Priority (Priority 3)
 
 ### Performance Optimizations
-- [ ] Add connection pooling for DNS clients
-- [ ] Implement zero-copy parsing where possible
-- [ ] Add memory pool for buffer allocation (partial impl in memory_pool.rs)
+- [x] Add connection pooling for DNS clients ✅ (2025-09-05 - Integrated with DNS client)
+- [x] Implement zero-copy parsing where possible ✅ (2025-09-05 - Implemented in zerocopy.rs)
+- [x] Add memory pool for buffer allocation ✅ (2025-09-05 - Complete implementation in memory_pool.rs)
 - [ ] Optimize cache lookup performance
 - [ ] Implement parallel query processing (725 async/spawn calls to optimize)
 - [ ] Add query batching for upstream servers

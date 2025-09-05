@@ -51,3 +51,19 @@ pub fn write_packet_length(stream: &mut TcpStream, len: usize) -> Result<()> {
 
     Ok(())
 }
+
+/// Generic version of read_packet_length for any Read stream
+pub fn read_packet_length_generic<R: Read>(stream: &mut R) -> Result<u16> {
+    let mut len_buffer = [0; 2];
+    stream.read_exact(&mut len_buffer)?;
+    Ok(((len_buffer[0] as u16) << 8) | (len_buffer[1] as u16))
+}
+
+/// Generic version of write_packet_length for any Write stream  
+pub fn write_packet_length_generic<W: Write>(stream: &mut W, len: usize) -> Result<()> {
+    let mut len_buffer = [0; 2];
+    len_buffer[0] = (len >> 8) as u8;
+    len_buffer[1] = (len & 0xFF) as u8;
+    stream.write_all(&len_buffer)?;
+    Ok(())
+}

@@ -14,8 +14,9 @@ use derive_more::{Display, Error, From};
 extern crate sentry;
 
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, StreamPacketBuffer};
-use crate::dns::netutil::{read_packet_length, write_packet_length};
+use crate::dns::netutil::{read_packet_length, write_packet_length, read_packet_length_generic, write_packet_length_generic};
 use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType};
+use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ClientError {
@@ -40,6 +41,11 @@ pub trait DnsClient {
         server: (&str, u16),
         recursive: bool,
     ) -> Result<DnsPacket>;
+    
+    /// Allow downcasting to specific client types for configuration
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        panic!("as_any_mut not implemented for this client type")
+    }
 }
 
 /// The UDP client
@@ -61,6 +67,9 @@ pub struct DnsNetworkClient {
 
     /// Queries in progress
     pending_queries: Arc<Mutex<Vec<PendingQuery>>>,
+    
+    /// Connection pool for TCP connections
+    connection_pool: Option<Arc<ConnectionPoolManager>>,
 }
 
 impl Clone for DnsNetworkClient {
@@ -71,6 +80,7 @@ impl Clone for DnsNetworkClient {
             seq: self.seq.clone(),
             socket: self.socket.clone(),
             pending_queries: self.pending_queries.clone(),
+            connection_pool: self.connection_pool.clone(),
         }
     }
 }
@@ -111,7 +121,19 @@ impl DnsNetworkClient {
             seq: Arc::new(AtomicUsize::new(0)),
             socket: Arc::new(socket),
             pending_queries: Arc::new(Mutex::new(Vec::new())),
+            connection_pool: None,
         })
+    }
+    
+    /// Enable connection pooling with the specified configuration
+    pub fn enable_connection_pooling(&mut self, config: PoolConfig, metrics: Arc<crate::dns::metrics::MetricsCollector>) {
+        self.connection_pool = Some(Arc::new(ConnectionPoolManager::new(config, metrics)));
+        log::info!("Connection pooling enabled for DNS client");
+    }
+    
+    /// Enable connection pooling with default configuration
+    pub fn enable_default_connection_pooling(&mut self, metrics: Arc<crate::dns::metrics::MetricsCollector>) {
+        self.enable_connection_pooling(PoolConfig::default(), metrics);
     }
 
     /// Send a DNS query using TCP transport
@@ -154,6 +176,50 @@ impl DnsNetworkClient {
         let mut req_buffer = BytePacketBuffer::new();
         packet.write(&mut req_buffer, 0xFFFF)?;
 
+        // Try to use connection pool if available, otherwise create direct connection
+        use std::net::SocketAddr;
+        
+        // Use connection pool if available
+        if let Some(ref pool_manager) = self.connection_pool {
+            // Parse server address
+            let server_addr: SocketAddr = format!("{}:{}", server.0, server.1)
+                .parse()
+                .map_err(|e| ClientError::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Invalid server address: {}", e)
+                )))?;
+            
+            match pool_manager.get_pool(server_addr) {
+                Ok(pool) => {
+                    match pool.get_connection() {
+                        Ok(mut pooled_conn) => {
+                            // Use pooled connection
+                            let socket = &mut pooled_conn.stream;
+                            write_packet_length_generic(socket, req_buffer.pos())?;
+                            socket.write_all(&req_buffer.buf[0..req_buffer.pos])?;
+                            socket.flush()?;
+                            
+                            let _ = read_packet_length_generic(socket)?;
+                            let mut stream_buffer = StreamPacketBuffer::new(socket);
+                            let packet = DnsPacket::from_buffer(&mut stream_buffer)?;
+                            
+                            // Connection will be returned to pool when pooled_conn is dropped
+                            return Ok(packet);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to get connection from pool for {}: {}", server_addr, e);
+                            // Fall through to create direct connection
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to get connection pool for {}: {}", server_addr, e);
+                    // Fall through to create direct connection
+                }
+            }
+        }
+        
+        // Fallback to direct connection if pool not available or failed
         let mut socket = TcpStream::connect(server).map_err(|e| {
             // Report DNS client connection error to Sentry
             sentry::configure_scope(|scope| {
@@ -394,6 +460,10 @@ impl DnsClient for DnsNetworkClient {
 
         log::info!("Truncated response - resending as TCP");
         self.send_tcp_query(qname, qtype, server, recursive)
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
 
