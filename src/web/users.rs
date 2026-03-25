@@ -8,6 +8,7 @@ use sha2::{Sha256, Digest};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use crate::web::util::FormDataDecodable;
 use crate::web::WebError;
+use crate::storage::PersistentStorage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -145,18 +146,123 @@ pub struct UserManager {
     users: Arc<RwLock<HashMap<String, User>>>,
     sessions: Arc<RwLock<HashMap<String, Session>>>,
     audit_log: Arc<RwLock<Vec<SecurityAuditEvent>>>,
+    /// Optional persistent storage backend. When set, every mutation is
+    /// immediately written through to the database.
+    storage: Option<Arc<PersistentStorage>>,
 }
 
 impl UserManager {
+    /// Create an in-memory-only `UserManager` with a default admin account.
     pub fn new() -> Self {
         let mut manager = UserManager {
             users: Arc::new(RwLock::new(HashMap::new())),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             audit_log: Arc::new(RwLock::new(Vec::new())),
+            storage: None,
         };
-        
+
         manager.create_default_admin();
         manager
+    }
+
+    /// Create a `UserManager` backed by `storage`.
+    ///
+    /// Existing users are loaded from the database on construction.
+    /// If the database has no users, a default admin account is created and
+    /// immediately persisted.
+    pub fn with_storage(storage: Arc<PersistentStorage>) -> Self {
+        let mut manager = UserManager {
+            users: Arc::new(RwLock::new(HashMap::new())),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            audit_log: Arc::new(RwLock::new(Vec::new())),
+            storage: Some(storage.clone()),
+        };
+
+        // Load persisted sessions
+        match storage.load_active_sessions() {
+            Ok(persisted) => {
+                if let Ok(mut sessions) = manager.sessions.write() {
+                    for session in persisted {
+                        sessions.insert(session.token.clone(), session);
+                    }
+                }
+            }
+            Err(e) => log::warn!("Failed to load sessions from storage: {}", e),
+        }
+
+        // Load persisted users
+        match storage.load_all_users() {
+            Ok(persisted) if !persisted.is_empty() => {
+                if let Ok(mut users) = manager.users.write() {
+                    for user in persisted {
+                        log::info!("Loaded persisted user: {}", user.username);
+                        users.insert(user.id.clone(), user);
+                    }
+                }
+            }
+            Ok(_) => {
+                // No users in DB — create and persist the default admin
+                manager.create_default_admin();
+                if let Ok(users) = manager.users.read() {
+                    for user in users.values() {
+                        if let Err(e) = storage.save_user(user) {
+                            log::error!("Failed to persist default admin: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load users from storage: {}", e);
+                manager.create_default_admin();
+            }
+        }
+
+        manager
+    }
+
+    /// Persist `user` to the storage backend if one is configured.
+    fn persist_user(&self, user: &User) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.save_user(user) {
+                log::error!("Failed to persist user {}: {}", user.username, e);
+            }
+        }
+    }
+
+    /// Remove `user_id` from the storage backend if one is configured.
+    fn remove_persisted_user(&self, user_id: &str) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.delete_user(user_id) {
+                log::error!("Failed to delete user {} from storage: {}", user_id, e);
+            }
+        }
+    }
+
+    /// Persist `session` to the storage backend if one is configured.
+    fn persist_session(&self, session: &Session) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.save_session(session) {
+                log::error!("Failed to persist session {}: {}", session.id, e);
+            }
+        }
+    }
+
+    /// Remove a session by token from the storage backend if one is configured.
+    fn remove_persisted_session(&self, token: &str) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.delete_session(token) {
+                log::error!("Failed to delete session from storage: {}", e);
+            }
+        }
+    }
+
+    /// Remove all sessions for a user from the storage backend if one is configured.
+    fn remove_persisted_sessions_for_user(&self, user_id: &str) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.delete_sessions_for_user(user_id) {
+                log::error!("Failed to delete sessions for user {} from storage: {}", user_id, e);
+            }
+        }
     }
     
     fn create_default_admin(&mut self) {
@@ -310,6 +416,10 @@ impl UserManager {
             user.last_failed_login = None;
             user.account_locked_until = None;
             user.updated_at = Utc::now();
+            let snapshot = user.clone();
+            drop(users);
+            self.persist_user(&snapshot);
+            return Ok(());
         }
         Ok(())
     }
@@ -320,10 +430,10 @@ impl UserManager {
             user.failed_login_attempts += 1;
             user.last_failed_login = Some(Utc::now());
             user.updated_at = Utc::now();
-            
+
             if self.should_lock_account(user) {
                 user.account_locked_until = Some(Utc::now() + Duration::minutes(Self::LOCKOUT_DURATION_MINUTES));
-                
+
                 // Log account lockout
                 self.log_security_event(
                     SecurityEventType::AccountLocked,
@@ -334,9 +444,14 @@ impl UserManager {
                     Some(format!("Account locked after {} failed attempts", user.failed_login_attempts)),
                     true,
                 );
-                
+
                 log::warn!("Account locked for user: {} after {} failed attempts", user.username, user.failed_login_attempts);
             }
+
+            let snapshot = user.clone();
+            drop(users);
+            self.persist_user(&snapshot);
+            return Ok(());
         }
         Ok(())
     }
@@ -365,7 +480,10 @@ impl UserManager {
         let user_clone = user.clone();
         users.insert(user.id.clone(), user);
         drop(users);
-        
+
+        // Persist to storage
+        self.persist_user(&user_clone);
+
         // Log user creation
         self.log_security_event(
             SecurityEventType::UserCreated,
@@ -376,7 +494,7 @@ impl UserManager {
             Some(format!("User created with role: {:?}", request.role)),
             true,
         );
-        
+
         Ok(user_clone)
     }
     
@@ -393,7 +511,8 @@ impl UserManager {
             Some(u) => {
                 // Check if account is locked
                 if self.is_account_locked(u) {
-                    let locked_until = u.account_locked_until.unwrap();
+                    // account_locked_until is guaranteed Some when is_account_locked returns true
+                    let locked_until = u.account_locked_until.unwrap_or_else(|| Utc::now());
                     let remaining_minutes = (locked_until - Utc::now()).num_minutes();
                     
                     let user_id = u.id.clone();
@@ -436,7 +555,9 @@ impl UserManager {
                     
                     // Re-read user after reset
                     let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
-                    let updated_user = users.get(&user_id).unwrap().clone();
+                    let updated_user = users.get(&user_id)
+                        .ok_or_else(|| "User disappeared after successful login".to_string())?
+                        .clone();
                     Ok(updated_user)
                 } else {
                     // Increment failed attempts
@@ -492,7 +613,10 @@ impl UserManager {
         let session_clone = session.clone();
         sessions.insert(session.token.clone(), session);
         drop(sessions);
-        
+
+        // Persist to storage
+        self.persist_session(&session_clone);
+
         // Get username for logging
         let username = {
             let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
@@ -537,6 +661,8 @@ impl UserManager {
     pub fn invalidate_session(&self, token: &str) -> Result<(), String> {
         let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
         sessions.remove(token);
+        drop(sessions);
+        self.remove_persisted_session(token);
         Ok(())
     }
     
@@ -574,16 +700,28 @@ impl UserManager {
         }
         
         user.updated_at = Utc::now();
-        Ok(user.clone())
+        let updated = user.clone();
+        drop(users);
+
+        // Persist updated user
+        self.persist_user(&updated);
+
+        Ok(updated)
     }
-    
+
     pub fn delete_user(&self, user_id: &str) -> Result<(), String> {
         let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
         users.remove(user_id).ok_or_else(|| "User not found".to_string())?;
-        
+        drop(users);
+
         let mut sessions = self.sessions.write().map_err(|_| "Failed to acquire lock")?;
         sessions.retain(|_, s| s.user_id != user_id);
-        
+        drop(sessions);
+
+        // Remove from storage
+        self.remove_persisted_user(user_id);
+        self.remove_persisted_sessions_for_user(user_id);
+
         Ok(())
     }
     
@@ -689,8 +827,9 @@ impl UserManager {
         user.last_failed_login = None;
         user.account_locked_until = None;
         user.updated_at = Utc::now();
-        
+        let snapshot = user.clone();
         drop(users);
+        self.persist_user(&snapshot);
         
         // Get admin username for logging
         let admin_username = {
