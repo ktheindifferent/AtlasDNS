@@ -10,9 +10,16 @@ use crate::web::util::FormDataDecodable;
 use crate::web::WebError;
 use crate::storage::PersistentStorage;
 
+/// A registered user account in the Atlas DNS management system.
+///
+/// Passwords are stored only as bcrypt hashes and are excluded from
+/// serialization (`#[serde(skip_serializing)]`) to prevent accidental
+/// exposure in API responses.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
+    /// UUID v4 identifier, generated at creation time.
     pub id: String,
+    /// Unique login name.
     pub username: String,
     pub email: String,
     #[serde(skip_serializing)]
@@ -20,16 +27,23 @@ pub struct User {
     pub role: UserRole,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Whether the account can log in. Admins can deactivate accounts without deleting them.
     pub is_active: bool,
+    /// Incremented on each failed login; reset to 0 on success.
     pub failed_login_attempts: u32,
     pub last_failed_login: Option<DateTime<Utc>>,
+    /// When set, login attempts are rejected until this time passes.
     pub account_locked_until: Option<DateTime<Utc>>,
 }
 
+/// Access level granted to a user account.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum UserRole {
+    /// Full access: manage users, zones, cache, and server configuration.
     Admin,
+    /// Standard access: manage zones and cache but not other users.
     User,
+    /// View-only access: can query data but cannot make changes.
     ReadOnly,
 }
 
@@ -43,10 +57,13 @@ impl UserRole {
     }
 }
 
+/// An active login session identified by a random bearer token.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// UUID v4 identifier.
     pub id: String,
     pub user_id: String,
+    /// Random alphanumeric bearer token stored in the session cookie.
     pub token: String,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -54,12 +71,14 @@ pub struct Session {
     pub user_agent: Option<String>,
 }
 
+/// Credentials supplied when a user logs in.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
+/// Parameters for creating a new user account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateUserRequest {
     pub username: String,
@@ -68,6 +87,8 @@ pub struct CreateUserRequest {
     pub role: UserRole,
 }
 
+/// Partial-update payload for an existing user account.
+/// Fields set to `None` are left unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateUserRequest {
     pub email: Option<String>,
@@ -76,6 +97,7 @@ pub struct UpdateUserRequest {
     pub is_active: Option<bool>,
 }
 
+/// A single entry in the security audit log.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityAuditEvent {
     pub id: String,
@@ -142,6 +164,14 @@ impl FormDataDecodable<CreateUserRequest> for CreateUserRequest {
     }
 }
 
+/// Thread-safe manager for user accounts and login sessions.
+///
+/// Holds all users and sessions in memory (behind `RwLock`-protected
+/// `HashMap`s) for fast access, and optionally writes every mutation
+/// through to a [`PersistentStorage`] backend so state survives restarts.
+///
+/// Construct with [`UserManager::new`] for in-memory-only mode, or
+/// [`UserManager::with_storage`] to enable SQLite persistence.
 pub struct UserManager {
     users: Arc<RwLock<HashMap<String, User>>>,
     sessions: Arc<RwLock<HashMap<String, Session>>>,
@@ -323,6 +353,10 @@ impl UserManager {
         }
     }
     
+    /// Hash a plaintext password using bcrypt with the default work factor.
+    ///
+    /// On bcrypt failure (extremely unlikely), falls back to a SHA-256 hex
+    /// hash to avoid a panic; a warning is logged in that case.
     pub fn hash_password(password: &str) -> String {
         match hash(password, DEFAULT_COST) {
             Ok(hashed) => hashed,
@@ -335,6 +369,10 @@ impl UserManager {
         }
     }
     
+    /// Verify a plaintext `password` against a stored `hash`.
+    ///
+    /// Supports both bcrypt hashes (current) and legacy 64-char hex SHA-256
+    /// hashes (migration path from older Atlas versions).
     pub fn verify_password(password: &str, hash: &str) -> bool {
         // Handle legacy SHA256 hashes during migration
         if hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -456,6 +494,10 @@ impl UserManager {
         Ok(())
     }
     
+    /// Create a new user account and persist it to storage.
+    ///
+    /// Returns `Err` if the username is already taken or if any lock cannot be
+    /// acquired.  The password is hashed before storage.
     pub fn create_user(&self, request: CreateUserRequest) -> Result<User, String> {
         let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
         
@@ -498,6 +540,14 @@ impl UserManager {
         Ok(user_clone)
     }
     
+    /// Authenticate a user by username and password.
+    ///
+    /// On success the failed-login counter is reset and a security event is
+    /// logged.  On failure the counter is incremented; after 5 consecutive
+    /// failures the account is locked for 30 minutes.
+    ///
+    /// Returns `Err` with a human-readable message for invalid credentials,
+    /// locked accounts, or lock-acquisition failures.
     pub fn authenticate(&self, username: &str, password: &str, ip_address: Option<String>, user_agent: Option<String>) -> Result<User, String> {
         let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
         
@@ -598,6 +648,7 @@ impl UserManager {
         }
     }
     
+    /// Create a new 24-hour session for `user_id` and persist it to storage.
     pub fn create_session(&self, user_id: String, ip_address: Option<String>, user_agent: Option<String>) -> Result<Session, String> {
         let session = Session {
             id: Uuid::new_v4().to_string(),
@@ -637,6 +688,10 @@ impl UserManager {
         Ok(session_clone)
     }
     
+    /// Look up an active session by bearer `token`.
+    ///
+    /// Returns `(session, user)` if the token exists, has not expired, and
+    /// belongs to an active user account.  Returns `Err` otherwise.
     pub fn validate_session(&self, token: &str) -> Result<(Session, User), String> {
         let sessions = self.sessions.read().map_err(|_| "Failed to acquire lock")?;
         

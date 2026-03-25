@@ -33,6 +33,7 @@ use crate::metrics::{MetricsManager};
 use crate::storage::PersistentStorage;
 
 #[derive(Debug, Display, From, Error)]
+/// Errors that can occur while building or initializing a [`ServerContext`].
 pub enum ContextError {
     Authority(crate::dns::authority::AuthorityError),
     Client(crate::dns::client::ClientError),
@@ -41,16 +42,19 @@ pub enum ContextError {
 
 type Result<T> = std::result::Result<T, ContextError>;
 
+/// Atomic counters tracking DNS query volume since server start.
 pub struct ServerStatistics {
     pub tcp_query_count: AtomicUsize,
     pub udp_query_count: AtomicUsize,
 }
 
 impl ServerStatistics {
+    /// Returns the total number of DNS queries received over TCP.
     pub fn get_tcp_query_count(&self) -> usize {
         self.tcp_query_count.load(Ordering::Acquire)
     }
 
+    /// Returns the total number of DNS queries received over UDP.
     pub fn get_udp_query_count(&self) -> usize {
         self.udp_query_count.load(Ordering::Acquire)
     }
@@ -246,6 +250,12 @@ impl Default for ServerContext {
 }
 
 impl ServerContext {
+    /// Create a new `ServerContext` with default settings.
+    ///
+    /// Allocates all sub-systems (cache, metrics, security manager, etc.) but
+    /// does **not** load zone data or bind any sockets.  Call
+    /// [`attach_storage`](Self::attach_storage) (optional) and then
+    /// [`initialize`](Self::initialize) to finish setup.
     pub fn new() -> Result<ServerContext> {
         let metrics = Arc::new(MetricsCollector::new());
         
@@ -336,6 +346,11 @@ impl ServerContext {
         Ok(())
     }
 
+    /// Finish server setup: create zone directories, start the DNS client
+    /// thread, and load zone data (from SQLite if available, otherwise from
+    /// zone files).
+    ///
+    /// Must be called after [`attach_storage`](Self::attach_storage).
     pub fn initialize(&mut self) -> Result<()> {
         // Create zones directory if it doesn't exist
         fs::create_dir_all(&*self.zones_dir)?;
