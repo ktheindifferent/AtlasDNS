@@ -382,7 +382,7 @@ impl ProximityRoutingHandler {
         }
 
         // Sort by proximity score (higher is better)
-        measurements.sort_by(|a, b| b.proximity_score.partial_cmp(&a.proximity_score).unwrap());
+        measurements.sort_by(|a, b| b.proximity_score.partial_cmp(&a.proximity_score).unwrap_or(std::cmp::Ordering::Equal));
         
         measurements
     }
@@ -476,7 +476,7 @@ impl ProximityRoutingHandler {
 
     /// Route by geographic proximity
     fn route_by_geography(&self, mut measurements: Vec<ProximityMeasurement>) -> RoutingDecision {
-        measurements.sort_by(|a, b| a.distance_km.partial_cmp(&b.distance_km).unwrap());
+        measurements.sort_by(|a, b| a.distance_km.partial_cmp(&b.distance_km).unwrap_or(std::cmp::Ordering::Equal));
         self.create_decision(measurements, "Geographic proximity routing")
     }
 
@@ -530,7 +530,7 @@ impl ProximityRoutingHandler {
             reasoning: reasoning.to_string(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             cache_key: String::new(),
         }
@@ -557,7 +557,7 @@ impl ProximityRoutingHandler {
             reasoning: "Default routing (proximity disabled)".to_string(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             cache_key: String::new(),
         }

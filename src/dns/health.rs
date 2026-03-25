@@ -141,7 +141,7 @@ impl HealthMonitor {
         let mut checks = self.checks.lock();
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs();
         
         if let Some(check) = checks.iter_mut().find(|c| c.name == name) {
@@ -204,7 +204,7 @@ impl HealthMonitor {
             checks,
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
         }
     }

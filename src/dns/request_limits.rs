@@ -228,7 +228,7 @@ impl RequestLimiter {
                 if let Some(tracker) = trackers.get(&ip) {
                     if tracker.is_blocked() {
                         return SizeValidationResult::ClientBlocked {
-                            blocked_until: tracker.blocked_until.unwrap(),
+                            blocked_until: tracker.blocked_until.unwrap_or_else(std::time::Instant::now),
                         };
                     }
                 }
@@ -271,7 +271,7 @@ impl RequestLimiter {
                 if let Some(tracker) = trackers.get(&ip) {
                     if tracker.is_blocked() {
                         return SizeValidationResult::ClientBlocked {
-                            blocked_until: tracker.blocked_until.unwrap(),
+                            blocked_until: tracker.blocked_until.unwrap_or_else(std::time::Instant::now),
                         };
                     }
                 }
@@ -353,7 +353,7 @@ impl RequestLimiter {
                 if let Some(tracker) = trackers.get(&ip) {
                     if tracker.is_blocked() {
                         return SizeValidationResult::ClientBlocked {
-                            blocked_until: tracker.blocked_until.unwrap(),
+                            blocked_until: tracker.blocked_until.unwrap_or_else(std::time::Instant::now),
                         };
                     }
                 }
@@ -529,7 +529,7 @@ impl RequestLimiter {
             .iter()
             .filter_map(|(ip, tracker)| {
                 if tracker.is_blocked() {
-                    Some((*ip, tracker.blocked_until.unwrap()))
+                    Some((*ip, tracker.blocked_until.unwrap_or_else(std::time::Instant::now)))
                 } else {
                     None
                 }

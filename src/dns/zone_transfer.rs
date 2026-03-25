@@ -552,7 +552,7 @@ impl ZoneTransferHandler {
         let mut packet = DnsPacket::new();
         packet.header.id = (SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() % 65536) as u16;
         packet.header.opcode = 4;  // NOTIFY
         packet.header.authoritative_answer = true;

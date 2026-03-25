@@ -609,7 +609,7 @@ impl AtlasClient {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .unwrap();
+            .expect("Failed to build HTTP client");
         
         Self {
             base_url,
@@ -802,7 +802,7 @@ fn show_progress(message: &str) -> ProgressBar {
     pb.set_style(
         ProgressStyle::default_spinner()
             .template("{spinner:.green} {msg}")
-            .unwrap()
+            .expect("Valid spinner template")
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
     pb.set_message(message.to_string());

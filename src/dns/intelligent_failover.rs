@@ -509,7 +509,7 @@ impl FailoverManager {
                 e.status == HealthStatus::Healthy || e.status == HealthStatus::Recovering
             })
             .filter(|e| {
-                region.is_none() || e.region == region.unwrap()
+                region.map_or(true, |r| e.region == r)
             })
             .collect();
         
@@ -526,7 +526,7 @@ impl FailoverManager {
                     .map(|m| m.avg_latency_ms)
                     .unwrap_or(f64::MAX);
                 
-                a_latency.partial_cmp(&b_latency).unwrap()
+                a_latency.partial_cmp(&b_latency).unwrap_or(std::cmp::Ordering::Equal)
             }
         });
         

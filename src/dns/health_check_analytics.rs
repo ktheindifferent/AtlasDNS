@@ -522,7 +522,7 @@ impl HealthCheckAnalyticsHandler {
                 .map(|r| r.response_time.as_millis() as f64)
                 .collect();
             
-            response_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            response_times.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             
             let len = response_times.len();
             if len > 0 {
@@ -568,7 +568,7 @@ impl HealthCheckAnalyticsHandler {
         states.get(endpoint_id).map(|state| {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs();
             
             let period = TimeWindow {
