@@ -33,3 +33,6 @@ pub mod privilege_escalation;
 
 /// Real-time metrics collection and analytics system
 pub mod metrics;
+
+/// SQLite-backed persistent storage for zones and user accounts
+pub mod storage;

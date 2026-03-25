@@ -691,10 +691,10 @@ impl OutputFormatter {
     fn print(&self, data: &Value) {
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(data).unwrap());
+                println!("{}", serde_json::to_string_pretty(data).expect("serializable JSON value"));
             }
             OutputFormat::Yaml => {
-                println!("{}", serde_yaml::to_string(data).unwrap());
+                println!("{}", serde_yaml::to_string(data).expect("serializable YAML value"));
             }
             OutputFormat::Table => {
                 self.print_table(data);
@@ -813,10 +813,10 @@ fn show_progress(message: &str) -> ProgressBar {
 /// Confirmation prompt
 fn confirm(message: &str) -> bool {
     print!("{} {} [y/N]: ", "?".yellow().bold(), message);
-    io::stdout().flush().unwrap();
+    io::stdout().flush().expect("stdout flush");
     
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin().read_line(&mut input).expect("stdin read");
     
     matches!(input.trim().to_lowercase().as_str(), "y" | "yes")
 }

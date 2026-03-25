@@ -399,7 +399,8 @@ mod tests {
         let mut component_shutdown = ComponentShutdown::new();
         
         // Register components
-        let (tx1, rx1) = oneshot::channel();
+        let (tx1, rx1): (oneshot::Sender<()>, oneshot::Receiver<()>) = oneshot::channel();
+        let _ = (tx1, rx1); // silence unused warnings
         component_shutdown.register(
             "database".to_string(),
             move || {
@@ -410,7 +411,8 @@ mod tests {
             vec![]
         );
         
-        let (tx2, rx2) = oneshot::channel();
+        let (tx2, rx2): (oneshot::Sender<()>, oneshot::Receiver<()>) = oneshot::channel();
+        let _ = (tx2, rx2);
         component_shutdown.register(
             "cache".to_string(),
             move || {

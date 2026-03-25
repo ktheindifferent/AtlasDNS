@@ -238,7 +238,7 @@ impl DnsFirewall {
                 wildcards: Vec::new(),
                 ips: HashSet::new(),
                 threat_feeds: HashMap::new(),
-                last_update: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                last_update: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
             })),
             allowlists: Arc::new(RwLock::new(AllowlistManager {
                 domains: HashSet::new(),
@@ -585,7 +585,7 @@ impl DnsFirewall {
             }
 
             if let Some(expires_ts) = rule.expires_at {
-                let now_ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+                let now_ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
                 if now_ts > expires_ts {
                     continue;
                 }

@@ -355,14 +355,14 @@ impl DnsViewsHandler {
                 max_depth: 10,
                 timeout: Duration::from_secs(5),
                 allowed_networks: vec![
-                    "0.0.0.0/0".parse().unwrap(),
-                    "::/0".parse().unwrap(),
+                    "0.0.0.0/0".parse().expect("valid CIDR literal"),
+                    "::/0".parse().expect("valid CIDR literal"),
                 ],
             },
             forwarding: None,
             access_control: AccessControl {
-                allow_query: vec!["0.0.0.0/0".parse().unwrap()],
-                allow_recursion: vec!["0.0.0.0/0".parse().unwrap()],
+                allow_query: vec!["0.0.0.0/0".parse().expect("valid CIDR literal")],
+                allow_recursion: vec!["0.0.0.0/0".parse().expect("valid CIDR literal")],
                 allow_transfer: vec![],
                 deny_query: vec![],
                 rate_limit: Some(1000),
@@ -491,7 +491,7 @@ impl DnsViewsHandler {
                         }
                     }
                     
-                    if best_match.is_none() || score > best_match.as_ref().unwrap().1 {
+                    if best_match.is_none() || score > best_match.as_ref().expect("Some checked by is_none guard").1 {
                         best_match = Some((view.clone(), score, matched_rules));
                     }
                     
@@ -508,7 +508,7 @@ impl DnsViewsHandler {
             .unwrap_or_else(|| {
                 let default_view = views.get(&config.default_view)
                     .cloned()
-                    .unwrap_or_else(|| views.values().next().unwrap().clone());
+                    .unwrap_or_else(|| views.values().next().expect("at least one DNS view must be configured").clone());
                 (default_view, 0.0, vec![])
             });
         
@@ -934,7 +934,7 @@ impl DnsViewsHandler {
         
         let view = views.get(&config.default_view)
             .cloned()
-            .unwrap_or_else(|| views.values().next().unwrap().clone());
+            .unwrap_or_else(|| views.values().next().expect("at least one DNS view must be configured").clone());
         
         ViewSelection {
             view,

@@ -218,7 +218,7 @@ impl TraceContext {
     fn generate_trace_id() -> String {
         format!("{:032x}", SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos())
     }
 
@@ -226,7 +226,7 @@ impl TraceContext {
     fn generate_span_id() -> String {
         format!("{:016x}", SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos() & 0xFFFFFFFFFFFFFFFF)
     }
 }
@@ -471,7 +471,7 @@ impl DistributedTracingHandler {
         // Simple probability check
         let random = (SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos() % 1000) as f64 / 1000.0;
         random < rate
     }
@@ -572,7 +572,7 @@ impl DistributedTracingHandler {
     fn current_timestamp_us() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_micros() as u64
     }
 

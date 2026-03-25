@@ -146,6 +146,12 @@ fn main() {
         "skip-privilege-check",
         "Skip privilege escalation check (for development)",
     );
+    opts.optopt(
+        "",
+        "db",
+        "Path to SQLite database for persistent storage (default: /opt/atlas/atlas.db)",
+        "PATH",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -271,6 +277,16 @@ fn main() {
         }
 
         // Skip trying to load zones from network - function not available
+
+        // Attach persistent storage (create DB if it doesn't exist)
+        let db_path = opt_matches.opt_str("db")
+            .unwrap_or_else(|| "/opt/atlas/atlas.db".to_string());
+        match ctx.attach_storage(&db_path) {
+            Ok(_) => log::info!("Persistent storage ready at {}", db_path),
+            Err(e) => {
+                log::warn!("Could not attach persistent storage ({}): running in-memory only", e);
+            }
+        }
 
         match ctx.initialize() {
             Ok(_) => {}

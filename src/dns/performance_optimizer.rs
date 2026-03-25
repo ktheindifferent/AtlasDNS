@@ -385,7 +385,7 @@ impl HotPathAnalyzer {
             .collect();
         
         // Sort by total time
-        hot_paths.sort_by(|a, b| b.total_ms.partial_cmp(&a.total_ms).unwrap());
+        hot_paths.sort_by(|a, b| b.total_ms.partial_cmp(&a.total_ms).unwrap_or(std::cmp::Ordering::Equal));
         hot_paths.truncate(limit);
         
         hot_paths

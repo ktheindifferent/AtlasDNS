@@ -54,12 +54,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use std::sync::{LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 
 use crate::dns::buffer::{PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
 use crate::dns::dnssec::{DnssecSigner, SigningConfig, SignedZone};
+use crate::storage::PersistentStorage;
 
 #[derive(Debug)]
 pub enum AuthorityError {
@@ -108,22 +109,38 @@ impl From<crate::dns::protocol::ProtocolError> for AuthorityError {
 
 type Result<T> = std::result::Result<T, AuthorityError>;
 
+/// A DNS zone containing SOA metadata and a set of resource records.
+///
+/// Records are stored in a `BTreeSet` for deterministic ordering and
+/// automatic deduplication.
 #[derive(Clone, Debug, Default)]
 pub struct Zone {
+    /// The authoritative domain name for this zone (e.g. `"example.com"`).
     pub domain: String,
+    /// Primary nameserver hostname (SOA MNAME field).
     pub m_name: String,
+    /// Responsible-person mailbox in DNS notation (SOA RNAME field).
     pub r_name: String,
+    /// Zone serial number; incremented on every zone change.
     pub serial: u32,
+    /// SOA REFRESH — how often secondaries should check for updates (seconds).
     pub refresh: u32,
+    /// SOA RETRY — how long secondaries wait before retrying after a failed refresh.
     pub retry: u32,
+    /// SOA EXPIRE — how long secondaries may serve the zone without a successful refresh.
     pub expire: u32,
+    /// SOA MINIMUM — default negative-caching TTL.
     pub minimum: u32,
+    /// All resource records belonging to this zone.
     pub records: BTreeSet<DnsRecord>,
+    /// Whether DNSSEC signing is active for this zone.
     pub dnssec_enabled: bool,
+    /// DNSSEC signing state (keys, RRSIG records, DS records).
     pub signed_zone: Option<SignedZone>,
 }
 
 impl Zone {
+    /// Create a new, empty zone with the given SOA primary fields.
     pub fn new(domain: String, m_name: String, r_name: String) -> Zone {
         Zone {
             domain,
@@ -140,27 +157,35 @@ impl Zone {
         }
     }
 
+    /// Insert a record into the zone. Returns `true` if the record was new.
     pub fn add_record(&mut self, rec: &DnsRecord) -> bool {
         self.records.insert(rec.clone())
     }
 
+    /// Remove a record from the zone. Returns `true` if the record existed.
     pub fn delete_record(&mut self, rec: &DnsRecord) -> bool {
         self.records.remove(rec)
     }
 }
 
+/// In-memory collection of [`Zone`] objects, keyed by domain name.
 #[derive(Default)]
 pub struct Zones {
     zones: BTreeMap<String, Zone>,
 }
 
 impl<'a> Zones {
+    /// Create an empty `Zones` collection.
     pub fn new() -> Zones {
         Zones {
             zones: BTreeMap::new(),
         }
     }
 
+    /// Load all zone files from the given directory into memory.
+    ///
+    /// Each file is expected to be in the binary format written by [`save`].
+    /// Files that cannot be opened or parsed are skipped with a warning.
     pub fn load(&mut self, zones_dir: &str) -> Result<()> {
         let zones_dir = Path::new(zones_dir).read_dir()?;
 
@@ -202,6 +227,7 @@ impl<'a> Zones {
         Ok(())
     }
 
+    /// Persist all zones to binary files in `zones_dir`, one file per zone.
     pub fn save(&mut self, zones_dir: &str) -> Result<()> {
         let zones_dir = Path::new(zones_dir);
         for zone in self.zones.values() {
@@ -235,18 +261,22 @@ impl<'a> Zones {
         Ok(())
     }
 
+    /// Return a list of all zones in the collection.
     pub fn zones(&self) -> Vec<&Zone> {
         self.zones.values().collect()
     }
 
+    /// Insert or replace a zone.
     pub fn add_zone(&mut self, zone: Zone) {
         self.zones.insert(zone.domain.clone(), zone);
     }
 
+    /// Get an immutable reference to the zone for `domain`, if it exists.
     pub fn get_zone(&'a self, domain: &str) -> Option<&'a Zone> {
         self.zones.get(domain)
     }
 
+    /// Get a mutable reference to the zone for `domain`, if it exists.
     pub fn get_zone_mut(&'a mut self, domain: &str) -> Option<&'a mut Zone> {
         self.zones.get_mut(domain)
     }
@@ -256,14 +286,76 @@ impl<'a> Zones {
 pub struct Authority {
     zones: RwLock<Zones>,
     dnssec_signer: RwLock<DnssecSigner>,
+    /// Optional persistent storage backend. When present, zone mutations are
+    /// written through to the database immediately.
+    storage: Option<Arc<PersistentStorage>>,
 }
 
 impl Authority {
+    /// Create an in-memory-only `Authority`.
     pub fn new() -> Authority {
         let signing_config = SigningConfig::default();
         Authority {
             zones: RwLock::new(Zones::new()),
             dnssec_signer: RwLock::new(DnssecSigner::new(signing_config)),
+            storage: None,
+        }
+    }
+
+    /// Create an `Authority` backed by persistent storage.
+    ///
+    /// Zones stored in the database are loaded immediately on construction.
+    /// If the database is empty the file-based `zones_dir` is used as a
+    /// fallback (existing behaviour).
+    pub fn with_storage(storage: Arc<PersistentStorage>) -> Authority {
+        let signing_config = SigningConfig::default();
+        let auth = Authority {
+            zones: RwLock::new(Zones::new()),
+            dnssec_signer: RwLock::new(DnssecSigner::new(signing_config)),
+            storage: Some(storage.clone()),
+        };
+
+        match storage.load_all_zones() {
+            Ok(zones) if !zones.is_empty() => {
+                if let Ok(mut z) = auth.zones.write() {
+                    for zone in zones {
+                        log::info!("Loaded persisted zone: {}", zone.domain);
+                        z.zones.insert(zone.domain.clone(), zone);
+                    }
+                }
+            }
+            Ok(_) => {
+                log::info!("No zones found in storage; will fall back to zone files");
+            }
+            Err(e) => {
+                log::error!("Failed to load zones from storage: {}", e);
+            }
+        }
+
+        auth
+    }
+
+    /// If a storage backend is configured, persist the named zone.
+    fn persist_zone(&self, zone_name: &str) {
+        let storage = match &self.storage {
+            Some(s) => s.clone(),
+            None => return,
+        };
+        if let Ok(zones) = self.zones.read() {
+            if let Some(zone) = zones.zones.get(zone_name) {
+                if let Err(e) = storage.save_zone(zone) {
+                    log::error!("Failed to persist zone {}: {}", zone_name, e);
+                }
+            }
+        }
+    }
+
+    /// If a storage backend is configured, delete the named zone from storage.
+    fn remove_persisted_zone(&self, zone_name: &str) {
+        if let Some(storage) = &self.storage {
+            if let Err(e) = storage.delete_zone(zone_name) {
+                log::error!("Failed to delete zone {} from storage: {}", zone_name, e);
+            }
         }
     }
 
@@ -446,20 +538,27 @@ impl Authority {
         
         // Add new record
         zone.records.insert(record);
-        
+        drop(zones);
+
+        // Persist the updated zone
+        self.persist_zone(zone_name);
+
         Ok(())
     }
-    
+
     pub fn delete_records(&self, zone_name: &str, domain: &str) -> Result<()> {
         let mut zones = self
             .zones
             .write()
             .map_err(|_| AuthorityError::PoisonedLock)?;
-        
+
         if let Some(zone) = zones.zones.get_mut(zone_name) {
             zone.records.retain(|r| r.get_domain() != Some(domain.to_string()));
         }
-        
+        drop(zones);
+
+        self.persist_zone(zone_name);
+
         Ok(())
     }
 
@@ -492,6 +591,9 @@ impl Authority {
         }
         let zone = Zone::new(zone_name.to_string(), m_name.to_string(), r_name.to_string());
         zones.zones.insert(zone_name.to_string(), zone);
+        drop(zones);
+
+        self.persist_zone(zone_name);
         Ok(())
     }
 
@@ -501,6 +603,9 @@ impl Authority {
         if zones.zones.remove(zone_name).is_none() {
             return Err(AuthorityError::NoSuchZone(zone_name.to_string()));
         }
+        drop(zones);
+
+        self.remove_persisted_zone(zone_name);
         Ok(())
     }
 

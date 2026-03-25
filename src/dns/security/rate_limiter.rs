@@ -563,7 +563,7 @@ impl EnhancedRateLimiter {
                     threat_level: ThreatLevel::High,
                     events: vec![SecurityEvent::ClientBanned {
                         client_ip,
-                        until: client_limiter.banned_until.unwrap().duration_since(std::time::Instant::now()).as_secs() + safe_unix_timestamp(),
+                        until: client_limiter.banned_until.expect("just set above").duration_since(std::time::Instant::now()).as_secs() + safe_unix_timestamp(),
                     }],
                 };
             }

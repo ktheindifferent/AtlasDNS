@@ -595,7 +595,7 @@ impl MultiRegionFailoverHandler {
         
         // Sort by priority and health score
         alternatives.sort_by(|a, b| {
-            a.1.cmp(&b.1).then(b.2.partial_cmp(&a.2).unwrap())
+            a.1.cmp(&b.1).then(b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal))
         });
         
         alternatives.into_iter().map(|(id, _, _)| id).collect()
@@ -755,7 +755,7 @@ impl MultiRegionFailoverHandler {
     fn current_timestamp() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs()
     }
 }

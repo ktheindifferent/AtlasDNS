@@ -771,7 +771,9 @@ impl QueryRoot {
         // Create event timeline (hourly buckets)
         let mut hourly_counts = std::collections::HashMap::new();
         for event in &filtered_events {
-            let event_time = Utc.timestamp_opt(event.timestamp as i64, 0).unwrap();
+            let event_time = Utc.timestamp_opt(event.timestamp as i64, 0)
+                .single()
+                .unwrap_or_else(Utc::now);
             let hour_bucket = event_time.format("%Y-%m-%d %H:00:00").to_string();
             
             let entry = hourly_counts.entry(hour_bucket.clone()).or_insert((event_time, Vec::new()));
@@ -786,7 +788,9 @@ impl QueryRoot {
             .map(|(_, (timestamp, event_types))| {
                 let count = filtered_events.iter()
                     .filter(|e| {
-                        let e_time = Utc.timestamp_opt(e.timestamp as i64, 0).unwrap();
+                        let e_time = Utc.timestamp_opt(e.timestamp as i64, 0)
+                            .single()
+                            .unwrap_or_else(Utc::now);
                         e_time.format("%Y-%m-%d %H:00:00").to_string() == timestamp.format("%Y-%m-%d %H:00:00").to_string()
                     })
                     .count();

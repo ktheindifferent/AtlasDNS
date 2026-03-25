@@ -467,13 +467,13 @@ impl DDoSProtection {
             },
             SuspiciousPattern {
                 pattern_type: PatternType::DgaDetection,
-                regex: Some(regex::Regex::new(r"^[a-z0-9]{16,}\.").unwrap()),
+                regex: Some(regex::Regex::new(r"^[a-z0-9]{16,}\.").expect("valid regex literal")),
                 threshold: 0.7,
                 severity: ThreatLevel::High,
             },
             SuspiciousPattern {
                 pattern_type: PatternType::TunnelDetection,
-                regex: Some(regex::Regex::new(r"^[a-f0-9]{32,}\.").unwrap()),
+                regex: Some(regex::Regex::new(r"^[a-f0-9]{32,}\.").expect("valid regex literal")),
                 threshold: 0.6,
                 severity: ThreatLevel::Medium,
             },

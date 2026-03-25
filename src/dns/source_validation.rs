@@ -526,8 +526,7 @@ impl SourceValidator {
         
         let config = self.config.read();
         let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
             .as_secs();
         
         // Create simple hash-based cookie (simplified HMAC)

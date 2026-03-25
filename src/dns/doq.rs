@@ -144,12 +144,15 @@ impl DoqServer {
 
         // Create QUIC server config
         let mut server_config = ServerConfig::with_crypto(Arc::new(tls_config));
-        let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
-        
+        let transport_config = Arc::get_mut(&mut server_config.transport)
+            .expect("transport Arc has no other owners at init time");
+
         // Configure transport parameters
         transport_config.max_concurrent_bidi_streams((self.config.max_streams as u32).into());
         transport_config.max_concurrent_uni_streams(0u32.into()); // DoQ only uses bidirectional streams
-        transport_config.max_idle_timeout(Some(quinn::IdleTimeout::try_from(Duration::from_secs(self.config.idle_timeout_secs)).unwrap()));
+        let idle_timeout = quinn::IdleTimeout::try_from(Duration::from_secs(self.config.idle_timeout_secs))
+            .expect("valid idle timeout duration");
+        transport_config.max_idle_timeout(Some(idle_timeout));
         transport_config.keep_alive_interval(Some(Duration::from_secs(self.config.keep_alive_interval_secs)));
         
         if self.config.enable_migration {

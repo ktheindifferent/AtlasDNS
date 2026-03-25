@@ -499,8 +499,7 @@ impl GeoLoadBalancer {
         
         // Simple weighted selection
         let random = (std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
             .as_nanos() as u32) % total_weight;
         
         let mut cumulative = 0;

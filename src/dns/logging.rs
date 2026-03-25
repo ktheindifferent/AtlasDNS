@@ -341,10 +341,10 @@ impl StructuredLogger {
             correlation_id = %entry.correlation_id,
             category = ?entry.category,
             component = %entry.component,
-            domain = %entry.dns_query.as_ref().unwrap().domain,
-            query_type = %entry.dns_query.as_ref().unwrap().query_type,
-            response_code = %entry.dns_query.as_ref().unwrap().response_code,
-            cache_hit = %entry.dns_query.as_ref().unwrap().cache_hit,
+            domain = %entry.dns_query.as_ref().expect("dns_query set above").domain,
+            query_type = %entry.dns_query.as_ref().expect("dns_query set above").query_type,
+            response_code = %entry.dns_query.as_ref().expect("dns_query set above").response_code,
+            cache_hit = %entry.dns_query.as_ref().expect("dns_query set above").cache_hit,
             duration_ms = %entry.duration_ms.unwrap_or(0),
             "{}", entry.message
         );
@@ -378,9 +378,9 @@ impl StructuredLogger {
             correlation_id = %entry.correlation_id,
             category = ?entry.category,
             component = %entry.component,
-            method = %entry.http_request.as_ref().unwrap().method,
-            path = %entry.http_request.as_ref().unwrap().path,
-            status_code = %entry.http_request.as_ref().unwrap().status_code,
+            method = %entry.http_request.as_ref().expect("http_request set above").method,
+            path = %entry.http_request.as_ref().expect("http_request set above").path,
+            status_code = %entry.http_request.as_ref().expect("http_request set above").status_code,
             duration_ms = %entry.duration_ms.unwrap_or(0),
             "{}", entry.message
         );
@@ -423,27 +423,27 @@ impl StructuredLogger {
                 correlation_id = %entry.correlation_id,
                 category = ?entry.category,
                 component = %entry.component,
-                event_type = %entry.security_event.as_ref().unwrap().event_type,
-                severity = %entry.security_event.as_ref().unwrap().severity,
-                source_ip = %entry.security_event.as_ref().unwrap().source_ip,
+                event_type = %entry.security_event.as_ref().expect("security_event set above").event_type,
+                severity = %entry.security_event.as_ref().expect("security_event set above").severity,
+                source_ip = %entry.security_event.as_ref().expect("security_event set above").source_ip,
                 "{}", entry.message
             ),
             LogLevel::Warn => warn!(
                 correlation_id = %entry.correlation_id,
                 category = ?entry.category,
                 component = %entry.component,
-                event_type = %entry.security_event.as_ref().unwrap().event_type,
-                severity = %entry.security_event.as_ref().unwrap().severity,
-                source_ip = %entry.security_event.as_ref().unwrap().source_ip,
+                event_type = %entry.security_event.as_ref().expect("security_event set above").event_type,
+                severity = %entry.security_event.as_ref().expect("security_event set above").severity,
+                source_ip = %entry.security_event.as_ref().expect("security_event set above").source_ip,
                 "{}", entry.message
             ),
             _ => info!(
                 correlation_id = %entry.correlation_id,
                 category = ?entry.category,
                 component = %entry.component,
-                event_type = %entry.security_event.as_ref().unwrap().event_type,
-                severity = %entry.security_event.as_ref().unwrap().severity,
-                source_ip = %entry.security_event.as_ref().unwrap().source_ip,
+                event_type = %entry.security_event.as_ref().expect("security_event set above").event_type,
+                severity = %entry.security_event.as_ref().expect("security_event set above").severity,
+                source_ip = %entry.security_event.as_ref().expect("security_event set above").source_ip,
                 "{}", entry.message
             ),
         }
@@ -478,8 +478,8 @@ impl StructuredLogger {
             correlation_id = %entry.correlation_id,
             category = ?entry.category,
             component = %entry.component,
-            error_type = %entry.error_details.as_ref().unwrap().error_type,
-            error_code = ?entry.error_details.as_ref().unwrap().error_code,
+            error_type = %entry.error_details.as_ref().expect("error_details set above").error_type,
+            error_code = ?entry.error_details.as_ref().expect("error_details set above").error_code,
             "{}", entry.message
         );
     }
@@ -576,7 +576,7 @@ impl QueryLogStorage {
     
     /// Store a query log entry
     pub fn store_query(&self, query_log: DnsQueryLog) {
-        let mut logs = self.logs.write().unwrap();
+        let mut logs = self.logs.write().expect("logging store lock poisoned");
         
         // Add new entry
         logs.push_back(query_log);
@@ -589,7 +589,7 @@ impl QueryLogStorage {
     
     /// Get recent query logs (up to specified limit)
     pub fn get_recent(&self, limit: usize) -> Vec<DnsQueryLog> {
-        let logs = self.logs.read().unwrap();
+        let logs = self.logs.read().expect("logging store lock poisoned");
         logs.iter()
             .rev() // Most recent first
             .take(limit)
@@ -599,19 +599,19 @@ impl QueryLogStorage {
     
     /// Get total count of logged queries
     pub fn get_total_count(&self) -> usize {
-        let logs = self.logs.read().unwrap();
+        let logs = self.logs.read().expect("logging store lock poisoned");
         logs.len()
     }
     
     /// Clear all stored query logs
     pub fn clear(&self) {
-        let mut logs = self.logs.write().unwrap();
+        let mut logs = self.logs.write().expect("logging store lock poisoned");
         logs.clear();
     }
 
     /// Search query logs by domain or query type
     pub fn search_logs(&self, search_term: &str, limit: usize) -> Vec<DnsQueryLog> {
-        let logs = self.logs.read().unwrap();
+        let logs = self.logs.read().expect("logging store lock poisoned");
         let search_term_lower = search_term.to_lowercase();
         
         logs.iter()
@@ -628,7 +628,7 @@ impl QueryLogStorage {
     
     /// Get estimated memory usage in bytes
     pub fn get_memory_usage(&self) -> usize {
-        let logs = self.logs.read().unwrap();
+        let logs = self.logs.read().expect("logging store lock poisoned");
         // Rough estimate: each log entry averages ~200 bytes
         logs.len() * 200
     }

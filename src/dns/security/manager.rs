@@ -279,7 +279,7 @@ impl SecurityManager {
             top_blocked_ips: Vec::new(),
             top_blocked_domains: Vec::new(),
             alerts_generated: self.alerts.read().len() as u64,
-            last_reset: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            last_reset: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
         }
     }
 
@@ -389,7 +389,7 @@ impl SecurityManager {
         let domain = packet.questions.first().map(|q| q.name.clone());
         
         let event = SecurityEventRecord {
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
             event_type,
             client_ip: Some(client_ip),
             domain,
@@ -432,7 +432,7 @@ impl SecurityManager {
 
         let alert = SecurityAlert {
             id: uuid::Uuid::new_v4().to_string(),
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
             severity,
             alert_type,
             message: result.reason.clone().unwrap_or_else(|| format!("{:?}", alert_type)),
@@ -454,7 +454,7 @@ impl SecurityManager {
 
     fn log_configuration_change(&self, message: &str) {
         let event = SecurityEventRecord {
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
             event_type: SecurityEventType::ConfigurationChange,
             client_ip: None,
             domain: None,
@@ -562,7 +562,7 @@ impl SecurityManager {
         let client = reqwest::Client::new();
         let payload = serde_json::json!({
             "alerts": alerts,
-            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
         });
 
         for _ in 0..config.retry_count {

@@ -250,13 +250,13 @@ mod tests {
             
             // First two ANY queries should pass
             for i in 0..2 {
-                let packet = create_test_packet(&format!("test{}.com", i), QueryType::ANY);
+                let packet = create_test_packet(&format!("test{}.com", i), QueryType::Unknown(255));
                 let result = limiter.check_rate_limit(&packet, client_ip);
                 assert!(result.allowed);
             }
             
             // Third ANY query should be rate limited
-            let packet = create_test_packet("test3.com", QueryType::ANY);
+            let packet = create_test_packet("test3.com", QueryType::Unknown(255));
             let result = limiter.check_rate_limit(&packet, client_ip);
             assert!(!result.allowed);
             

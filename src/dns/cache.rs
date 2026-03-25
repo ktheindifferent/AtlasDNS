@@ -57,9 +57,14 @@ pub enum CacheError {
 
 type Result<T> = std::result::Result<T, CacheError>;
 
+/// Describes the result of a cache lookup for a domain/type pair.
 pub enum CacheState {
+    /// At least one unexpired record was found.
     PositiveCache,
+    /// The domain was queried before but returned NXDOMAIN and the negative TTL
+    /// has not yet expired.
     NegativeCache,
+    /// No cache entry exists (or all entries have expired).
     NotCached,
 }
 
@@ -115,6 +120,7 @@ impl DomainEntry {
         }
     }
 
+    /// Store a negative (NXDOMAIN) result for `qtype` with the given TTL.
     pub fn store_nxdomain(&mut self, qtype: QueryType, ttl: u32) {
         self.updates += 1;
 
@@ -127,6 +133,7 @@ impl DomainEntry {
         self.record_types.insert(qtype, new_set);
     }
 
+    /// Store or replace a DNS record in the per-domain entry.
     pub fn store_record(&mut self, rec: &DnsRecord) {
         self.updates += 1;
 
@@ -158,6 +165,7 @@ impl DomainEntry {
         self.record_types.insert(rec.get_querytype(), new_set);
     }
 
+    /// Return the [`CacheState`] for the given query type, respecting TTL expiry.
     pub fn get_cache_state(&self, qtype: QueryType) -> CacheState {
         match self.record_types.get(&qtype) {
             Some(RecordSet::Records { records, .. }) => {
@@ -197,6 +205,7 @@ impl DomainEntry {
         }
     }
 
+    /// Append all unexpired records matching `qtype` to `result_vec`.
     pub fn fill_queryresult(&self, qtype: QueryType, result_vec: &mut Vec<DnsRecord>) {
         let now = Local::now();
 
@@ -320,6 +329,9 @@ impl Cache {
     }
 }
 
+/// Thread-safe DNS response cache backed by a `RwLock<Cache>`.
+///
+/// All public methods are safe to call from multiple threads simultaneously.
 #[derive(Default)]
 pub struct SynchronizedCache {
     pub cache: RwLock<Cache>,
@@ -408,6 +420,7 @@ impl SynchronizedCache {
         })
     }
 
+    /// Return a snapshot of all domain entries currently held in the cache.
     pub fn list(&self) -> Result<Vec<Arc<DomainEntry>>> {
         let cache = self.cache.read().map_err(|_| CacheError::PoisonedLock)?;
 
@@ -420,6 +433,10 @@ impl SynchronizedCache {
         Ok(list)
     }
 
+    /// Look up `qname`/`qtype` in the cache.
+    ///
+    /// Returns `Some(DnsPacket)` on a cache hit (positive or negative), or
+    /// `None` when no valid entry exists.
     pub fn lookup(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
         let start_time = std::time::Instant::now();
         
@@ -464,6 +481,7 @@ impl SynchronizedCache {
         result
     }
 
+    /// Insert `records` into the cache, updating any existing entries.
     pub fn store(&self, records: &[DnsRecord]) -> Result<()> {
         let start_time = std::time::Instant::now();
         let record_count = records.len();
@@ -503,6 +521,7 @@ impl SynchronizedCache {
         Ok(())
     }
 
+    /// Record a negative (NXDOMAIN) result for `qname`/`qtype` with the given TTL.
     pub fn store_nxdomain(&self, qname: &str, qtype: QueryType, ttl: u32) -> Result<()> {
         let mut cache = self.cache.write().map_err(|_| CacheError::PoisonedLock)?;
 

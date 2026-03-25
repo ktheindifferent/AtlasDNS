@@ -329,18 +329,18 @@ impl DohServer {
 
         // Build HTTP response with appropriate headers
         let mut response = Response::from_data(response_bytes.to_vec())
-            .with_header(Header::from_bytes(&b"Content-Type"[..], DOH_CONTENT_TYPE_MESSAGE.as_bytes()).unwrap());
+            .with_header(Header::from_bytes(&b"Content-Type"[..], DOH_CONTENT_TYPE_MESSAGE.as_bytes()).expect("valid HTTP header literal"));
 
         // Add cache control headers based on TTL
         if let Some(min_ttl) = self.get_minimum_ttl(&response_packet) {
             let cache_control = format!("max-age={}", min_ttl.min(self.config.cache_max_age));
-            response.add_header(Header::from_bytes(&b"Cache-Control"[..], cache_control.as_bytes()).unwrap());
+            response.add_header(Header::from_bytes(&b"Cache-Control"[..], cache_control.as_bytes()).expect("valid HTTP header literal"));
         }
 
         // Add CORS headers if enabled
         if self.config.cors {
-            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap());
-            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, POST").unwrap());
+            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").expect("valid HTTP header literal"));
+            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, POST").expect("valid HTTP header literal"));
         }
 
         Ok(response.boxed())
@@ -376,18 +376,18 @@ impl DohServer {
         // Build HTTP response
         let response_json = serde_json::to_string(&json_response)?;
         let mut response = Response::from_string(response_json)
-            .with_header(Header::from_bytes(&b"Content-Type"[..], DOH_CONTENT_TYPE_JSON.as_bytes()).unwrap());
+            .with_header(Header::from_bytes(&b"Content-Type"[..], DOH_CONTENT_TYPE_JSON.as_bytes()).expect("valid HTTP header literal"));
 
         // Add cache control headers
         if let Some(min_ttl) = self.get_minimum_ttl(&response_packet) {
             let cache_control = format!("max-age={}", min_ttl.min(self.config.cache_max_age));
-            response.add_header(Header::from_bytes(&b"Cache-Control"[..], cache_control.as_bytes()).unwrap());
+            response.add_header(Header::from_bytes(&b"Cache-Control"[..], cache_control.as_bytes()).expect("valid HTTP header literal"));
         }
 
         // Add CORS headers if enabled
         if self.config.cors {
-            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").unwrap());
-            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, POST").unwrap());
+            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], b"*").expect("valid HTTP header literal"));
+            response.add_header(Header::from_bytes(&b"Access-Control-Allow-Methods"[..], b"GET, POST").expect("valid HTTP header literal"));
         }
 
         Ok(response.boxed())

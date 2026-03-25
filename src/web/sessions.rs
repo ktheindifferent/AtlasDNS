@@ -132,7 +132,8 @@ pub fn create_session_cookie(token: &str, secure: bool) -> Header {
                 .unwrap_or_else(|_| {
                     log::error!("Critical: Unable to create any session cookie");
                     // Create a minimal header as last resort
-                    Header::from_bytes(&b"X-Error"[..], b"cookie-failed").unwrap()
+                    Header::from_bytes(&b"X-Error"[..], b"cookie-failed")
+                        .expect("BUG: static ASCII header bytes must be valid")
                 })
         })
 }
@@ -153,7 +154,8 @@ pub fn clear_session_cookie() -> Header {
             .unwrap_or_else(|_| {
                 log::error!("Critical: Unable to create clear cookie");
                 // Last resort header
-                Header::from_bytes(&b"Cache-Control"[..], b"no-cache").unwrap()
+                Header::from_bytes(&b"Cache-Control"[..], b"no-cache")
+                    .expect("BUG: static ASCII header bytes must be valid")
             })
     })
 }

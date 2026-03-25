@@ -73,7 +73,14 @@ pub struct WebServer<'a> {
 
 impl<'a> WebServer<'a> {
     pub fn new(context: Arc<ServerContext>) -> WebServer<'a> {
-        let user_manager = Arc::new(UserManager::new());
+        // Use persistent storage for UserManager when available
+        let user_manager = Arc::new(
+            if let Some(storage) = context.storage.clone() {
+                UserManager::with_storage(storage)
+            } else {
+                UserManager::new()
+            }
+        );
         let session_middleware = Arc::new(SessionMiddleware::new(user_manager.clone()));
         let metrics_collector = Arc::new(MetricsCollector::new());
         let activity_logger = Arc::new(ActivityLogger::new(1000)); // Keep last 1000 activities

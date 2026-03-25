@@ -30,6 +30,7 @@ use crate::dns::dot_manager::DotManager;
 use crate::dns::doq_manager::DoqManager;
 use crate::dns::shutdown::{ShutdownCoordinator, ShutdownConfig};
 use crate::metrics::{MetricsManager};
+use crate::storage::PersistentStorage;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ContextError {
@@ -127,6 +128,8 @@ pub struct ServerContext {
     pub dot_manager: Option<Arc<DotManager>>,
     pub doq_manager: Option<Arc<DoqManager>>,
     pub shutdown_coordinator: Arc<ShutdownCoordinator>,
+    /// Optional SQLite persistent storage backend (zones + users).
+    pub storage: Option<Arc<PersistentStorage>>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -237,6 +240,7 @@ impl Default for ServerContext {
             dot_manager: None,
             doq_manager: None,
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
+            storage: None,
         }
     }
 }
@@ -307,7 +311,29 @@ impl ServerContext {
             dot_manager: None, // Will be initialized based on configuration
             doq_manager: None, // Will be initialized based on configuration
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
+            storage: None,
         })
+    }
+
+    /// Open (or create) the SQLite database at `db_path` and wire it up as the
+    /// persistent storage backend for zones and users.
+    ///
+    /// Call this **before** [`initialize`] so that zone data is loaded from the
+    /// database rather than from zone files.
+    pub fn attach_storage(&mut self, db_path: &str) -> Result<()> {
+        let storage = PersistentStorage::open(db_path).map_err(|e| {
+            ContextError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to open storage database '{}': {}", db_path, e),
+            ))
+        })?;
+        let storage = Arc::new(storage);
+
+        // Re-create Authority with the storage backend so existing DB zones load
+        self.authority = Authority::with_storage(storage.clone());
+        self.storage = Some(storage);
+        log::info!("Persistent storage attached: {}", db_path);
+        Ok(())
     }
 
     pub fn initialize(&mut self) -> Result<()> {
@@ -339,8 +365,18 @@ impl ServerContext {
         // Start UDP client thread
         self.client.run()?;
 
-        // Load authority data
-        self.authority.load(&self.zones_dir)?;
+        // Load authority data: prefer the persistent DB; fall back to zone files
+        let has_db_zones = self.storage.as_ref()
+            .and_then(|s| s.has_zones().ok())
+            .unwrap_or(false);
+
+        if has_db_zones {
+            log::info!("Loading zones from persistent storage (SQLite)");
+            // Authority was already populated in with_storage(); nothing more to do.
+        } else {
+            log::info!("Loading zones from zone files in {}", self.zones_dir);
+            self.authority.load(&self.zones_dir)?;
+        }
 
         Ok(())
     }
@@ -379,7 +415,7 @@ impl ServerContext {
         // We need to use a different approach since we can't borrow self mutably twice
         if let Ok(()) = manager.initialize(Arc::new(Self::default())) {
             self.dot_manager = Some(Arc::new(manager));
-            log::info!("DNS-over-TLS (DoT) server enabled on port {}", self.dot_manager.as_ref().unwrap().get_config().port);
+            log::info!("DNS-over-TLS (DoT) server enabled on port {}", self.dot_manager.as_ref().expect("just assigned above").get_config().port);
         } else {
             log::error!("Failed to initialize DoT server");
         }
@@ -398,7 +434,7 @@ impl ServerContext {
         // Create a self-reference for initialization - we'll need to improve this pattern
         if let Ok(()) = manager.initialize(Arc::new(Self::default())).await {
             self.doq_manager = Some(Arc::new(manager));
-            log::info!("DNS-over-QUIC (DoQ) server enabled on port {}", self.doq_manager.as_ref().unwrap().get_config().port);
+            log::info!("DNS-over-QUIC (DoQ) server enabled on port {}", self.doq_manager.as_ref().expect("just assigned above").get_config().port);
         } else {
             log::error!("Failed to initialize DoQ server");
         }
@@ -515,6 +551,15 @@ pub mod tests {
             )),
             zone_templates: Arc::new(ZoneTemplatesHandler::new(ZoneTemplateConfig::default())),
             health_monitor: Arc::new(HealthMonitor::new()),
+            health_check_analytics: Arc::new(HealthCheckAnalyticsHandler::new(HealthCheckConfig::default())),
+            traffic_steering: Arc::new(TrafficSteeringHandler::new(TrafficSteeringConfig::default())),
+            request_limiter: None,
+            cache_poison_protection: None,
+            dot_manager: None,
+            doq_manager: None,
+            dnssec_enabled: false,
+            shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
+            storage: None,
         })
     }
 

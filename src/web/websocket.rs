@@ -180,11 +180,11 @@ impl WebSocketManager {
         );
         
         Ok(Response::from_string(sse_data)
-            .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/event-stream"[..]).unwrap())
-            .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap())
-            .with_header(Header::from_bytes(&b"Connection"[..], &b"keep-alive"[..]).unwrap())
-            .with_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap())
-            .with_header(Header::from_bytes(&b"X-Accel-Buffering"[..], &b"no"[..]).unwrap())
+            .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/event-stream"[..]).expect("static header"))
+            .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).expect("static header"))
+            .with_header(Header::from_bytes(&b"Connection"[..], &b"keep-alive"[..]).expect("static header"))
+            .with_header(Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).expect("static header"))
+            .with_header(Header::from_bytes(&b"X-Accel-Buffering"[..], &b"no"[..]).expect("static header"))
             .boxed())
     }
 

@@ -717,7 +717,10 @@ impl ZoneTemplatesHandler {
                 
                 // Check pattern
                 if let Some(pattern) = &template_var.pattern {
-                    let regex = Regex::new(pattern).unwrap();
+                    let regex = match Regex::new(pattern) {
+                        Ok(r) => r,
+                        Err(e) => return Err(format!("Invalid pattern for variable {}: {}", template_var.name, e)),
+                    };
                     if !regex.is_match(value) {
                         return Err(format!("Variable {} does not match pattern", template_var.name));
                     }

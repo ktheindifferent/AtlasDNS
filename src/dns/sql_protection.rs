@@ -138,24 +138,24 @@ impl SqlInputValidator {
     pub fn new(config: SqlProtectionConfig) -> Self {
         let dangerous_patterns = vec![
             // SQL injection patterns
-            Regex::new(r"(?i)\bUNION\s+SELECT\b").unwrap(),
-            Regex::new(r"(?i)\bDROP\s+(?:TABLE|DATABASE)\b").unwrap(),
-            Regex::new(r"(?i)\bALTER\s+TABLE\b").unwrap(),
-            Regex::new(r"(?i)\b(?:EXEC|EXECUTE)\b").unwrap(),
-            Regex::new(r"(?i)\bSCRIPT\b").unwrap(),
-            Regex::new(r"(?i)\bxp_\w+").unwrap(),
-            Regex::new(r"(?i)\bsp_\w+").unwrap(),
+            Regex::new(r"(?i)\bUNION\s+SELECT\b").expect("valid regex literal"),
+            Regex::new(r"(?i)\bDROP\s+(?:TABLE|DATABASE)\b").expect("valid regex literal"),
+            Regex::new(r"(?i)\bALTER\s+TABLE\b").expect("valid regex literal"),
+            Regex::new(r"(?i)\b(?:EXEC|EXECUTE)\b").expect("valid regex literal"),
+            Regex::new(r"(?i)\bSCRIPT\b").expect("valid regex literal"),
+            Regex::new(r"(?i)\bxp_\w+").expect("valid regex literal"),
+            Regex::new(r"(?i)\bsp_\w+").expect("valid regex literal"),
             // Common injection techniques
-            Regex::new(r"'(?:\s*or\s*|\s*and\s*).+?(?:'|$)").unwrap(),
-            Regex::new(r"(?i)\b(?:1\s*=\s*1|0\s*=\s*0)\b").unwrap(),
-            Regex::new(r"(?i)(?:--|#|/\*)").unwrap(),
+            Regex::new(r"'(?:\s*or\s*|\s*and\s*).+?(?:'|$)").expect("valid regex literal"),
+            Regex::new(r"(?i)\b(?:1\s*=\s*1|0\s*=\s*0)\b").expect("valid regex literal"),
+            Regex::new(r"(?i)(?:--|#|/\*)").expect("valid regex literal"),
             // Hex/binary injection attempts
-            Regex::new(r"\b0x[0-9a-f]+\b").unwrap(),
+            Regex::new(r"\b0x[0-9a-f]+\b").expect("valid regex literal"),
             // WAITFOR/DELAY attacks
-            Regex::new(r"(?i)\b(?:WAITFOR\s+DELAY|SLEEP\s*\()").unwrap(),
+            Regex::new(r"(?i)\b(?:WAITFOR\s+DELAY|SLEEP\s*\()").expect("valid regex literal"),
         ];
 
-        let suspicious_chars = Regex::new(r"[;<>'\x22\\]").unwrap();
+        let suspicious_chars = Regex::new(r"[;<>'\x22\\]").expect("valid regex literal");
 
         Self {
             config,

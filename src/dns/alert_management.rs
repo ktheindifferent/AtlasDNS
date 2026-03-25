@@ -630,7 +630,8 @@ impl AlertManagementHandler {
     /// Clean old alerts
     pub fn clean_history(&self) {
         let config = self.config.read();
-        let cutoff = Utc::now() - chrono::Duration::from_std(config.retention_period).unwrap();
+        let retention = chrono::Duration::from_std(config.retention_period).unwrap_or(chrono::Duration::days(30));
+        let cutoff = Utc::now() - retention;
         
         self.history.write().retain(|alert| {
             alert.resolved_at.map_or(true, |resolved| resolved > cutoff)

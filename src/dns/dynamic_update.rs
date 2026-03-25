@@ -501,11 +501,11 @@ impl DynamicUpdateHandler {
         let entry = JournalEntry {
             id: format!("{:x}", SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_nanos()),
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs(),
             zone: update_msg.zone.clone(),
             client: client_ip,
@@ -523,7 +523,7 @@ impl DynamicUpdateHandler {
         let retention_secs = self.config.read().journal_retention_hours as u64 * 3600;
         let cutoff = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_secs() - retention_secs;
         journal.retain(|e| e.timestamp > cutoff);
     }

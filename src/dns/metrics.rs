@@ -32,7 +32,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// DNS response counters by response code
@@ -44,7 +44,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// DNS query duration histogram
@@ -57,7 +57,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Cache hit/miss counters
@@ -69,7 +69,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Cache size gauge
@@ -81,7 +81,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Active connections gauge
@@ -93,7 +93,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Rate limiting counters
@@ -105,7 +105,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Security threat counters
@@ -117,7 +117,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Memory usage gauges
@@ -129,7 +129,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Zone statistics
@@ -141,7 +141,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Upstream DNS server metrics
@@ -153,7 +153,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Upstream response times
@@ -166,7 +166,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// DNSSEC operations
@@ -178,7 +178,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Health check metrics
@@ -190,7 +190,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Server uptime
@@ -201,7 +201,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGauge::new("dummy", "dummy").unwrap()
+        IntGauge::new("dummy", "dummy").expect("dummy fallback metric is always valid")
     });
 
     /// Configuration reload events
@@ -213,7 +213,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Error counters by component
@@ -225,7 +225,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Web interface metrics
@@ -237,7 +237,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Web request duration
@@ -250,7 +250,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// User sessions
@@ -262,7 +262,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
     /// Unique clients gauge
     pub static ref UNIQUE_CLIENTS: IntGauge = register_int_gauge!(
@@ -272,7 +272,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGauge::new("dummy", "dummy").unwrap()
+        IntGauge::new("dummy", "dummy").expect("dummy fallback metric is always valid")
     });
 
     /// Response time percentiles
@@ -284,7 +284,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Protocol usage counters
@@ -296,7 +296,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Cache hit rate gauge
@@ -308,7 +308,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
     
     /// Web request size in bytes
@@ -321,7 +321,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
     
     /// Web response size in bytes
@@ -334,7 +334,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Thread pool statistics gauges
@@ -346,7 +346,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Thread pool queue size gauge
@@ -358,7 +358,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Thread pool task counters
@@ -370,7 +370,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntCounterVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// Thread pool utilization gauge
@@ -382,7 +382,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        GaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 
     /// System and component metrics gauge
@@ -394,7 +394,7 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric, metrics will be unavailable: {}", e);
         log::warn!("DNS server will continue without metrics support");
         // Continue without metrics - return a dummy metric
-        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).unwrap()
+        IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
 }
 

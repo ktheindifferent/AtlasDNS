@@ -350,10 +350,11 @@ mod tests {
             crate::dns::protocol::QueryType::A,
         ));
         
-        use crate::dns::buffer::VectorPacketBuffer;
+        use crate::dns::buffer::{PacketBuffer, VectorPacketBuffer};
         let mut buffer = VectorPacketBuffer::new();
         packet.write(&mut buffer, 512).unwrap();
-        let data = buffer.get_range(0, buffer.pos()).unwrap();
+        let pos = buffer.pos;
+        let data = buffer.get_range(0, pos).unwrap();
         
         let client_addr = SocketAddr::new(
             IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),

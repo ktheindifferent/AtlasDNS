@@ -473,7 +473,7 @@ impl DnsFirewall {
     fn matches_regex(&self, pattern: &str, text: &str) -> bool {
         let mut cache = self.regex_cache.write();
         let regex = cache.entry(pattern.to_string()).or_insert_with(|| {
-            Regex::new(pattern).unwrap_or_else(|_| Regex::new("^$").unwrap())
+            Regex::new(pattern).unwrap_or_else(|_| Regex::new("^$").expect("literal empty-match regex"))
         });
         regex.is_match(text)
     }

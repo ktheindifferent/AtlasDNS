@@ -220,8 +220,7 @@ impl CookieOption {
         hasher.update(client_cookie);
         hasher.update(secret);
         hasher.update(&std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
             .as_secs()
             .to_be_bytes());
         
@@ -579,8 +578,7 @@ mod rand {
     pub fn random() -> u8 {
         // In production, use proper RNG
         (std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
             .as_nanos() & 0xFF) as u8
     }
 }

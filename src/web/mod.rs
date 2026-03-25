@@ -146,7 +146,7 @@ pub fn handle_json_response<T: serde::Serialize>(
     let response = tiny_http::Response::from_string(json)
         .with_status_code(status)
         .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
-            .unwrap());
+            .expect("static header"));
     
     Ok(response)
 }

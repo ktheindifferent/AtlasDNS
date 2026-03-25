@@ -655,6 +655,7 @@ impl AdaptiveThreshold {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_entropy_calculation() {
