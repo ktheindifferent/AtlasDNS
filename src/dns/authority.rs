@@ -977,5 +977,109 @@ impl Authority {
     }
 }
 
-// #[cfg(test)]
-// mod authority_test;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dns::protocol::{DnsRecord, QueryType, TransientTtl};
+
+    fn make_zone(domain: &str) -> Zone {
+        Zone::new(domain.to_string(), format!("ns1.{domain}"), format!("admin.{domain}"))
+    }
+
+    #[test]
+    fn test_zone_add_and_delete_record() {
+        let mut zone = make_zone("example.com");
+        let rec = DnsRecord::A {
+            domain: "www.example.com".to_string(),
+            addr: "1.2.3.4".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        assert!(zone.add_record(&rec));
+        assert_eq!(zone.records.len(), 1);
+        assert!(!zone.add_record(&rec)); // duplicate returns false
+        assert!(zone.delete_record(&rec));
+        assert!(zone.records.is_empty());
+    }
+
+    #[test]
+    fn test_zones_add_and_get() {
+        let mut zones = Zones::new();
+        let zone = make_zone("example.com");
+        zones.add_zone(zone);
+        assert!(zones.get_zone("example.com").is_some());
+        assert!(zones.get_zone("other.com").is_none());
+    }
+
+    #[test]
+    fn test_zones_list() {
+        let mut zones = Zones::new();
+        zones.add_zone(make_zone("alpha.com"));
+        zones.add_zone(make_zone("beta.com"));
+        let list: Vec<_> = zones.zones().iter().map(|z| z.domain.as_str()).collect();
+        assert!(list.contains(&"alpha.com"));
+        assert!(list.contains(&"beta.com"));
+    }
+
+    #[test]
+    fn test_authority_query_a_record() {
+        let authority = Authority::new();
+
+        let mut zone = make_zone("example.com");
+        let rec = DnsRecord::A {
+            domain: "www.example.com".to_string(),
+            addr: "9.8.7.6".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        };
+        zone.add_record(&rec);
+
+        authority.write().unwrap().add_zone(zone);
+
+        let result = authority.query("www.example.com", QueryType::A);
+        assert!(result.is_some());
+        let packet = result.unwrap();
+        assert!(!packet.answers.is_empty());
+    }
+
+    #[test]
+    fn test_authority_query_missing_domain() {
+        let authority = Authority::new();
+        let mut zone = make_zone("example.com");
+        let rec = DnsRecord::A {
+            domain: "www.example.com".to_string(),
+            addr: "1.2.3.4".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        };
+        zone.add_record(&rec);
+        authority.write().unwrap().add_zone(zone);
+
+        // Query for a domain not in any zone
+        assert!(authority.query("notexist.org", QueryType::A).is_none());
+    }
+
+    #[test]
+    fn test_authority_query_wrong_qtype() {
+        let authority = Authority::new();
+        let mut zone = make_zone("example.com");
+        let rec = DnsRecord::A {
+            domain: "host.example.com".to_string(),
+            addr: "1.2.3.4".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        };
+        zone.add_record(&rec);
+        authority.write().unwrap().add_zone(zone);
+
+        // AAAA query for an A-only record should return empty answers
+        let packet = authority.query("host.example.com", QueryType::Aaaa);
+        if let Some(p) = packet {
+            assert!(p.answers.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_authority_zone_exists() {
+        let authority = Authority::new();
+        authority.write().unwrap().add_zone(make_zone("present.com"));
+        assert!(authority.zone_exists("present.com"));
+        assert!(!authority.zone_exists("absent.com"));
+    }
+}

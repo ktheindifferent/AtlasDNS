@@ -864,4 +864,119 @@ mod tests {
         storage.save_zone(&zone).unwrap();
         assert!(storage.has_zones().unwrap());
     }
+
+    #[test]
+    fn test_zone_overwrite_on_save() {
+        let storage = make_storage();
+        let mut zone = Zone::new("overwrite.com".to_string(), "ns1".to_string(), "admin".to_string());
+        zone.serial = 1;
+        storage.save_zone(&zone).unwrap();
+        zone.serial = 99;
+        storage.save_zone(&zone).unwrap();
+        let zones = storage.load_all_zones().unwrap();
+        assert_eq!(zones.len(), 1);
+        assert_eq!(zones[0].serial, 99);
+    }
+
+    #[test]
+    fn test_zone_delete_removes_entry() {
+        let storage = make_storage();
+        let zone = Zone::new("delete-me.com".to_string(), "ns1".to_string(), "admin".to_string());
+        storage.save_zone(&zone).unwrap();
+        storage.delete_zone("delete-me.com").unwrap();
+        let zones = storage.load_all_zones().unwrap();
+        assert!(zones.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_zones_isolated() {
+        let storage = make_storage();
+        storage.save_zone(&Zone::new("alpha.com".to_string(), "ns".to_string(), "a".to_string())).unwrap();
+        storage.save_zone(&Zone::new("beta.com".to_string(), "ns".to_string(), "b".to_string())).unwrap();
+        storage.save_zone(&Zone::new("gamma.com".to_string(), "ns".to_string(), "c".to_string())).unwrap();
+        let zones = storage.load_all_zones().unwrap();
+        assert_eq!(zones.len(), 3);
+    }
+
+    #[test]
+    fn test_user_crud_operations() {
+        let storage = make_storage();
+        let user = User {
+            id: Uuid::new_v4().to_string(),
+            username: "crud_alice".to_string(),
+            email: "crud_alice@example.com".to_string(),
+            password_hash: "hash123".to_string(),
+            role: UserRole::User,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            is_active: true,
+            failed_login_attempts: 0,
+            last_failed_login: None,
+            account_locked_until: None,
+        };
+        storage.save_user(&user).unwrap();
+        let users = storage.load_all_users().unwrap();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].username, "crud_alice");
+        storage.delete_user(&user.id).unwrap();
+        assert!(storage.load_all_users().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_has_users_reflects_user_count() {
+        let storage = make_storage();
+        assert!(!storage.has_users().unwrap());
+        let user = User {
+            id: Uuid::new_v4().to_string(),
+            username: "count_bob".to_string(),
+            email: "count_bob@example.com".to_string(),
+            password_hash: "hash".to_string(),
+            role: UserRole::ReadOnly,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            is_active: true,
+            failed_login_attempts: 0,
+            last_failed_login: None,
+            account_locked_until: None,
+        };
+        storage.save_user(&user).unwrap();
+        assert!(storage.has_users().unwrap());
+    }
+
+    #[test]
+    fn test_session_store_and_load() {
+        use crate::web::users::Session;
+        let storage = make_storage();
+        let session = Session {
+            id: Uuid::new_v4().to_string(),
+            user_id: "user-1".to_string(),
+            token: "tok-abc".to_string(),
+            created_at: Utc::now(),
+            expires_at: Utc::now() + chrono::Duration::hours(1),
+            ip_address: None,
+            user_agent: None,
+        };
+        storage.save_session(&session).unwrap();
+        let sessions = storage.load_active_sessions().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].token, "tok-abc");
+    }
+
+    #[test]
+    fn test_expired_sessions_cleaned_up() {
+        use crate::web::users::Session;
+        let storage = make_storage();
+        let expired = Session {
+            id: Uuid::new_v4().to_string(),
+            user_id: "user-2".to_string(),
+            token: "expired-tok".to_string(),
+            created_at: Utc::now() - chrono::Duration::hours(2),
+            expires_at: Utc::now() - chrono::Duration::hours(1),
+            ip_address: None,
+            user_agent: None,
+        };
+        storage.save_session(&expired).unwrap();
+        storage.delete_expired_sessions().unwrap();
+        assert!(storage.load_active_sessions().unwrap().is_empty());
+    }
 }

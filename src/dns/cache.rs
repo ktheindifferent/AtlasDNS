@@ -697,4 +697,105 @@ mod tests {
                 .hits
         );
     }
+
+    #[test]
+    fn test_cache_ttl_expiry_zero() {
+        let mut cache = Cache::new();
+
+        // A record with TTL=0 should never be returned
+        let records = vec![DnsRecord::A {
+            domain: "expired.test".to_string(),
+            addr: "10.0.0.1".parse().unwrap(),
+            ttl: TransientTtl(0),
+        }];
+        cache.store(&records);
+        assert!(cache.lookup("expired.test", QueryType::A).is_none());
+    }
+
+    #[test]
+    fn test_nxdomain_with_positive_ttl() {
+        let mut cache = Cache::new();
+        cache.store_nxdomain("missing.test", QueryType::A, 300);
+
+        let packet = cache.lookup("missing.test", QueryType::A).expect("should return cached NXDOMAIN");
+        assert_eq!(packet.header.rescode, ResultCode::NXDOMAIN);
+    }
+
+    #[test]
+    fn test_nxdomain_with_zero_ttl_not_cached() {
+        let mut cache = Cache::new();
+        cache.store_nxdomain("missing.test", QueryType::A, 0);
+        assert!(cache.lookup("missing.test", QueryType::A).is_none());
+    }
+
+    #[test]
+    fn test_different_qtypes_independent() {
+        let mut cache = Cache::new();
+
+        let records = vec![DnsRecord::A {
+            domain: "multi.test".to_string(),
+            addr: "1.2.3.4".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        }];
+        cache.store(&records);
+
+        // A lookup succeeds
+        assert!(cache.lookup("multi.test", QueryType::A).is_some());
+        // AAAA lookup should not find the A record
+        assert!(cache.lookup("multi.test", QueryType::Aaaa).is_none());
+        // MX lookup should not find the A record
+        assert!(cache.lookup("multi.test", QueryType::Mx).is_none());
+    }
+
+    #[test]
+    fn test_synchronized_cache_store_and_lookup() {
+        let cache = SynchronizedCache::new();
+
+        let records = vec![DnsRecord::A {
+            domain: "sync.test".to_string(),
+            addr: "5.6.7.8".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        }];
+        cache.store(&records).unwrap();
+
+        let result = cache.lookup("sync.test", QueryType::A);
+        assert!(result.is_some());
+        let packet = result.unwrap();
+        assert_eq!(packet.answers.len(), 1);
+    }
+
+    #[test]
+    fn test_synchronized_cache_clear() {
+        let cache = SynchronizedCache::new();
+
+        let records = vec![DnsRecord::A {
+            domain: "clear.test".to_string(),
+            addr: "9.9.9.9".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        }];
+        cache.store(&records).unwrap();
+        assert!(cache.lookup("clear.test", QueryType::A).is_some());
+
+        cache.clear().unwrap();
+        assert!(cache.lookup("clear.test", QueryType::A).is_none());
+    }
+
+    #[test]
+    fn test_cache_stats_hit_tracking() {
+        let mut cache = Cache::new();
+
+        let records = vec![DnsRecord::A {
+            domain: "stats.test".to_string(),
+            addr: "1.1.1.1".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        }];
+        cache.store(&records);
+
+        cache.lookup("stats.test", QueryType::A);
+        cache.lookup("stats.test", QueryType::A);
+
+        let entry = cache.domain_entries.get("stats.test").unwrap();
+        assert_eq!(entry.hits, 2);
+        assert_eq!(entry.updates, 1);
+    }
 }
