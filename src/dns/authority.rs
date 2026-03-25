@@ -1082,4 +1082,66 @@ mod tests {
         assert!(authority.zone_exists("present.com"));
         assert!(!authority.zone_exists("absent.com"));
     }
+
+    // ------------------------------------------------------------------
+    // Storage-backed integration tests
+    // ------------------------------------------------------------------
+
+    fn make_storage() -> Arc<crate::storage::PersistentStorage> {
+        Arc::new(crate::storage::PersistentStorage::open(":memory:")
+            .expect("in-memory storage"))
+    }
+
+    #[test]
+    fn test_with_storage_loads_persisted_zones() {
+        let storage = make_storage();
+
+        // Pre-populate storage with a zone
+        let mut zone = make_zone("persist.com");
+        zone.add_record(&DnsRecord::A {
+            domain: "www.persist.com".to_string(),
+            addr: "1.2.3.4".parse().unwrap(),
+            ttl: TransientTtl(3600),
+        });
+        storage.save_zone(&zone).unwrap();
+
+        // Authority::with_storage should load that zone immediately
+        let authority = Authority::with_storage(storage);
+        assert!(authority.zone_exists("persist.com"));
+
+        let packet = authority.query("www.persist.com", QueryType::A);
+        assert!(packet.is_some());
+        assert!(!packet.unwrap().answers.is_empty());
+    }
+
+    #[test]
+    fn test_create_zone_persists_to_storage() {
+        let storage = make_storage();
+        let authority = Authority::with_storage(storage.clone());
+
+        // create_zone goes through the Authority API which calls persist_zone
+        authority.create_zone("new.com", "ns1.new.com", "admin.new.com").unwrap();
+
+        // Zone must be visible in the storage backend
+        let stored = storage.load_all_zones().unwrap();
+        assert!(stored.iter().any(|z| z.domain == "new.com"));
+    }
+
+    #[test]
+    fn test_delete_zone_removes_from_storage() {
+        let storage = make_storage();
+
+        // Pre-seed storage
+        storage.save_zone(&make_zone("gone.com")).unwrap();
+
+        let authority = Authority::with_storage(storage.clone());
+        assert!(authority.zone_exists("gone.com"));
+
+        authority.delete_zone("gone.com").unwrap();
+        assert!(!authority.zone_exists("gone.com"));
+
+        // Also gone from persistent storage
+        let stored = storage.load_all_zones().unwrap();
+        assert!(stored.iter().all(|z| z.domain != "gone.com"));
+    }
 }

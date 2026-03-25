@@ -971,3 +971,115 @@ impl XSSProtection {
         ].join("; ")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::PersistentStorage;
+    use std::sync::Arc;
+
+    fn make_storage() -> Arc<PersistentStorage> {
+        Arc::new(PersistentStorage::open(":memory:").expect("in-memory storage"))
+    }
+
+    /// Build a `UserManager` backed by an in-memory SQLite database.
+    fn manager_with_storage() -> UserManager {
+        UserManager::with_storage(make_storage())
+    }
+
+    #[test]
+    fn test_with_storage_loads_persisted_users() {
+        let storage = make_storage();
+
+        // Pre-seed user directly in storage
+        let user = User {
+            id: uuid::Uuid::new_v4().to_string(),
+            username: "preseeded".to_string(),
+            email: "pre@example.com".to_string(),
+            password_hash: UserManager::hash_password("pass"),
+            role: UserRole::User,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            is_active: true,
+            failed_login_attempts: 0,
+            last_failed_login: None,
+            account_locked_until: None,
+        };
+        storage.save_user(&user).unwrap();
+
+        // Manager should load the pre-seeded user on construction
+        let manager = UserManager::with_storage(storage);
+        let users = manager.list_users().unwrap();
+        assert!(users.iter().any(|u| u.username == "preseeded"));
+    }
+
+    #[test]
+    fn test_create_user_persists_to_storage() {
+        let storage = make_storage();
+        let manager = UserManager::with_storage(storage.clone());
+
+        manager.create_user(CreateUserRequest {
+            username: "carol".to_string(),
+            email: "carol@example.com".to_string(),
+            password: "secret123".to_string(),
+            role: UserRole::User,
+        }).unwrap();
+
+        // User should now be in the persistent backend
+        let stored_users = storage.load_all_users().unwrap();
+        assert!(stored_users.iter().any(|u| u.username == "carol"));
+    }
+
+    #[test]
+    fn test_delete_user_removes_from_storage() {
+        let storage = make_storage();
+        let manager = UserManager::with_storage(storage.clone());
+
+        let user = manager.create_user(CreateUserRequest {
+            username: "dave".to_string(),
+            email: "dave@example.com".to_string(),
+            password: "pass".to_string(),
+            role: UserRole::ReadOnly,
+        }).unwrap();
+
+        manager.delete_user(&user.id).unwrap();
+
+        let stored = storage.load_all_users().unwrap();
+        assert!(stored.iter().all(|u| u.id != user.id));
+    }
+
+    #[test]
+    fn test_authenticate_with_storage_backed_manager() {
+        let manager = manager_with_storage();
+
+        manager.create_user(CreateUserRequest {
+            username: "eve".to_string(),
+            email: "eve@example.com".to_string(),
+            password: "correct_password".to_string(),
+            role: UserRole::User,
+        }).unwrap();
+
+        // Correct credentials succeed
+        assert!(manager.authenticate("eve", "correct_password", None, None).is_ok());
+        // Wrong password fails
+        assert!(manager.authenticate("eve", "wrong_password", None, None).is_err());
+    }
+
+    #[test]
+    fn test_session_persists_to_storage() {
+        let storage = make_storage();
+        let manager = UserManager::with_storage(storage.clone());
+
+        let user = manager.create_user(CreateUserRequest {
+            username: "frank".to_string(),
+            email: "frank@example.com".to_string(),
+            password: "pass".to_string(),
+            role: UserRole::User,
+        }).unwrap();
+
+        let session = manager.create_session(user.id.clone(), None, None).unwrap();
+
+        let stored_sessions = storage.load_active_sessions().unwrap();
+        assert!(stored_sessions.iter().any(|s| s.token == session.token));
+    }
+}
