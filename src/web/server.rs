@@ -55,6 +55,7 @@ impl MediaType for Request {
 }
 
 
+/// The main web server that handles HTTP/HTTPS requests for the management interface and API.
 pub struct WebServer<'a> {
     pub context: Arc<ServerContext>,
     pub handlebars: Handlebars<'a>,
@@ -72,6 +73,7 @@ pub struct WebServer<'a> {
 }
 
 impl<'a> WebServer<'a> {
+    /// Create a new `WebServer` instance, initializing all subsystems and registering Handlebars templates.
     pub fn new(context: Arc<ServerContext>) -> WebServer<'a> {
         // Use persistent storage for UserManager when available
         let user_manager = Arc::new(
@@ -760,6 +762,7 @@ impl<'a> WebServer<'a> {
         }
     }
 
+    /// Start the web server, using SSL if `use_ssl` is true and SSL is configured, otherwise plain HTTP.
     pub fn run_webserver(mut self, use_ssl: bool) {
         self.ssl_enabled = use_ssl && self.context.ssl_config.enabled;
         if self.ssl_enabled {

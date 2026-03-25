@@ -62,6 +62,7 @@ use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, Transien
 use crate::dns::dnssec::{DnssecSigner, SigningConfig, SignedZone};
 use crate::storage::PersistentStorage;
 
+/// Errors that can be returned by [`Authority`] and [`Zones`] operations.
 #[derive(Debug)]
 pub enum AuthorityError {
     Buffer(crate::dns::buffer::BufferError),
@@ -282,6 +283,8 @@ impl<'a> Zones {
     }
 }
 
+/// Thread-safe authoritative DNS data store, holding a set of [`Zone`]s and
+/// an optional persistent storage backend.
 #[derive(Default)]
 pub struct Authority {
     zones: RwLock<Zones>,
@@ -359,6 +362,7 @@ impl Authority {
         }
     }
 
+    /// Load zone files from `zones_dir` into memory, replacing any existing in-memory data.
     pub fn load(&self, zones_dir: &str) -> Result<()> {
         let mut zones = self
             .zones
@@ -369,6 +373,8 @@ impl Authority {
         Ok(())
     }
 
+    /// Look up `qname`/`qtype` across all zones and return a response packet,
+    /// or `None` if no zone is authoritative for the name.
     pub fn query(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
         let zones = self.zones.read().ok()?;
 
@@ -501,14 +507,18 @@ impl Authority {
         Some(packet)
     }
 
+    /// Acquire a shared read lock on the underlying [`Zones`] collection.
     pub fn read(&self) -> LockResult<RwLockReadGuard<'_, Zones>> {
         self.zones.read()
     }
 
+    /// Acquire an exclusive write lock on the underlying [`Zones`] collection.
     pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, Zones>> {
         self.zones.write()
     }
     
+    /// Insert or replace a record in `zone_name`, creating the zone if it does not exist.
+    /// All existing records sharing the same domain label are removed before inserting.
     pub fn upsert(&self, zone_name: &str, record: DnsRecord) -> Result<()> {
         let mut zones = self
             .zones
@@ -546,6 +556,7 @@ impl Authority {
         Ok(())
     }
 
+    /// Remove all records in `zone_name` whose domain label equals `domain`.
     pub fn delete_records(&self, zone_name: &str, domain: &str) -> Result<()> {
         let mut zones = self
             .zones
@@ -562,6 +573,7 @@ impl Authority {
         Ok(())
     }
 
+    /// Return all resource records for `zone_name`, or `None` if the zone does not exist.
     pub fn get_zone_records(&self, zone_name: &str) -> Option<Vec<DnsRecord>> {
         let zones = self.zones.read().ok()?;
         zones.zones.get(zone_name).map(|zone| {

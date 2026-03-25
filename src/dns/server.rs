@@ -24,6 +24,7 @@ use crate::dns::security::SecurityAction;
 use crate::dns::dnssec::DnssecSigner;
 use crate::dns::metrics::{THREAD_POOL_THREADS, THREAD_POOL_QUEUE_SIZE, THREAD_POOL_TASKS};
 
+/// Errors that can occur while running the DNS server.
 #[derive(Debug, Display, From, Error)]
 pub enum ServerError {
     Io(std::io::Error),
@@ -584,6 +585,7 @@ impl SocketMetrics {
 }
 
 impl DnsUdpServer {
+    /// Create a new `DnsUdpServer` with the given context and worker thread count.
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsUdpServer {
         let metrics = SocketMetrics::new();
         
@@ -1073,6 +1075,7 @@ pub struct DnsTcpServer {
 }
 
 impl DnsTcpServer {
+    /// Create a new `DnsTcpServer` with the given context and worker thread count.
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsTcpServer {
         let metrics = SocketMetrics::new();
         
@@ -1309,6 +1312,7 @@ impl DnsTcpServer {
 }
 
 impl DnsServer for DnsTcpServer {
+    /// Launch the TCP server, spawning worker threads and blocking until the incoming handler exits.
     fn run_server(mut self) -> Result<()> {
         let socket = self.bind_tcp_socket_with_retry()?;
 
