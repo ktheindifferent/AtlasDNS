@@ -1066,3 +1066,271 @@ fn is_valid_domain(domain: &str) -> bool {
     }
     true
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::IpAddr;
+
+    fn make_manager() -> ThreatIntelManager {
+        ThreatIntelManager::new(ThreatIntelConfig::default())
+    }
+
+    fn make_feed(id: &str, category: ThreatCategory) -> FeedDescriptor {
+        FeedDescriptor {
+            id: id.to_string(),
+            name: id.to_string(),
+            url: "http://example.test/feed".to_string(),
+            default_category: category,
+            domains_loaded: 0,
+            last_updated: None,
+        }
+    }
+
+    // ---- is_valid_domain ----------------------------------------------------
+
+    #[test]
+    fn valid_domain_normal() {
+        assert!(is_valid_domain("example.com"));
+        assert!(is_valid_domain("sub.example.com"));
+        assert!(is_valid_domain("evil-site.co.uk"));
+        assert!(is_valid_domain("xn--nxasmq6b.com")); // punycode
+    }
+
+    #[test]
+    fn valid_domain_rejects_bad_inputs() {
+        assert!(!is_valid_domain("")); // empty
+        assert!(!is_valid_domain("nodots")); // no dot
+        assert!(!is_valid_domain(".leading.dot")); // leading dot
+        assert!(!is_valid_domain("trailing.dot.")); // trailing dot
+        assert!(!is_valid_domain("has spaces.com")); // space
+        assert!(!is_valid_domain("has@at.com")); // @
+    }
+
+    // ---- parse_feed_text (domain feeds) ------------------------------------
+
+    #[test]
+    fn parse_plain_domains() {
+        let mgr = make_manager();
+        let feed = make_feed("test", ThreatCategory::Phishing);
+        let text = "# comment\nevil.com\nbad.org\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert_eq!(result.len(), 2);
+        assert!(result.contains_key("evil.com"));
+        assert!(result.contains_key("bad.org"));
+    }
+
+    #[test]
+    fn parse_hosts_file_format() {
+        let mgr = make_manager();
+        let feed = make_feed("urlhaus", ThreatCategory::MalwareDownload);
+        let text = "0.0.0.0 malware.example.com\n127.0.0.1 phish.example.org\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert!(result.contains_key("malware.example.com"));
+        assert!(result.contains_key("phish.example.org"));
+    }
+
+    #[test]
+    fn parse_abp_format() {
+        let mgr = make_manager();
+        let feed = make_feed("disconnect", ThreatCategory::Malvertising);
+        let text = "||tracker.evil.com^\n||ads.example.net^\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert!(result.contains_key("tracker.evil.com"));
+        assert!(result.contains_key("ads.example.net"));
+    }
+
+    #[test]
+    fn parse_url_format_extracts_domain() {
+        let mgr = make_manager();
+        let feed = make_feed("openphish", ThreatCategory::Phishing);
+        let text = "https://phish.example.com/steal/credentials\nhttp://bad.example.org/login\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert!(result.contains_key("phish.example.com"), "keys: {:?}", result.keys().collect::<Vec<_>>());
+        assert!(result.contains_key("bad.example.org"));
+    }
+
+    #[test]
+    fn parse_skips_comments_and_blanks() {
+        let mgr = make_manager();
+        let feed = make_feed("test", ThreatCategory::Spam);
+        let text = "# header\n; also a comment\n\n  \nreal.domain.com\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key("real.domain.com"));
+    }
+
+    #[test]
+    fn parse_lowercases_domains() {
+        let mgr = make_manager();
+        let feed = make_feed("test", ThreatCategory::Unknown);
+        let text = "UPPER.EXAMPLE.COM\n";
+        let result = mgr.parse_feed_text(&feed, text);
+        assert!(result.contains_key("upper.example.com"));
+    }
+
+    // ---- parse_cidr_feed (IP feeds) ----------------------------------------
+
+    #[test]
+    fn parse_spamhaus_drop_format() {
+        let mgr = make_manager();
+        let feed = make_feed("spamhaus_drop", ThreatCategory::Botnet);
+        let text = "; Spamhaus DROP\n1.10.16.0/20 ; SBL123456\n2.56.0.0/18 ; SBL654321\n";
+        let result = mgr.parse_cidr_feed(&feed, text);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].1.source, "spamhaus_drop");
+        assert_eq!(result[0].1.description, "SBL123456");
+    }
+
+    #[test]
+    fn parse_cidr_skips_invalid_cidrs() {
+        let mgr = make_manager();
+        let feed = make_feed("spamhaus_drop", ThreatCategory::Botnet);
+        let text = "not-a-cidr\n1.2.3.0/24\n";
+        let result = mgr.parse_cidr_feed(&feed, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].1.cidr, "1.2.3.0/24");
+    }
+
+    // ---- check_domain -------------------------------------------------------
+
+    #[test]
+    fn check_domain_exact_match() {
+        let mgr = make_manager();
+        mgr.add_domain("evil.com".to_string(), ThreatCategory::MalwareC2, "test".to_string());
+        let result = mgr.check_domain("evil.com");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().source, "test");
+    }
+
+    #[test]
+    fn check_domain_subdomain_of_blocked_parent() {
+        let mgr = make_manager();
+        mgr.add_domain("evil.com".to_string(), ThreatCategory::Phishing, "test".to_string());
+        // subdomain of a blocked parent should also be flagged
+        let result = mgr.check_domain("sub.evil.com");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn check_domain_clean_returns_none() {
+        let mgr = make_manager();
+        assert!(mgr.check_domain("safe.example.com").is_none());
+    }
+
+    #[test]
+    fn check_domain_disabled_returns_none() {
+        let mgr = ThreatIntelManager::new(ThreatIntelConfig {
+            enabled: false,
+            ..Default::default()
+        });
+        mgr.add_domain("evil.com".to_string(), ThreatCategory::MalwareC2, "test".to_string());
+        assert!(mgr.check_domain("evil.com").is_none());
+    }
+
+    // ---- check_ip -----------------------------------------------------------
+
+    #[test]
+    fn check_ip_within_blocked_cidr() {
+        let mgr = make_manager();
+        let feed = make_feed("spamhaus_drop", ThreatCategory::Botnet);
+        let text = "192.168.1.0/24\n";
+        let blocks = mgr.parse_cidr_feed(&feed, text);
+        {
+            let mut ip_blocks = mgr.ip_blocks.write();
+            ip_blocks.extend(blocks);
+        }
+        let ip: IpAddr = "192.168.1.55".parse().unwrap();
+        assert!(mgr.check_ip(ip).is_some());
+    }
+
+    #[test]
+    fn check_ip_outside_blocked_cidr() {
+        let mgr = make_manager();
+        let feed = make_feed("spamhaus_drop", ThreatCategory::Botnet);
+        let text = "192.168.1.0/24\n";
+        let blocks = mgr.parse_cidr_feed(&feed, text);
+        {
+            let mut ip_blocks = mgr.ip_blocks.write();
+            ip_blocks.extend(blocks);
+        }
+        let ip: IpAddr = "10.0.0.1".parse().unwrap();
+        assert!(mgr.check_ip(ip).is_none());
+    }
+
+    // ---- query_reputation ---------------------------------------------------
+
+    #[test]
+    fn reputation_malware_c2_is_malicious() {
+        let mgr = make_manager();
+        mgr.add_domain("c2.evil.com".to_string(), ThreatCategory::MalwareC2, "test".to_string());
+        let rep = mgr.query_reputation("c2.evil.com");
+        assert_eq!(rep.level, ReputationLevel::Malicious);
+        assert!(rep.score < 30);
+    }
+
+    #[test]
+    fn reputation_spam_is_suspicious() {
+        let mgr = make_manager();
+        mgr.add_domain("spam.evil.com".to_string(), ThreatCategory::Spam, "test".to_string());
+        let rep = mgr.query_reputation("spam.evil.com");
+        assert_eq!(rep.level, ReputationLevel::Suspicious);
+    }
+
+    #[test]
+    fn reputation_clean_domain() {
+        let mgr = make_manager();
+        let rep = mgr.query_reputation("google.com");
+        assert_eq!(rep.level, ReputationLevel::Clean);
+        assert_eq!(rep.score, 100);
+        assert_eq!(rep.feed_hits, 0);
+    }
+
+    #[test]
+    fn reputation_parent_match_bumps_score() {
+        let mgr = make_manager();
+        mgr.add_domain("evil.com".to_string(), ThreatCategory::MalwareC2, "test".to_string());
+        let exact = mgr.query_reputation("evil.com");
+        let subdomain = mgr.query_reputation("deep.sub.evil.com");
+        // subdomain score should be higher (worse) than exact because parent-match adds +10
+        assert!(subdomain.score > exact.score);
+        assert!(subdomain.is_parent_match);
+    }
+
+    // ---- stats / total counts -----------------------------------------------
+
+    #[test]
+    fn total_domains_counts_added() {
+        let mgr = make_manager();
+        assert_eq!(mgr.total_domains(), 0);
+        mgr.add_domain("a.com".to_string(), ThreatCategory::Spam, "test".to_string());
+        mgr.add_domain("b.com".to_string(), ThreatCategory::Phishing, "test".to_string());
+        assert_eq!(mgr.total_domains(), 2);
+    }
+
+    #[test]
+    fn get_stats_shape() {
+        let mgr = make_manager();
+        let stats = mgr.get_stats();
+        assert!(stats["enabled"].as_bool().is_some());
+        assert!(stats["total_domains"].as_u64().is_some());
+        assert!(stats["total_ip_blocks"].as_u64().is_some());
+        assert!(stats["total_hits"].as_u64().is_some());
+        assert!(stats["feeds"].is_array());
+    }
+
+    // ---- ThreatIntelConfig defaults -----------------------------------------
+
+    #[test]
+    fn default_config_enabled_nxdomain() {
+        let cfg = ThreatIntelConfig::default();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.block_action, BlockAction::Nxdomain);
+        assert_eq!(cfg.update_interval, Duration::from_secs(3600));
+        assert_eq!(cfg.max_domains, 500_000);
+    }
+}
