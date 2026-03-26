@@ -238,6 +238,7 @@ impl<'a> WebServer<'a> {
         register_template("templates", include_str!("templates/templates.html"));
         register_template("settings", include_str!("templates/settings.html"));
         register_template("blocklists", include_str!("templates/blocklists.html"));
+        register_template("home", include_str!("templates/home.html"));
 
         server
     }
@@ -453,7 +454,7 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "loadbalancing", "stats"]) => self.get_loadbalancing_stats(request),
             (Method::Post, ["api", "loadbalancing", "pools"]) => self.create_loadbalancing_pool(request),
             
-            (Method::Get, []) => self.index(request),
+            (Method::Get, []) => self.home(request),
             (_, _) => self.not_found(request),
         }
     }
@@ -1068,6 +1069,96 @@ impl<'a> WebServer<'a> {
         let mut index_result = index::index(&self.context, &self.user_manager, &self.activity_logger)?;
         self.add_user_context(request, &mut index_result)?;
         self.response_from_media_type(request, "index", index_result)
+    }
+
+    fn home(&self, request: &Request) -> Result<ResponseBox> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let today_start = (now / 86400) * 86400;
+
+        let (queries_today, blocked_today, top_domains_raw, top_clients_raw) =
+            if let Some(ql) = &self.context.query_log {
+                let today = ql.queries_since(today_start as i64);
+                let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+                let top_blocked = ql.top_blocked_domains(10);
+                let clients = ql.get_clients();
+                (today.len() as u64, blocked, top_blocked, clients)
+            } else if let Some(tracker) = &self.context.device_tracker {
+                let today = tracker.queries_since(today_start);
+                let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+                let top_blocked = tracker.top_blocked_domains(10);
+                let clients = tracker.get_clients();
+                let stats: Vec<crate::dns::query_log::ClientStats> = clients.into_iter().map(|c| crate::dns::query_log::ClientStats {
+                    client_ip: c.client_ip,
+                    query_count: c.query_count as i64,
+                    blocked_count: c.blocked_count as i64,
+                    last_seen: c.last_seen as i64,
+                }).collect();
+                (today.len() as u64, blocked, top_blocked, stats)
+            } else {
+                (0u64, 0u64, vec![], vec![])
+            };
+
+        let block_rate_pct = if queries_today > 0 { blocked_today * 100 / queries_today } else { 0 };
+
+        let max_count = top_domains_raw.first().map(|(_, c)| *c).unwrap_or(1).max(1);
+        let top_domains: Vec<serde_json::Value> = top_domains_raw.iter().map(|(d, c)| {
+            serde_json::json!({
+                "domain": d,
+                "count": c,
+                "bar_pct": (c * 100 / max_count),
+            })
+        }).collect();
+
+        let top_clients: Vec<serde_json::Value> = top_clients_raw.into_iter().take(5).map(|c| {
+            let bp = if c.query_count > 0 { c.blocked_count * 100 / c.query_count } else { 0 };
+            serde_json::json!({
+                "ip": c.client_ip,
+                "queries": c.query_count,
+                "blocked": c.blocked_count,
+                "block_rate_pct": bp,
+            })
+        }).collect();
+
+        let blocklists: Vec<serde_json::Value> = self.context.blocklist_updater.as_ref()
+            .map(|u| u.list_entries().into_iter().map(|e| {
+                let (last_updated_str, status_class, status_label) = match e.last_updated {
+                    None => ("Never".to_string(), "never", "Pending"),
+                    Some(ts) => {
+                        let ago = now.saturating_sub(ts);
+                        let s = if ago < 3600 { format!("{}m ago", ago / 60) }
+                                else if ago < 86400 { format!("{}h ago", ago / 3600) }
+                                else { format!("{}d ago", ago / 86400) };
+                        (s, "active", "Active")
+                    }
+                };
+                serde_json::json!({
+                    "url": e.url,
+                    "domains_count": e.domains_count,
+                    "last_updated_str": last_updated_str,
+                    "status_class": status_class,
+                    "status_label": status_label,
+                })
+            }).collect())
+            .unwrap_or_default();
+
+        let blocklists_count = blocklists.len();
+
+        let mut data = serde_json::json!({
+            "queries_today": queries_today,
+            "blocked_today": blocked_today,
+            "block_rate_pct": block_rate_pct,
+            "blocklists_count": blocklists_count,
+            "top_domains": top_domains,
+            "top_clients": top_clients,
+            "blocklists": blocklists,
+            "version": env!("CARGO_PKG_VERSION"),
+        });
+
+        self.add_user_context(request, &mut data)?;
+        self.response_from_media_type(request, "home", data)
     }
 
     fn zone_list(&self, request: &Request) -> Result<ResponseBox> {

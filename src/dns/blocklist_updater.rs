@@ -267,7 +267,45 @@ impl BlocklistUpdater {
     /// refresh, and spawns a `spawn_blocking` worker for each one.
     pub fn start_background_updates(self: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+            // Read configurable interval from env (default 24h = 86400s)
+            let interval_secs = std::env::var("BLOCKLIST_UPDATE_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(86400);
+
+            // Startup: immediately fetch any stale entries (never fetched or older than 1h)
+            {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let entries: Vec<BlocklistEntry> = self.entries.read().clone();
+                for entry in entries {
+                    let stale = match entry.last_updated {
+                        None => true,
+                        Some(last) => now.saturating_sub(last) > 3600,
+                    };
+                    if stale {
+                        let updater = Arc::clone(&self);
+                        let entry_clone = entry.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let t0 = std::time::Instant::now();
+                            match updater.do_refresh(&entry_clone) {
+                                Ok(n) => log::info!(
+                                    "[startup] Blocklist '{}' fetched: {} domains, {}ms",
+                                    entry_clone.url, n, t0.elapsed().as_millis()
+                                ),
+                                Err(e) => log::warn!(
+                                    "[startup] Blocklist '{}' fetch failed: {}",
+                                    entry_clone.url, e
+                                ),
+                            }
+                        });
+                    }
+                }
+            }
+
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
             loop {
                 interval.tick().await;
                 let now = SystemTime::now()
@@ -286,10 +324,11 @@ impl BlocklistUpdater {
                         let updater = Arc::clone(&self);
                         let entry_clone = entry.clone();
                         tokio::task::spawn_blocking(move || {
+                            let t0 = std::time::Instant::now();
                             match updater.do_refresh(&entry_clone) {
                                 Ok(n) => log::info!(
-                                    "Blocklist '{}' updated: {} domains loaded",
-                                    entry_clone.url, n
+                                    "Blocklist '{}' updated: {} domains, fetch_duration_ms={}",
+                                    entry_clone.url, n, t0.elapsed().as_millis()
                                 ),
                                 Err(e) => log::warn!(
                                     "Blocklist '{}' update failed: {}",

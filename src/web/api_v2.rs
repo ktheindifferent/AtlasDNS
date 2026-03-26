@@ -331,6 +331,8 @@ impl ApiV2Handler {
             // Query log and device tracking
             (Method::Get, ["query-log"]) => self.get_query_log(request),
             (Method::Get, ["clients"]) => self.get_clients(),
+            (Method::Get, ["clients", ip]) => self.get_client_policy(ip),
+            (Method::Put, ["clients", ip, "policy"]) => self.set_client_policy(ip, request),
 
             // Dashboard statistics
             (Method::Get, ["stats", "summary"]) => self.get_stats_summary(),
@@ -1321,15 +1323,25 @@ impl ApiV2Handler {
             .unwrap_or(100)
             .min(1000);
         let client = params.get("client").map(|s| s.as_str());
+        let blocked_filter = params.get("blocked").and_then(|v| v.parse::<bool>().ok());
 
-        let entries = self.context.device_tracker.as_ref()
-            .map(|t| t.get_log(limit, client))
-            .unwrap_or_default();
+        let entries: Vec<serde_json::Value> = if let Some(ql) = &self.context.query_log {
+            let raw = ql.get_log(limit, client, blocked_filter);
+            raw.into_iter().map(|e| serde_json::to_value(e).unwrap_or_default()).collect()
+        } else {
+            self.context.device_tracker.as_ref()
+                .map(|t| t.get_log(limit, client)
+                    .into_iter()
+                    .map(|e| serde_json::to_value(e).unwrap_or_default())
+                    .collect())
+                .unwrap_or_default()
+        };
 
+        let count = entries.len();
         let response = json!({
             "success": true,
             "data": entries,
-            "meta": { "count": entries.len(), "limit": limit }
+            "meta": { "count": count, "limit": limit }
         });
         handle_json_response(&response, StatusCode(200))
     }
@@ -1339,15 +1351,51 @@ impl ApiV2Handler {
     // -----------------------------------------------------------------------
 
     fn get_clients(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        let clients = self.context.device_tracker.as_ref()
-            .map(|t| t.get_clients())
-            .unwrap_or_default();
+        let clients: Vec<serde_json::Value> = if let Some(ql) = &self.context.query_log {
+            ql.get_clients().into_iter().map(|c| json!({
+                "client_ip": c.client_ip,
+                "query_count": c.query_count,
+                "blocked_count": c.blocked_count,
+                "last_seen": c.last_seen,
+            })).collect()
+        } else {
+            self.context.device_tracker.as_ref()
+                .map(|t| t.get_clients().into_iter().map(|c| json!({
+                    "client_ip": c.client_ip,
+                    "query_count": c.query_count,
+                    "blocked_count": c.blocked_count,
+                    "last_seen": c.last_seen,
+                })).collect())
+                .unwrap_or_default()
+        };
 
+        let count = clients.len();
         let response = json!({
             "success": true,
             "data": clients,
-            "meta": { "count": clients.len() }
+            "meta": { "count": count }
         });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn get_client_policy(&self, ip: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let policy = self.context.query_log.as_ref()
+            .and_then(|ql| ql.get_client_policy(ip))
+            .unwrap_or_default();
+        let response = json!({ "success": true, "data": policy });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn set_client_policy(&self, ip: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let policy: crate::dns::query_log::ClientPolicy = serde_json::from_reader(request.as_reader())
+            .map_err(WebError::Serialization)?;
+
+        if let Some(ref ql) = self.context.query_log {
+            ql.set_client_policy(ip, &policy)
+                .map_err(|e| WebError::InternalError(e.to_string()))?;
+        }
+
+        let response = json!({ "success": true, "data": policy });
         handle_json_response(&response, StatusCode(200))
     }
 
@@ -1360,14 +1408,25 @@ impl ApiV2Handler {
         let today_start = (now / 86400) * 86400;
 
         let (queries_today, blocked_today, top_blocked, top_clients) =
-            if let Some(tracker) = &self.context.device_tracker {
+            if let Some(ql) = &self.context.query_log {
+                let today = ql.queries_since(today_start as i64);
+                let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+                let top_blocked = ql.top_blocked_domains(10);
+                let clients = ql.get_clients();
+                let top_clients: Vec<_> = clients
+                    .into_iter()
+                    .take(5)
+                    .map(|c| json!({ "ip": c.client_ip, "queries": c.query_count, "blocked": c.blocked_count }))
+                    .collect();
+                (today.len() as u64, blocked, top_blocked, top_clients)
+            } else if let Some(tracker) = &self.context.device_tracker {
                 let today = tracker.queries_since(today_start);
                 let blocked = today.iter().filter(|e| e.blocked).count() as u64;
                 let top_blocked = tracker.top_blocked_domains(10);
                 let clients = tracker.get_clients();
                 let top_clients: Vec<_> = clients
                     .into_iter()
-                    .take(10)
+                    .take(5)
                     .map(|c| json!({ "ip": c.client_ip, "queries": c.query_count, "blocked": c.blocked_count }))
                     .collect();
                 (today.len() as u64, blocked, top_blocked, top_clients)
@@ -1408,9 +1467,13 @@ impl ApiV2Handler {
             .unwrap_or(24)
             .min(168); // cap at 1 week
 
-        let timeline = self.context.device_tracker.as_ref()
-            .map(|t| t.timeline_by_hour(hours))
-            .unwrap_or_default();
+        let timeline = if let Some(ql) = &self.context.query_log {
+            ql.timeline_by_hour(hours)
+        } else {
+            self.context.device_tracker.as_ref()
+                .map(|t| t.timeline_by_hour(hours))
+                .unwrap_or_default()
+        };
 
         let points: Vec<_> = timeline.iter()
             .map(|(ts, count)| json!({ "timestamp": ts, "count": count }))

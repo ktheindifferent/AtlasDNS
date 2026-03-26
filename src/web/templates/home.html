@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas DNS — Home</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+header{background:#1e293b;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}
+header h1{font-size:1.25rem;font-weight:700;color:#38bdf8}
+header nav a{color:#94a3b8;text-decoration:none;margin-left:1rem;font-size:0.875rem}
+header nav a:hover{color:#e2e8f0}
+main{max-width:1100px;margin:0 auto;padding:1.5rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.card{background:#1e293b;border-radius:0.75rem;padding:1.25rem;border:1px solid #334155}
+.card .label{font-size:0.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem}
+.card .value{font-size:2rem;font-weight:700;color:#f1f5f9}
+.card .value.green{color:#34d399}
+.card .value.red{color:#f87171}
+.card .value.yellow{color:#fbbf24}
+section{background:#1e293b;border-radius:0.75rem;border:1px solid #334155;margin-bottom:1.5rem;overflow:hidden}
+section h2{font-size:0.875rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding:1rem 1.25rem;border-bottom:1px solid #334155}
+.bar-list{padding:1rem 1.25rem}
+.bar-item{margin-bottom:.75rem}
+.bar-item .bar-label{display:flex;justify-content:space-between;font-size:0.8125rem;margin-bottom:.25rem}
+.bar-item .bar-label span:first-child{color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+.bar-item .bar-label span:last-child{color:#94a3b8;flex-shrink:0;margin-left:.5rem}
+.bar-track{background:#334155;border-radius:9999px;height:.5rem;overflow:hidden}
+.bar-fill{background:#38bdf8;height:100%;border-radius:9999px;transition:width .3s ease}
+.bar-fill.blocked{background:#f87171}
+table{width:100%;border-collapse:collapse}
+table th{font-size:0.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;padding:.625rem 1.25rem;text-align:left;border-bottom:1px solid #334155}
+table td{padding:.625rem 1.25rem;font-size:0.875rem;border-bottom:1px solid #1e293b;color:#cbd5e1}
+table tr:last-child td{border-bottom:none}
+table tr:hover td{background:#0f172a40}
+.badge{display:inline-block;padding:.125rem .5rem;border-radius:9999px;font-size:0.75rem;font-weight:500}
+.badge.active{background:#14532d;color:#34d399}
+.badge.never{background:#3b1f1f;color:#fca5a5}
+.empty{padding:2rem;text-align:center;color:#475569;font-size:0.875rem}
+footer{text-align:center;color:#475569;font-size:0.75rem;padding:1.5rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Atlas DNS</h1>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/authority">Zones</a>
+    <a href="/cache">Cache</a>
+    <a href="/firewall">Firewall</a>
+    <a href="/logs">Logs</a>
+    <a href="/settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <div class="cards">
+    <div class="card">
+      <div class="label">Queries Today</div>
+      <div class="value">{{queries_today}}</div>
+    </div>
+    <div class="card">
+      <div class="label">Blocked Today</div>
+      <div class="value red">{{blocked_today}}</div>
+    </div>
+    <div class="card">
+      <div class="label">Block Rate</div>
+      <div class="value yellow">{{block_rate_pct}}%</div>
+    </div>
+    <div class="card">
+      <div class="label">Active Blocklists</div>
+      <div class="value green">{{blocklists_count}}</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Top 10 Blocked Domains</h2>
+    {{#if top_domains}}
+    <div class="bar-list">
+      {{#each top_domains}}
+      <div class="bar-item">
+        <div class="bar-label">
+          <span>{{domain}}</span>
+          <span>{{count}}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill blocked" style="width:{{bar_pct}}%"></div>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    {{else}}
+    <div class="empty">No blocked queries yet.</div>
+    {{/if}}
+  </section>
+
+  <section>
+    <h2>Top 5 Clients</h2>
+    {{#if top_clients}}
+    <table>
+      <thead><tr><th>IP Address</th><th>Queries</th><th>Blocked</th><th>Block Rate</th></tr></thead>
+      <tbody>
+        {{#each top_clients}}
+        <tr>
+          <td>{{ip}}</td>
+          <td>{{queries}}</td>
+          <td>{{blocked}}</td>
+          <td>{{block_rate_pct}}%</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="empty">No clients seen yet.</div>
+    {{/if}}
+  </section>
+
+  <section>
+    <h2>Active Blocklists</h2>
+    {{#if blocklists}}
+    <table>
+      <thead><tr><th>Source</th><th>Domains</th><th>Last Updated</th><th>Status</th></tr></thead>
+      <tbody>
+        {{#each blocklists}}
+        <tr>
+          <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{url}}</td>
+          <td>{{domains_count}}</td>
+          <td>{{last_updated_str}}</td>
+          <td><span class="badge {{status_class}}">{{status_label}}</span></td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="empty">No blocklists configured. Add some via the Firewall page.</div>
+    {{/if}}
+  </section>
+</main>
+<footer>Atlas DNS {{version}} — <a href="/auth/logout" style="color:#475569">Sign out</a></footer>
+</body>
+</html>
