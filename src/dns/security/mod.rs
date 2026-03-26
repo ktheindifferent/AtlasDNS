@@ -22,6 +22,7 @@ pub use threat_intel::{
     ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry, IpBlockEntry,
     ThreatCategory as ThreatIntelCategory,
     DomainReputation, ReputationLevel, FeedDescriptor,
+    BlockAction, CustomFeed,
 };
 
 #[cfg(test)]

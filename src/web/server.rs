@@ -446,6 +446,7 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "anomalies"]) => self.get_anomalies(request),
             // Threat intelligence API
             (Method::Get, ["api", "threat-intel", "status"]) => self.threat_intel_status(request),
+            (Method::Get, ["api", "threat-intel", "stats"]) => self.threat_intel_status(request),
             (Method::Get, ["api", "threat-intel", "hits"]) => self.threat_intel_hits(request),
             (Method::Get, ["ddos-protection"]) => self.ddos_protection_page(request),
             (Method::Get, ["protocols", "doh"]) => self.doh_page(request),

@@ -165,6 +165,43 @@ pub struct FeedDescriptor {
 }
 
 // ---------------------------------------------------------------------------
+// BlockAction
+// ---------------------------------------------------------------------------
+
+/// Action to take when a threat intel match is found.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum BlockAction {
+    /// Return NXDOMAIN (default).
+    Nxdomain,
+    /// Return a synthesized A record pointing to this IP address.
+    RedirectIp(String),
+}
+
+impl Default for BlockAction {
+    fn default() -> Self {
+        BlockAction::Nxdomain
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CustomFeed
+// ---------------------------------------------------------------------------
+
+/// A user-supplied custom threat intelligence feed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomFeed {
+    /// Machine-readable identifier (must be unique, no spaces).
+    pub id: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Download URL.
+    pub url: String,
+    /// Default threat category for entries from this feed.
+    pub category: ThreatCategory,
+}
+
+// ---------------------------------------------------------------------------
 // ThreatIntelConfig
 // ---------------------------------------------------------------------------
 
@@ -179,6 +216,14 @@ pub struct ThreatIntelConfig {
     pub update_interval: Duration,
     /// Maximum total domains to hold in memory.
     pub max_domains: usize,
+    /// Block action: return NXDOMAIN or redirect to an IP.
+    pub block_action: BlockAction,
+    /// Feed IDs to disable (builtin feeds can be selectively turned off).
+    pub disabled_feeds: Vec<String>,
+    /// Additional user-supplied feeds.
+    pub custom_feeds: Vec<CustomFeed>,
+    /// Path for flat-file persistence cache (JSON). `None` = no disk cache.
+    pub cache_path: Option<String>,
 }
 
 impl Default for ThreatIntelConfig {
@@ -188,6 +233,10 @@ impl Default for ThreatIntelConfig {
             webhook_url: None,
             update_interval: Duration::from_secs(3600),
             max_domains: 500_000,
+            block_action: BlockAction::Nxdomain,
+            disabled_feeds: vec![],
+            custom_feeds: vec![],
+            cache_path: None,
         }
     }
 }
@@ -249,6 +298,9 @@ impl ThreatIntelManager {
     pub fn new(config: ThreatIntelConfig) -> Self {
         let mut feed_states = HashMap::new();
         for feed in Self::builtin_feeds() {
+            feed_states.insert(feed.id.clone(), FeedState::default());
+        }
+        for feed in &config.custom_feeds {
             feed_states.insert(feed.id.clone(), FeedState::default());
         }
         Self {
@@ -331,10 +383,29 @@ impl ThreatIntelManager {
         matches!(feed_id, "spamhaus_drop" | "spamhaus_edrop")
     }
 
+    /// Return the list of active feeds (builtin minus disabled, plus custom).
+    pub fn active_feeds(&self) -> Vec<FeedDescriptor> {
+        let mut feeds: Vec<FeedDescriptor> = Self::builtin_feeds()
+            .into_iter()
+            .filter(|f| !self.config.disabled_feeds.contains(&f.id))
+            .collect();
+        for cf in &self.config.custom_feeds {
+            feeds.push(FeedDescriptor {
+                id: cf.id.clone(),
+                name: cf.name.clone(),
+                url: cf.url.clone(),
+                default_category: cf.category.clone(),
+                domains_loaded: 0,
+                last_updated: None,
+            });
+        }
+        feeds
+    }
+
     /// Return feed descriptors enriched with live stats from `feed_states`.
     pub fn list_feeds(&self) -> Vec<FeedDescriptor> {
         let states = self.feed_states.read();
-        Self::builtin_feeds()
+        self.active_feeds()
             .into_iter()
             .map(|mut f| {
                 if let Some(state) = states.get(&f.id) {
@@ -550,20 +621,25 @@ impl ThreatIntelManager {
     /// `min_age`.  Returns a map of `feed_id → Result<count>`.
     pub async fn refresh_all(&self) -> HashMap<String, Result<usize, String>> {
         let mut results = HashMap::new();
-        for feed in Self::builtin_feeds() {
-            let res = self.refresh_feed(&feed.id).await;
+        for feed in self.active_feeds() {
+            let res = self.refresh_feed_descriptor(&feed).await;
             results.insert(feed.id, res);
         }
         results
     }
 
-    /// Refresh a single feed by ID.
+    /// Refresh a single feed by ID (looks in both builtin and custom feeds).
     pub async fn refresh_feed(&self, feed_id: &str) -> Result<usize, String> {
-        let feed = Self::builtin_feeds()
+        // Find in active feeds
+        let feed = self.active_feeds()
             .into_iter()
             .find(|f| f.id == feed_id)
             .ok_or_else(|| format!("Unknown feed: {}", feed_id))?;
+        self.refresh_feed_descriptor(&feed).await
+    }
 
+    /// Refresh using a pre-resolved feed descriptor (used by refresh_all).
+    async fn refresh_feed_descriptor(&self, feed: &FeedDescriptor) -> Result<usize, String> {
         log::info!("[THREAT-INTEL] Fetching feed '{}' from {}", feed.id, feed.url);
 
         let text = Self::fetch_url(&feed.url).await?;
@@ -574,18 +650,13 @@ impl ThreatIntelManager {
             .as_secs();
 
         let count = if Self::is_ip_feed(&feed.id) {
-            // Parse CIDR blocks (Spamhaus DROP / EDROP format)
-            let new_blocks = self.parse_cidr_feed(&feed, &text);
+            let new_blocks = self.parse_cidr_feed(feed, &text);
             let count = new_blocks.len();
-
-            // Merge into unified IP block list
             {
                 let mut ip_blocks = self.ip_blocks.write();
                 ip_blocks.retain(|(_, e)| e.source != feed.id);
                 ip_blocks.extend(new_blocks.clone());
             }
-
-            // Update per-feed state
             {
                 let mut states = self.feed_states.write();
                 let state = states.entry(feed.id.clone()).or_default();
@@ -594,15 +665,11 @@ impl ThreatIntelManager {
                 state.last_updated_ts = Some(now_ts);
                 state.domains_loaded = count;
             }
-
             log::info!("[THREAT-INTEL] Feed '{}' refreshed: {} CIDR blocks", feed.id, count);
             count
         } else {
-            // Parse domain list
-            let new_entries = self.parse_feed_text(&feed, &text);
+            let new_entries = self.parse_feed_text(feed, &text);
             let count = new_entries.len();
-
-            // Merge into unified domain map
             {
                 let mut domains = self.domains.write();
                 domains.retain(|_, e| e.source != feed.id);
@@ -613,8 +680,6 @@ impl ThreatIntelManager {
                     domains.insert(domain.clone(), entry.clone());
                 }
             }
-
-            // Update per-feed state
             {
                 let mut states = self.feed_states.write();
                 let state = states.entry(feed.id.clone()).or_default();
@@ -623,10 +688,14 @@ impl ThreatIntelManager {
                 state.last_updated_ts = Some(now_ts);
                 state.domains_loaded = count;
             }
-
             log::info!("[THREAT-INTEL] Feed '{}' refreshed: {} domains", feed.id, count);
             count
         };
+
+        // Persist to flat-file cache
+        if let Some(ref path) = self.config.cache_path {
+            self.save_cache(path);
+        }
 
         Ok(count)
     }
@@ -776,6 +845,97 @@ impl ThreatIntelManager {
         resp.text()
             .await
             .map_err(|e| format!("Failed to read response body: {}", e))
+    }
+
+    // -----------------------------------------------------------------------
+    // Flat-file cache (JSON persistence)
+    // -----------------------------------------------------------------------
+
+    /// Serialize and save the current domain + IP block data to a JSON file.
+    fn save_cache(&self, path: &str) {
+        let domains = self.domains.read();
+        let ip_blocks = self.ip_blocks.read();
+        let ip_blocks_serializable: Vec<&IpBlockEntry> = ip_blocks.iter().map(|(_, e)| e).collect();
+        let payload = serde_json::json!({
+            "saved_at": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            "domains": domains.values().collect::<Vec<_>>(),
+            "ip_blocks": ip_blocks_serializable,
+        });
+        match serde_json::to_string(&payload) {
+            Ok(text) => {
+                if let Err(e) = std::fs::write(path, text) {
+                    log::warn!("[THREAT-INTEL] Failed to write cache to {}: {}", path, e);
+                } else {
+                    log::debug!("[THREAT-INTEL] Cache written to {}", path);
+                }
+            }
+            Err(e) => log::warn!("[THREAT-INTEL] Cache serialization failed: {}", e),
+        }
+    }
+
+    /// Load the flat-file cache if it exists and is not older than `max_age`.
+    /// Returns `true` if data was loaded successfully.
+    pub fn load_cache(&self, path: &str, max_age: std::time::Duration) -> bool {
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(_) => return false, // No cache file
+        };
+        let value: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("[THREAT-INTEL] Cache parse error: {}", e);
+                return false;
+            }
+        };
+
+        let saved_at = value["saved_at"].as_u64().unwrap_or(0);
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if now_secs.saturating_sub(saved_at) > max_age.as_secs() {
+            log::info!("[THREAT-INTEL] Cache at {} is expired, will fetch fresh.", path);
+            return false;
+        }
+
+        let mut loaded_domains = 0usize;
+        if let Some(arr) = value["domains"].as_array() {
+            let mut domains = self.domains.write();
+            for item in arr {
+                if let Ok(entry) = serde_json::from_value::<ThreatEntry>(item.clone()) {
+                    domains.insert(entry.domain.clone(), entry);
+                    loaded_domains += 1;
+                }
+            }
+        }
+
+        let mut loaded_blocks = 0usize;
+        if let Some(arr) = value["ip_blocks"].as_array() {
+            let mut ip_blocks = self.ip_blocks.write();
+            for item in arr {
+                if let Ok(entry) = serde_json::from_value::<IpBlockEntry>(item.clone()) {
+                    if let Ok(network) = entry.cidr.parse::<IpNetwork>() {
+                        ip_blocks.push((network, entry));
+                        loaded_blocks += 1;
+                    }
+                }
+            }
+        }
+
+        log::info!(
+            "[THREAT-INTEL] Loaded {} domains + {} IP blocks from cache {}",
+            loaded_domains, loaded_blocks, path
+        );
+        true
+    }
+
+    /// Return the configured block action.
+    pub fn block_action(&self) -> &BlockAction {
+        &self.config.block_action
     }
 
     // -----------------------------------------------------------------------

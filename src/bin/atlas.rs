@@ -241,6 +241,12 @@ fn main() {
         "Comma-separated list of additional threat feed URLs to load",
         "URLS",
     );
+    opts.optopt(
+        "",
+        "threat-intel-block-action",
+        "Block action for threat intel matches: nxdomain (default) or redirect:<IP>",
+        "ACTION",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -432,29 +438,72 @@ fn main() {
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(3600);
 
+            // Parse custom feed URLs from --threat-intel-feeds
+            let custom_feeds: Vec<atlas::dns::security::threat_intel::CustomFeed> =
+                opt_matches.opt_str("threat-intel-feeds")
+                    .map(|s| {
+                        s.split(',')
+                            .filter(|u| !u.is_empty())
+                            .enumerate()
+                            .map(|(i, url)| atlas::dns::security::threat_intel::CustomFeed {
+                                id: format!("custom_{}", i + 1),
+                                name: format!("Custom Feed {}", i + 1),
+                                url: url.trim().to_string(),
+                                category: atlas::dns::security::threat_intel::ThreatCategory::Unknown,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+            // Parse block action
+            let block_action = match opt_matches.opt_str("threat-intel-block-action").as_deref() {
+                Some(s) if s.starts_with("redirect:") => {
+                    atlas::dns::security::threat_intel::BlockAction::RedirectIp(
+                        s.trim_start_matches("redirect:").to_string()
+                    )
+                }
+                _ => atlas::dns::security::threat_intel::BlockAction::Nxdomain,
+            };
+
+            let cache_dir = opt_matches.opt_str("db")
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).parent())
+                .and_then(|p| p.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "/opt/atlas".to_string());
+            let cache_path = format!("{}/threat_intel_cache.json", cache_dir);
+
             let ti_config = ThreatIntelConfig {
                 enabled: true,
                 update_interval: std::time::Duration::from_secs(refresh_secs),
+                custom_feeds,
+                block_action,
+                cache_path: Some(cache_path.clone()),
                 ..ThreatIntelConfig::default()
             };
 
             let ti = Arc::new(ThreatIntelManager::new(ti_config));
             ctx.threat_intel = Some(ti.clone());
 
-            // Initial feed fetch (blocking, before server starts)
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build();
-            if let Ok(rt) = rt {
-                rt.block_on(async {
-                    let results = ti.refresh_all().await;
-                    for (id, res) in &results {
-                        match res {
-                            Ok(n) => log::info!("[THREAT-INTEL] Feed '{}' loaded {} entries", id, n),
-                            Err(e) => log::warn!("[THREAT-INTEL] Feed '{}' failed: {}", id, e),
+            // Try loading from flat-file cache first; fall back to HTTP fetch
+            let cache_age = std::time::Duration::from_secs(refresh_secs);
+            let cache_loaded = ti.load_cache(&cache_path, cache_age);
+            if !cache_loaded {
+                // Initial feed fetch (blocking, before server starts)
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build();
+                if let Ok(rt) = rt {
+                    rt.block_on(async {
+                        let results = ti.refresh_all().await;
+                        for (id, res) in &results {
+                            match res {
+                                Ok(n) => log::info!("[THREAT-INTEL] Feed '{}' loaded {} entries", id, n),
+                                Err(e) => log::warn!("[THREAT-INTEL] Feed '{}' failed: {}", id, e),
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
 
             log::info!(

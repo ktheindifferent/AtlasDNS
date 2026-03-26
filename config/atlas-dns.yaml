@@ -548,3 +548,37 @@ security:
 includes:
   - /etc/atlas-dns/conf.d/*.yaml
   - /etc/atlas-dns/zones/*.yaml
+# Threat intelligence configuration
+threat_intel:
+  enabled: false
+  block_action: nxdomain
+  # block_action: redirect:0.0.0.0
+  update_interval_secs: 3600
+  cache_path: /opt/atlas/threat_intel_cache.json
+  feeds:
+    urlhaus:
+      enabled: true
+      url: https://urlhaus.abuse.ch/downloads/hostfile/
+    threatfox:
+      enabled: true
+      url: https://threatfox.abuse.ch/downloads/hostfile/
+    spamhaus_drop:
+      enabled: true
+      url: https://www.spamhaus.org/drop/drop.txt
+    spamhaus_edrop:
+      enabled: true
+      url: https://www.spamhaus.org/drop/edrop.txt
+    openphish:
+      enabled: true
+      url: https://openphish.com/feed.txt
+    phishing_army:
+      enabled: true
+      url: https://phishing.army/download/phishing_army_blocklist_extended.txt
+    disconnect_malvertising:
+      enabled: true
+      url: https://s3.amazonaws.com/lists.disconnect.me/simple_malvertising.txt
+  custom_feeds: []
+  #  - id: my_custom_feed
+  #    name: My Custom Blocklist
+  #    url: https://example.com/my_blocklist.txt
+  #    category: unknown

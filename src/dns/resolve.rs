@@ -77,8 +77,26 @@ pub trait DnsResolver {
                     "[THREAT-INTEL] Blocked DNS query: domain={} category={} source={}",
                     qname, entry.category, entry.source
                 );
+                use crate::dns::security::threat_intel::BlockAction;
                 let mut packet = DnsPacket::new();
-                packet.header.rescode = ResultCode::NXDOMAIN;
+                match ti.block_action() {
+                    BlockAction::Nxdomain => {
+                        packet.header.rescode = ResultCode::NXDOMAIN;
+                    }
+                    BlockAction::RedirectIp(ip_str) => {
+                        use crate::dns::protocol::{DnsRecord, TransientTtl};
+                        if let Ok(ip) = ip_str.parse::<std::net::Ipv4Addr>() {
+                            packet.header.rescode = ResultCode::NOERROR;
+                            packet.answers.push(DnsRecord::A {
+                                domain: qname.to_string(),
+                                addr: ip,
+                                ttl: TransientTtl(60),
+                            });
+                        } else {
+                            packet.header.rescode = ResultCode::NXDOMAIN;
+                        }
+                    }
+                }
                 return Ok(packet);
             }
         }

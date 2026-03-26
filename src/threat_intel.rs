@@ -14,4 +14,6 @@ pub use crate::dns::security::threat_intel::{
     DomainReputation,
     ReputationLevel,
     FeedDescriptor,
+    BlockAction,
+    CustomFeed,
 };
