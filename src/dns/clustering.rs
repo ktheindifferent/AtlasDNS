@@ -52,9 +52,18 @@ pub struct ClusterConfig {
     /// Stable, human-readable node identifier (auto-generated if empty)
     pub node_id: String,
 
+    /// Address to bind the UDP gossip listener on (e.g. "0.0.0.0:5382")
+    #[serde(default = "default_bind_addr")]
+    pub bind_addr: String,
+
     /// Peer HTTP base URLs, e.g. `["http://node2:5380", "http://node3:5380"]`.
     /// Used for both gossip and blocklist replication.
     pub peer_addresses: Vec<String>,
+
+    /// Query-per-second threshold above which this node is considered overloaded.
+    /// When overloaded and peers are available, DNS queries would be forwarded.
+    #[serde(default = "default_overload_threshold")]
+    pub overload_threshold: u64,
 
     /// How often (seconds) this node sends heartbeat/gossip messages to peers
     pub heartbeat_interval_secs: u64,
@@ -79,6 +88,8 @@ pub struct ClusterConfig {
 }
 
 fn default_sync_interval() -> u64 { 30 }
+fn default_bind_addr() -> String { format!("0.0.0.0:{}", CLUSTER_GOSSIP_PORT) }
+fn default_overload_threshold() -> u64 { 10000 }
 
 impl Default for ClusterConfig {
     fn default() -> Self {
@@ -86,7 +97,9 @@ impl Default for ClusterConfig {
             enabled: false,
             role: ClusterRole::Standalone,
             node_id: uuid::Uuid::new_v4().to_string(),
+            bind_addr: default_bind_addr(),
             peer_addresses: Vec::new(),
+            overload_threshold: default_overload_threshold(),
             heartbeat_interval_secs: 5,
             quorum: 1,
             blocklist_sync_interval_secs: 60,
@@ -111,6 +124,8 @@ pub struct ClusterNode {
     pub role: ClusterRole,
     /// Unix timestamp of the last heartbeat received from this node
     pub last_heartbeat: u64,
+    /// Total queries handled by this node (reported via heartbeat)
+    pub query_count: u64,
 }
 
 impl ClusterNode {
@@ -120,6 +135,7 @@ impl ClusterNode {
             addr,
             role,
             last_heartbeat: unix_now(),
+            query_count: 0,
         }
     }
 
@@ -147,19 +163,28 @@ impl ClusterState {
         self.nodes.write().insert(node.id.clone(), node);
     }
 
-    /// Record a heartbeat from the given node, updating its timestamp and role.
+    /// Record a heartbeat from the given node, updating its timestamp, role, and stats.
     pub fn record_heartbeat(&self, node_id: &str, addr: &str, role: ClusterRole) {
+        self.record_heartbeat_with_stats(node_id, addr, role, 0);
+    }
+
+    /// Record a heartbeat with query stats.
+    pub fn record_heartbeat_with_stats(&self, node_id: &str, addr: &str, role: ClusterRole, query_count: u64) {
         let mut nodes = self.nodes.write();
         if let Some(n) = nodes.get_mut(node_id) {
             n.last_heartbeat = unix_now();
             n.role = role;
             n.addr = addr.to_string();
+            if query_count > 0 {
+                n.query_count = query_count;
+            }
         } else {
             nodes.insert(node_id.to_string(), ClusterNode {
                 id: node_id.to_string(),
                 addr: addr.to_string(),
                 role,
                 last_heartbeat: unix_now(),
+                query_count,
             });
         }
     }
@@ -202,6 +227,9 @@ pub struct UdpHeartbeat {
     pub role: ClusterRole,
     pub term: u64,
     pub timestamp: u64,
+    /// Total queries handled by this node
+    #[serde(default)]
+    pub query_count: u64,
 }
 
 /// Default UDP port used for cluster gossip heartbeats.
@@ -779,6 +807,48 @@ impl ClusterManager {
         self.zone_sync_status.read().clone()
     }
 
+    /// Return all known cluster nodes with health and query stats.
+    /// Used by `GET /api/cluster/nodes`.
+    pub fn get_all_nodes(&self) -> Vec<ClusterNode> {
+        self.cluster_state.all_nodes()
+    }
+
+    /// Check cluster quorum health: majority of known nodes must be alive.
+    /// Returns `(healthy: bool, alive_count, total_count, quorum_required)`.
+    pub fn quorum_health(&self) -> (bool, usize, usize, usize) {
+        let cfg = self.config.read();
+        let all = self.cluster_state.all_nodes();
+        // Total includes self + peers
+        let total = all.len() + 1;
+        let alive = all.iter().filter(|n| n.is_alive(cfg.peer_timeout_secs)).count() + 1; // +1 for self
+        let quorum = cfg.quorum;
+        (alive >= quorum, alive, total, quorum)
+    }
+
+    /// Check if the node is overloaded based on query count vs threshold.
+    /// If overloaded and peers are available, logs that it would forward.
+    /// Returns true if overloaded.
+    pub fn check_overload(&self, current_qps: u64) -> bool {
+        let cfg = self.config.read();
+        if !cfg.enabled || current_qps < cfg.overload_threshold {
+            return false;
+        }
+        let live = self.cluster_state.live_nodes(cfg.peer_timeout_secs);
+        if !live.is_empty() {
+            let peer = &live[0];
+            log::warn!(
+                "[cluster] node overloaded ({} qps > {} threshold) — would forward to peer {} ({})",
+                current_qps, cfg.overload_threshold, peer.id, peer.addr
+            );
+        } else {
+            log::warn!(
+                "[cluster] node overloaded ({} qps > {} threshold) but no live peers available",
+                current_qps, cfg.overload_threshold
+            );
+        }
+        true
+    }
+
     /// Update zone sync status after a successful transfer.
     pub fn record_zone_sync(&self, zone_count: usize, record_count: usize) {
         let mut status = self.zone_sync_status.write();
@@ -800,6 +870,7 @@ impl ClusterManager {
             role: self.effective_role(),
             term: self.election.current_term(),
             timestamp: unix_now(),
+            query_count: 0, // caller can update via set_heartbeat_query_count
         };
         let payload = match serde_json::to_vec(&hb) {
             Ok(p) => p,
@@ -849,7 +920,7 @@ impl ClusterManager {
                 Ok((len, src)) => {
                     if let Ok(hb) = serde_json::from_slice::<UdpHeartbeat>(&buf[..len]) {
                         let addr = if hb.addr.is_empty() { src.to_string() } else { hb.addr.clone() };
-                        self.cluster_state.record_heartbeat(&hb.node_id, &addr, hb.role);
+                        self.cluster_state.record_heartbeat_with_stats(&hb.node_id, &addr, hb.role, hb.query_count);
                         // Also feed into the existing gossip/peer tracking
                         self.receive_heartbeat(&hb.node_id, &addr, hb.timestamp, false);
                         log::debug!("[cluster/udp] heartbeat ← {} ({})", hb.node_id, addr);

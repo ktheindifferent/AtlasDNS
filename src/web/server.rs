@@ -491,8 +491,10 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "blocklist-stats"]) => self.get_blocklist_stats(request),
             // Protocol status API
             (Method::Get, ["api", "protocol-status"]) => self.get_protocol_status(request),
-            // Cluster status API
+            // Cluster APIs
             (Method::Get, ["api", "cluster", "status"]) => self.cluster_status_api(request),
+            (Method::Get, ["api", "cluster", "nodes"]) => self.cluster_nodes_api(request),
+            (Method::Get, ["api", "cluster", "health"]) => self.cluster_health_api(request),
 
             // Local device discovery (mDNS)
             (Method::Get, ["devices"]) => self.devices_page(request),
@@ -3800,6 +3802,60 @@ impl<'a> WebServer<'a> {
                         "zone_count": 0,
                         "record_count": 0,
                     },
+                }
+            })
+        };
+        Ok(Response::from_string(serde_json::to_string(&json)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// GET /api/cluster/nodes — list all known cluster nodes with health and query stats
+    fn cluster_nodes_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let json = if let Some(cm) = &self.context.cluster_manager {
+            let timeout = cm.get_config().peer_timeout_secs;
+            let nodes: Vec<serde_json::Value> = cm.get_all_nodes().iter().map(|n| {
+                serde_json::json!({
+                    "id": n.id,
+                    "address": n.addr,
+                    "role": format!("{:?}", n.role),
+                    "last_seen": n.last_heartbeat,
+                    "healthy": n.is_alive(timeout),
+                    "query_count": n.query_count,
+                })
+            }).collect();
+            serde_json::json!({ "success": true, "data": { "nodes": nodes } })
+        } else {
+            serde_json::json!({ "success": true, "data": { "nodes": [] } })
+        };
+        Ok(Response::from_string(serde_json::to_string(&json)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// GET /api/cluster/health — cluster quorum health status
+    fn cluster_health_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let json = if let Some(cm) = &self.context.cluster_manager {
+            let (healthy, alive, total, quorum) = cm.quorum_health();
+            serde_json::json!({
+                "success": true,
+                "data": {
+                    "healthy": healthy,
+                    "alive_nodes": alive,
+                    "total_nodes": total,
+                    "quorum_required": quorum,
+                    "status": if healthy { "healthy" } else { "degraded" },
+                }
+            })
+        } else {
+            serde_json::json!({
+                "success": true,
+                "data": {
+                    "healthy": true,
+                    "alive_nodes": 1,
+                    "total_nodes": 1,
+                    "quorum_required": 1,
+                    "status": "standalone",
                 }
             })
         };

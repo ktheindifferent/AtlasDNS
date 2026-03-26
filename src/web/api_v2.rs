@@ -388,6 +388,8 @@ impl ApiV2Handler {
 
             // Cluster management
             (Method::Get, ["cluster", "status"]) => self.cluster_status(),
+            (Method::Get, ["cluster", "nodes"]) => self.cluster_nodes(),
+            (Method::Get, ["cluster", "health"]) => self.cluster_health(),
             (Method::Post, ["cluster", "heartbeat"]) => self.cluster_heartbeat(request),
             (Method::Post, ["cluster", "sync"]) => self.cluster_sync(request),
             (Method::Post, ["cluster", "drain"]) => self.cluster_drain(),
@@ -1172,6 +1174,58 @@ impl ApiV2Handler {
                     "last_heartbeat_sent": 0,
                     "blocklist_version": 0,
                     "peers": [],
+                }
+            });
+            handle_json_response(&data, StatusCode(200))
+        }
+    }
+
+    /// GET /api/v2/cluster/nodes — list all known cluster nodes with health and query stats
+    fn cluster_nodes(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            let timeout = cm.get_config().peer_timeout_secs;
+            let nodes: Vec<Value> = cm.get_all_nodes().iter().map(|n| {
+                json!({
+                    "id": n.id,
+                    "address": n.addr,
+                    "role": format!("{:?}", n.role),
+                    "last_seen": n.last_heartbeat,
+                    "healthy": n.is_alive(timeout),
+                    "query_count": n.query_count,
+                })
+            }).collect();
+            let data = json!({ "success": true, "data": { "nodes": nodes } });
+            handle_json_response(&data, StatusCode(200))
+        } else {
+            let data = json!({ "success": true, "data": { "nodes": [] } });
+            handle_json_response(&data, StatusCode(200))
+        }
+    }
+
+    /// GET /api/v2/cluster/health — cluster quorum status (majority alive = healthy)
+    fn cluster_health(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            let (healthy, alive, total, quorum) = cm.quorum_health();
+            let data = json!({
+                "success": true,
+                "data": {
+                    "healthy": healthy,
+                    "alive_nodes": alive,
+                    "total_nodes": total,
+                    "quorum_required": quorum,
+                    "status": if healthy { "healthy" } else { "degraded" },
+                }
+            });
+            handle_json_response(&data, StatusCode(200))
+        } else {
+            let data = json!({
+                "success": true,
+                "data": {
+                    "healthy": true,
+                    "alive_nodes": 1,
+                    "total_nodes": 1,
+                    "quorum_required": 1,
+                    "status": "standalone",
                 }
             });
             handle_json_response(&data, StatusCode(200))

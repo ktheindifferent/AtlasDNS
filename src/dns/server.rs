@@ -347,6 +347,13 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         }
     });
     
+    // Check if this node is overloaded and would forward to a peer
+    if let Some(ref cm) = context.cluster_manager {
+        let total_queries = context.statistics.get_udp_query_count() as u64
+            + context.statistics.get_tcp_query_count() as u64;
+        cm.check_overload(total_queries);
+    }
+
     // Perform security checks first if client IP is available
     if let Some(ip) = client_ip {
         let security_result = context.security_manager.check_request(request, ip);
