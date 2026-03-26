@@ -240,6 +240,8 @@ impl<'a> WebServer<'a> {
         register_template("blocklists", include_str!("templates/blocklists.html"));
         register_template("home", include_str!("templates/home.html"));
         register_template("split_horizon", include_str!("templates/split_horizon.html"));
+        register_template("dashboard", include_str!("templates/dashboard.html"));
+        register_template("devices", include_str!("templates/devices.html"));
 
         server
     }
@@ -338,7 +340,8 @@ impl<'a> WebServer<'a> {
             (Method::Post, ["dns-query"]) |
             (Method::Get, ["api", "version"]) |
             (Method::Get, ["healthz"]) |
-            (Method::Get, ["health"])
+            (Method::Get, ["health"]) |
+            (Method::Get, ["dashboard"])
         );
 
         // Check authentication for protected routes
@@ -488,8 +491,13 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "blocklist-stats"]) => self.get_blocklist_stats(request),
             // Protocol status API
             (Method::Get, ["api", "protocol-status"]) => self.get_protocol_status(request),
+            // Local device discovery (mDNS)
+            (Method::Get, ["devices"]) => self.devices_page(request),
+            (Method::Get, ["api", "devices"]) => self.devices_api(request),
+
             (Method::Get, ["healthz"]) => self.healthz(request),
             (Method::Get, ["health"]) => self.healthz(request),
+            (Method::Get, ["dashboard"]) => self.dashboard_page(request),
             (Method::Get, []) => self.home(request),
             (_, _) => self.not_found(request),
         }
@@ -1448,6 +1456,184 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
     
+    /// Public health dashboard at /dashboard — no authentication required.
+    fn dashboard_page(&self, request: &Request) -> Result<ResponseBox> {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let today_start = (now_secs / 86400) * 86400;
+
+        // Latency histogram bucket boundaries (ms)
+        let boundaries: &[u64] = &[1, 5, 10, 25, 50, 100, 250, 500];
+        let labels = &["<1ms","1-5ms","5-10ms","10-25ms","25-50ms","50-100ms","100-250ms","250-500ms",">500ms"];
+
+        // ── Aggregate from whichever log source is available ────────────────
+        let (queries_today, blocked_today, top_blocked_raw, top_allowed_raw,
+             latency_buckets_raw, avg_latency_ms, recent_queries)
+            = if let Some(ql) = &self.context.query_log {
+            let today = ql.queries_since(today_start as i64);
+            let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+            let top_blocked = ql.top_blocked_domains(10);
+
+            let recent = ql.queries_since(now_secs.saturating_sub(3600) as i64);
+
+            // Top allowed domains
+            let mut allowed_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+            let mut buckets = vec![0u64; 9];
+            let mut lat_sum = 0u64;
+            let mut lat_n = 0u64;
+            for e in recent.iter().take(1000) {
+                if !e.blocked {
+                    *allowed_counts.entry(e.domain.clone()).or_insert(0) += 1;
+                }
+                let ms = e.response_ms as u64;
+                lat_sum += ms;
+                lat_n += 1;
+                let idx = boundaries.partition_point(|&b| ms >= b);
+                buckets[idx] += 1;
+            }
+            let avg_ms = if lat_n > 0 { lat_sum / lat_n } else { 0 };
+
+            // Recent queries for the table (last 20, newest first)
+            let mut recent_sorted = recent;
+            recent_sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            let rq: Vec<serde_json::Value> = recent_sorted.iter().take(20).map(|e| {
+                let ts = chrono::DateTime::from_timestamp(e.timestamp, 0)
+                    .map(|dt| dt.format("%H:%M:%S").to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                serde_json::json!({
+                    "timestamp": ts,
+                    "client_ip": e.client_ip,
+                    "domain": e.domain,
+                    "query_type": e.query_type,
+                    "response": if e.blocked { "BLOCKED" } else { "NOERROR" },
+                    "blocked": e.blocked,
+                    "latency_ms": e.response_ms,
+                })
+            }).collect();
+
+            (today.len() as u64, blocked, top_blocked, allowed_counts, buckets, avg_ms, rq)
+
+        } else if let Some(tracker) = &self.context.device_tracker {
+            let today = tracker.queries_since(today_start);
+            let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+            let top_blocked = tracker.top_blocked_domains(10);
+
+            let recent = tracker.queries_since(now_secs.saturating_sub(3600));
+
+            let mut allowed_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+            let buckets = vec![0u64; 9]; // no latency data from device_tracker
+
+            for e in &recent {
+                if !e.blocked {
+                    *allowed_counts.entry(e.domain.clone()).or_insert(0) += 1;
+                }
+            }
+
+            let mut recent_sorted = recent;
+            recent_sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            let rq: Vec<serde_json::Value> = recent_sorted.iter().take(20).map(|e| {
+                let ts = chrono::DateTime::from_timestamp(e.timestamp as i64, 0)
+                    .map(|dt| dt.format("%H:%M:%S").to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                serde_json::json!({
+                    "timestamp": ts,
+                    "client_ip": e.client_ip,
+                    "domain": e.domain,
+                    "query_type": e.query_type,
+                    "response": if e.blocked { "BLOCKED" } else { "NOERROR" },
+                    "blocked": e.blocked,
+                    "latency_ms": 0,
+                })
+            }).collect();
+
+            (today.len() as u64, blocked, top_blocked, allowed_counts, buckets, 0u64, rq)
+        } else {
+            let empty_map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+            (0u64, 0u64, vec![], empty_map, vec![0u64; 9], 0u64, vec![])
+        };
+
+        let block_rate_pct = if queries_today > 0 { blocked_today * 100 / queries_today } else { 0 };
+
+        // ── Queries/sec (rolling 60 s) ──────────────────────────────────────
+        let last_minute = if let Some(ql) = &self.context.query_log {
+            ql.queries_since(now_secs.saturating_sub(60) as i64).len() as u64
+        } else if let Some(tracker) = &self.context.device_tracker {
+            tracker.queries_since(now_secs.saturating_sub(60)).len() as u64
+        } else { 0 };
+        let queries_per_sec = last_minute / 60;
+
+        // ── Top blocked domains bar chart ───────────────────────────────────
+        let max_blocked = top_blocked_raw.first().map(|(_, c)| *c).unwrap_or(1).max(1);
+        let blocked_domain_count = top_blocked_raw.len();
+        let top_blocked_domains: Vec<serde_json::Value> = top_blocked_raw.iter().map(|(d, c)| {
+            serde_json::json!({ "domain": d, "count": c, "bar_pct": c * 100 / max_blocked })
+        }).collect();
+
+        // ── Top allowed domains bar chart ───────────────────────────────────
+        let mut top_allowed_vec: Vec<(String, u64)> = top_allowed_raw.into_iter().collect();
+        top_allowed_vec.sort_by(|a, b| b.1.cmp(&a.1));
+        let max_allowed = top_allowed_vec.first().map(|(_, c)| *c).unwrap_or(1).max(1);
+        let top_allowed_domains: Vec<serde_json::Value> = top_allowed_vec.iter().take(10).map(|(d, c)| {
+            serde_json::json!({ "domain": d, "count": c, "bar_pct": c * 100 / max_allowed })
+        }).collect();
+
+        // ── Latency histogram ───────────────────────────────────────────────
+        let max_bucket = latency_buckets_raw.iter().copied().max().unwrap_or(1).max(1);
+        let latency_buckets: Vec<serde_json::Value> = latency_buckets_raw.iter().enumerate().map(|(i, &count)| {
+            serde_json::json!({
+                "label": labels[i],
+                "count": count,
+                "height_pct": count * 100 / max_bucket,
+            })
+        }).collect();
+
+        // ── Cache stats ─────────────────────────────────────────────────────
+        let cache_entries = self.context.cache.list().map(|l| l.len()).unwrap_or(0);
+        let cache_hit_rate = self.context.cache.get_stats()
+            .map(|s| s.hit_rate.round() as u32)
+            .unwrap_or(0);
+
+        // ── Uptime ──────────────────────────────────────────────────────────
+        let uptime_secs = self.context.metrics.get_uptime_seconds();
+        let uptime = if uptime_secs < 60 {
+            format!("{}s", uptime_secs)
+        } else if uptime_secs < 3600 {
+            format!("{}m {}s", uptime_secs / 60, uptime_secs % 60)
+        } else if uptime_secs < 86400 {
+            format!("{}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60)
+        } else {
+            format!("{}d {}h", uptime_secs / 86400, (uptime_secs % 86400) / 3600)
+        };
+
+        let data = serde_json::json!({
+            "uptime": uptime,
+            "queries_per_sec": queries_per_sec,
+            "total_queries": queries_today,
+            "blocked_today": blocked_today,
+            "block_rate_pct": block_rate_pct,
+            "cache_hit_rate": cache_hit_rate,
+            "cache_entries": cache_entries,
+            "avg_latency_ms": avg_latency_ms,
+            "top_blocked_domains": top_blocked_domains,
+            "blocked_domain_count": blocked_domain_count,
+            "top_allowed_domains": top_allowed_domains,
+            "latency_buckets": latency_buckets,
+            "server_tcp_queries": self.context.statistics.get_tcp_query_count(),
+            "server_udp_queries": self.context.statistics.get_udp_query_count(),
+            "dns_port": 53,
+            "web_port": 5380,
+            "web_ok": true,
+            "doh_enabled": self.context.doh_server_enabled,
+            "dot_enabled": self.context.dot_enabled,
+            "recent_queries": recent_queries,
+            "version": env!("CARGO_PKG_VERSION"),
+        });
+
+        self.response_from_media_type(request, "dashboard", data)
+    }
+
     fn login_page(&self, request: &Request) -> Result<ResponseBox> {
         let data = serde_json::json!({
             "title": "Login",
@@ -3546,6 +3732,22 @@ impl<'a> WebServer<'a> {
                 .with_header(Self::safe_location_header("/load-balancing"))
                 .boxed())
         }
+    }
+
+    // ── mDNS Device Discovery handlers ───────────────────────────────────────
+
+    fn devices_page(&self, request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "title": "Local Devices",
+        });
+        self.response_from_media_type(request, "devices", data)
+    }
+
+    fn devices_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let json = crate::web::devices::get_devices(&self.context);
+        Ok(Response::from_string(serde_json::to_string(&json)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
     }
 
     // ── Split-Horizon DNS handlers ────────────────────────────────────────────

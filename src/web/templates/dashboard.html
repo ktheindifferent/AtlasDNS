@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="10">
+<title>Atlas DNS — Health Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+header{background:#1e293b;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #334155}
+header h1{font-size:1.2rem;font-weight:700;color:#38bdf8;display:flex;align-items:center;gap:.5rem}
+.pulse{width:.6rem;height:.6rem;border-radius:50%;background:#34d399;display:inline-block;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+header nav a{color:#94a3b8;text-decoration:none;margin-left:1rem;font-size:.875rem}
+header nav a:hover{color:#e2e8f0}
+.refresh-note{font-size:.75rem;color:#475569}
+main{max-width:1200px;margin:0 auto;padding:1.5rem}
+
+/* ── Stat cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem}
+.card{background:#1e293b;border-radius:.75rem;padding:1.25rem 1.5rem;border:1px solid #334155;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;opacity:.06;pointer-events:none}
+.card.green::before{background:#34d399}
+.card.blue::before{background:#38bdf8}
+.card.red::before{background:#f87171}
+.card.yellow::before{background:#fbbf24}
+.card.purple::before{background:#a78bfa}
+.card .label{font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+.card .value{font-size:2rem;font-weight:700;color:#f1f5f9;line-height:1}
+.card .sub{font-size:.75rem;color:#64748b;margin-top:.4rem}
+.card .value.green{color:#34d399}
+.card .value.red{color:#f87171}
+.card .value.yellow{color:#fbbf24}
+.card .value.blue{color:#38bdf8}
+
+/* ── Section panels ── */
+section{background:#1e293b;border-radius:.75rem;border:1px solid #334155;margin-bottom:1.5rem;overflow:hidden}
+section h2{font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:.875rem 1.25rem;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+
+/* ── Bar chart ── */
+.bar-list{padding:.875rem 1.25rem}
+.bar-item{margin-bottom:.75rem}
+.bar-item:last-child{margin-bottom:0}
+.bar-item .bar-label{display:flex;justify-content:space-between;font-size:.8125rem;margin-bottom:.3rem}
+.bar-item .bar-label span:first-child{color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+.bar-item .bar-label span.cnt{color:#64748b;flex-shrink:0}
+.bar-track{background:#0f172a;border-radius:9999px;height:.375rem;overflow:hidden}
+.bar-fill{height:100%;border-radius:9999px;transition:width .4s ease}
+.bar-fill.blocked{background:#f87171}
+.bar-fill.allowed{background:#38bdf8}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse}
+table th{font-size:.7rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;padding:.6rem 1.25rem;text-align:left;border-bottom:1px solid #334155}
+table td{padding:.6rem 1.25rem;font-size:.8125rem;border-bottom:1px solid #0f172a40;color:#cbd5e1}
+table tr:last-child td{border-bottom:none}
+table tr:hover td{background:#0f172a50}
+.badge{display:inline-block;padding:.125rem .5rem;border-radius:9999px;font-size:.7rem;font-weight:500}
+.badge.ok{background:#14532d;color:#34d399}
+.badge.blocked-badge{background:#3b1f1f;color:#fca5a5}
+.badge.cached{background:#1e3a5f;color:#60a5fa}
+.empty{padding:2rem;text-align:center;color:#475569;font-size:.875rem}
+
+/* ── Latency histogram ── */
+.hist{display:flex;align-items:flex-end;gap:3px;height:60px;padding:0 1.25rem 0}
+.hist-bar{flex:1;background:#334155;border-radius:2px 2px 0 0;position:relative;min-height:4px;transition:height .3s ease}
+.hist-bar:hover{background:#38bdf8}
+.hist-bar .tooltip{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#0f172a;border:1px solid #334155;border-radius:4px;padding:.25rem .5rem;font-size:.7rem;white-space:nowrap;color:#e2e8f0;z-index:10}
+.hist-bar:hover .tooltip{display:block}
+.hist-labels{display:flex;justify-content:space-between;font-size:.65rem;color:#475569;padding:.25rem 1.25rem .875rem}
+
+/* ── Status indicators ── */
+.status-row{display:flex;align-items:center;gap:.75rem;padding:.75rem 1.25rem;border-bottom:1px solid #0f172a40}
+.status-row:last-child{border-bottom:none}
+.status-dot{width:.6rem;height:.6rem;border-radius:50%;flex-shrink:0}
+.status-dot.up{background:#34d399}
+.status-dot.down{background:#f87171}
+.status-dot.warn{background:#fbbf24}
+.status-name{flex:1;font-size:.875rem;color:#e2e8f0}
+.status-val{font-size:.8rem;color:#64748b}
+
+footer{text-align:center;color:#334155;font-size:.7rem;padding:1.5rem;margin-top:1rem}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="pulse"></span> Atlas DNS</h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/authority">Zones</a>
+    <a href="/cache">Cache</a>
+    <a href="/logs">Logs</a>
+    <a href="/blocklists">Blocklists</a>
+  </nav>
+  <span class="refresh-note">Auto-refreshes every 10 s</span>
+</header>
+
+<main>
+
+  <!-- ── Top stat cards ── -->
+  <div class="cards">
+    <div class="card blue">
+      <div class="label">Uptime</div>
+      <div class="value blue" style="font-size:1.4rem">{{uptime}}</div>
+      <div class="sub">since last restart</div>
+    </div>
+    <div class="card green">
+      <div class="label">Queries / sec</div>
+      <div class="value green">{{queries_per_sec}}</div>
+      <div class="sub">{{total_queries}} total today</div>
+    </div>
+    <div class="card red">
+      <div class="label">Blocked today</div>
+      <div class="value red">{{blocked_today}}</div>
+      <div class="sub">{{block_rate_pct}}% block rate</div>
+    </div>
+    <div class="card yellow">
+      <div class="label">Cache hit rate</div>
+      <div class="value yellow">{{cache_hit_rate}}%</div>
+      <div class="sub">{{cache_entries}} entries cached</div>
+    </div>
+    <div class="card purple">
+      <div class="label">Avg latency</div>
+      <div class="value" style="color:#a78bfa">{{avg_latency_ms}} ms</div>
+      <div class="sub">resolver round-trip</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+
+    <!-- ── Top blocked domains ── -->
+    <section>
+      <h2>Top Blocked Domains <span style="color:#f87171">{{blocked_domain_count}} unique</span></h2>
+      {{#if top_blocked_domains}}
+      <div class="bar-list">
+        {{#each top_blocked_domains}}
+        <div class="bar-item">
+          <div class="bar-label">
+            <span>{{domain}}</span>
+            <span class="cnt">{{count}}</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill blocked" style="width:{{bar_pct}}%"></div>
+          </div>
+        </div>
+        {{/each}}
+      </div>
+      {{else}}
+      <div class="empty">No blocked queries yet</div>
+      {{/if}}
+    </section>
+
+    <!-- ── Top allowed domains ── -->
+    <section>
+      <h2>Top Queried Domains</h2>
+      {{#if top_allowed_domains}}
+      <div class="bar-list">
+        {{#each top_allowed_domains}}
+        <div class="bar-item">
+          <div class="bar-label">
+            <span>{{domain}}</span>
+            <span class="cnt">{{count}}</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill allowed" style="width:{{bar_pct}}%"></div>
+          </div>
+        </div>
+        {{/each}}
+      </div>
+      {{else}}
+      <div class="empty">No queries recorded yet</div>
+      {{/if}}
+    </section>
+
+  </div>
+
+  <!-- ── Resolver latency histogram ── -->
+  <section>
+    <h2>Resolver Latency Distribution (last 1 000 queries)</h2>
+    <div class="hist">
+      {{#each latency_buckets}}
+      <div class="hist-bar" style="height:{{height_pct}}%">
+        <div class="tooltip">{{label}}: {{count}}</div>
+      </div>
+      {{/each}}
+    </div>
+    <div class="hist-labels">
+      <span>&lt;1 ms</span>
+      <span>5 ms</span>
+      <span>10 ms</span>
+      <span>25 ms</span>
+      <span>50 ms</span>
+      <span>100 ms</span>
+      <span>250 ms</span>
+      <span>500 ms</span>
+      <span>&gt;500 ms</span>
+    </div>
+  </section>
+
+  <!-- ── Service status ── -->
+  <section>
+    <h2>Service Status</h2>
+    <div class="status-row">
+      <div class="status-dot up"></div>
+      <div class="status-name">DNS (UDP/TCP port {{dns_port}})</div>
+      <div class="status-val">{{server_udp_queries}} UDP · {{server_tcp_queries}} TCP queries</div>
+    </div>
+    <div class="status-row">
+      <div class="status-dot {{#if web_ok}}up{{else}}down{{/if}}"></div>
+      <div class="status-name">Web UI / API (port {{web_port}})</div>
+      <div class="status-val">{{version}}</div>
+    </div>
+    {{#if doh_enabled}}
+    <div class="status-row">
+      <div class="status-dot up"></div>
+      <div class="status-name">DNS-over-HTTPS (DoH)</div>
+      <div class="status-val">enabled</div>
+    </div>
+    {{/if}}
+    {{#if dot_enabled}}
+    <div class="status-row">
+      <div class="status-dot up"></div>
+      <div class="status-name">DNS-over-TLS (DoT)</div>
+      <div class="status-val">enabled</div>
+    </div>
+    {{/if}}
+  </section>
+
+  <!-- ── Recent queries ── -->
+  <section>
+    <h2>Recent Queries <span style="color:#475569;font-weight:400">(last 20)</span></h2>
+    {{#if recent_queries}}
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Client</th>
+          <th>Domain</th>
+          <th>Type</th>
+          <th>Response</th>
+          <th>Latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each recent_queries}}
+        <tr>
+          <td style="color:#475569">{{timestamp}}</td>
+          <td>{{client_ip}}</td>
+          <td style="font-family:monospace">{{domain}}</td>
+          <td><span class="badge cached">{{query_type}}</span></td>
+          <td>
+            {{#if blocked}}
+            <span class="badge blocked-badge">BLOCKED</span>
+            {{else}}
+            <span class="badge ok">{{response}}</span>
+            {{/if}}
+          </td>
+          <td style="color:#64748b">{{latency_ms}} ms</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    {{else}}
+    <div class="empty">No queries recorded yet</div>
+    {{/if}}
+  </section>
+
+</main>
+<footer>Atlas DNS {{version}} · <a href="/dashboard" style="color:#334155">refresh now</a></footer>
+</body>
+</html>
