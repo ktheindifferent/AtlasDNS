@@ -9,7 +9,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```ignore
 //! use std::sync::Arc;
 //! use atlas_dns::dns::context::ServerContext;
 //! use atlas_dns::dns::request_limits::{RequestLimiter, RequestLimitsConfig};

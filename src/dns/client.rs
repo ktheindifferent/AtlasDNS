@@ -517,7 +517,7 @@ pub mod tests {
 
     #[test]
     pub fn test_udp_client() {
-        let client = DnsNetworkClient::new(31456).expect("Failed to create test client");
+        let client = DnsNetworkClient::new(0).expect("Failed to create test client");
         client.run().unwrap();
 
         let res = client
