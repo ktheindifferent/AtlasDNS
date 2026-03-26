@@ -693,6 +693,7 @@ pub mod tests {
             dot_enabled: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
+            split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
         })
     }
 
