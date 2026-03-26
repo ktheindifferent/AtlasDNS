@@ -1336,6 +1336,23 @@ impl DnsPacket {
         }
     }
 
+    /// Returns `true` if the EDNS DO (DNSSEC OK) bit is set in the request.
+    ///
+    /// The DO bit lives in bit 15 of the Z field inside the OPT record's
+    /// "extended TTL" (RFC 3225 §3).  The TTL field of an OPT record is
+    /// encoded as:
+    ///   [extended RCODE (8)] [version (8)] [Z flags (16)]
+    /// and the DO bit is the most-significant bit of the Z flags, i.e.
+    /// bit 15 of the lower 16 bits → `flags & 0x8000`.
+    pub fn has_do_bit(&self) -> bool {
+        self.resources.iter()
+            .chain(self.answers.iter())
+            .any(|r| match r {
+                DnsRecord::Opt { flags, .. } => (flags & 0x8000) != 0,
+                _ => false,
+            })
+    }
+
     pub fn get_ttl_from_soa(&self) -> Option<u32> {
         for answer in &self.authorities {
             if let DnsRecord::Soa { minimum, .. } = *answer {

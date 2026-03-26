@@ -559,13 +559,15 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 start_time.elapsed().as_millis() as u64);
         }
         
-        // Perform DNSSEC validation (AD/CD bit handling per RFC 4035 §3.2)
+        // Perform DNSSEC validation (AD/CD/DO bit handling per RFC 4035 §3.2,
+        // RFC 3225 §3, and RFC 6840 §5.7).
         //
         // • dnssec_enabled controls whether we validate at all.
-        // • checking_disabled (CD bit) signals the client wants raw data;
-        //   we skip validation but still return the records.
-        // • Strict mode: SERVFAIL for both BOGUS and Unsigned (unsigned-is-insecure).
-        // • Opportunistic: BOGUS passes through with warning; Unsigned is allowed.
+        // • checking_disabled (CD bit): client wants raw data; skip validation.
+        // • DO bit set in request OPT record: client understands DNSSEC;
+        //   BOGUS responses MUST return SERVFAIL (RFC 4035 §5.5).
+        // • Strict mode: additionally SERVFAIL for unsigned responses.
+        let do_bit_set = request.has_do_bit();
         let dnssec_status = if context.dnssec_enabled && !request.header.checking_disabled {
             let mode = context.authority.get_validation_mode();
             let is_strict = mode == ValidationMode::Strict;
@@ -605,8 +607,16 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                         Some("secure".to_string())
                     }
                     Ok(ChainValidationResult::ValidationFailed) => {
-                        if is_strict {
-                            log::warn!("DNSSEC strict: returning SERVFAIL for BOGUS response");
+                        // RFC 4035 §5.5: a security-aware recursive server MUST
+                        // return SERVFAIL when it has proof that the response is
+                        // BOGUS.  We enforce this whenever the client set the DO
+                        // bit OR the server is running in Strict mode.
+                        if is_strict || do_bit_set {
+                            log::warn!(
+                                "DNSSEC: returning SERVFAIL for BOGUS response \
+                                 (do_bit={}, strict={})",
+                                do_bit_set, is_strict
+                            );
                             packet.header.rescode = ResultCode::SERVFAIL;
                             packet.answers.clear();
                             packet.authorities.clear();
@@ -621,6 +631,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                     }
                     Ok(ChainValidationResult::Unsigned) => {
                         // In Strict mode, an unsigned response is also unacceptable.
+                        // If DO bit is set but response is unsigned, that is
+                        // permitted (the zone may simply not be DNSSEC-signed);
+                        // only Strict mode forces SERVFAIL here.
                         if is_strict {
                             log::warn!("DNSSEC strict: returning SERVFAIL for unsigned response");
                             packet.header.rescode = ResultCode::SERVFAIL;

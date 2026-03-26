@@ -161,29 +161,71 @@ pub trait DnsResolver {
 
         let mut result = self.perform(qname, qtype)?;
 
-        // DNSSEC chain-of-trust validation
+        // DNSSEC chain-of-trust validation (full iterative chain with on-demand fetching)
         {
+            use crate::dns::dnssec::ChainValidationResult;
+            use crate::dns::context::ResolveStrategy;
+
             let context = self.get_context();
             if context.dnssec_enabled {
                 let mode = context.dnssec_validation_mode;
                 let validator = ChainValidator::with_root_ksk(mode);
-                match validator.validate_chain_for_query(&result, qname, qtype) {
-                    Ok(status) => {
-                        result.dnssec_status = Some(status);
-                        log::debug!("DNSSEC validation for {} {:?}: {}", qname, qtype, status);
+
+                // Determine the upstream server to use for fetching missing
+                // DNSKEY / DS records during chain validation.
+                let upstream: Option<(String, u16)> = match &context.resolve_strategy {
+                    ResolveStrategy::Forward { host, port } =>
+                        Some((host.clone(), *port)),
+                    ResolveStrategy::DohForward { fallback_host, fallback_port, .. } =>
+                        Some((fallback_host.clone(), *fallback_port)),
+                    // Recursive mode: use a well-known public resolver to
+                    // fetch DS/DNSKEY records for chain validation.
+                    ResolveStrategy::Recursive =>
+                        Some(("8.8.8.8".to_string(), 53)),
+                };
+
+                // Build a fetch closure that uses the server's DNS client.
+                let chain_result = if let Some((host, port)) = upstream {
+                    let fetch = |name: &str, qt: QueryType| -> Option<DnsPacket> {
+                        context.client
+                            .send_query(name, qt, (host.as_str(), port), true)
+                            .ok()
+                    };
+                    validator.validate_chain_with_fetcher(&result, qname, qtype, fetch)
+                } else {
+                    // Fallback: validate only what's in the packet.
+                    validator.validate_packet_rrsigs(&result)
+                };
+
+                // Also run NSEC/NSEC3 denial-of-existence check for negative responses.
+                let is_negative = result.header.rescode == ResultCode::NXDOMAIN
+                    || result.answers.is_empty();
+                if is_negative {
+                    let denial_ok = validator.validate_nxdomain_proof(&result, qname, qtype);
+                    log::debug!("DNSSEC: denial proof for {} {:?}: {}", qname, qtype, denial_ok);
+                }
+
+                let status = match chain_result {
+                    ChainValidationResult::Authenticated => {
+                        log::info!("DNSSEC full-chain: SECURE for {} {:?}", qname, qtype);
+                        ValidationStatus::Secure
                     }
-                    Err(e) => {
-                        // Strict mode returns Err on BOGUS; other modes should not reach here.
-                        log::warn!("DNSSEC chain validation failed for {} {:?}: {}", qname, qtype, e);
-                        result.dnssec_status = Some(ValidationStatus::Bogus);
+                    ChainValidationResult::Unsigned => {
+                        log::debug!("DNSSEC full-chain: unsigned for {} {:?}", qname, qtype);
+                        ValidationStatus::Indeterminate
+                    }
+                    ChainValidationResult::ValidationFailed => {
+                        log::warn!("DNSSEC full-chain: BOGUS for {} {:?}", qname, qtype);
                         if mode == ValidationMode::Strict {
                             return Err(ResolveError::Io(std::io::Error::new(
                                 std::io::ErrorKind::InvalidData,
-                                format!("DNSSEC validation failed: {}", e),
+                                format!("DNSSEC full-chain validation failed for {}", qname),
                             )));
                         }
+                        ValidationStatus::Bogus
                     }
-                }
+                };
+                result.dnssec_status = Some(status);
             }
         }
 

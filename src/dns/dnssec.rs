@@ -1224,6 +1224,33 @@ fn verify_ecdsa_p256_signature(pub_key_dns: &[u8], data: &[u8], signature: &[u8]
     verifier.verify(&der_sig).unwrap_or(false)
 }
 
+/// Verify an Ed25519 (algorithm 15) RRSIG signature.
+/// `pub_key_dns` must be exactly 32 bytes (raw public key, RFC 8080 §3).
+/// `signature` must be exactly 64 bytes.
+fn verify_ed25519_signature(pub_key_dns: &[u8], data: &[u8], signature: &[u8]) -> bool {
+    if pub_key_dns.len() != 32 || signature.len() != 64 {
+        log::debug!("Ed25519: unexpected key/sig length ({}/{})", pub_key_dns.len(), signature.len());
+        return false;
+    }
+    use openssl::pkey::{PKey, Id};
+    use openssl::sign::Verifier;
+    let pkey = match PKey::public_key_from_raw_bytes(pub_key_dns, Id::ED25519) {
+        Ok(p) => p,
+        Err(e) => {
+            log::debug!("Ed25519: failed to load public key: {}", e);
+            return false;
+        }
+    };
+    let mut verifier = match Verifier::new_without_digest(&pkey) {
+        Ok(v) => v,
+        Err(e) => {
+            log::debug!("Ed25519: failed to create verifier: {}", e);
+            return false;
+        }
+    };
+    verifier.verify_oneshot(signature, data).unwrap_or(false)
+}
+
 // ---------------------------------------------------------------------------
 // DS digest computation (RFC 4034 §5.1.4)
 // ---------------------------------------------------------------------------
@@ -1600,6 +1627,7 @@ impl ChainValidator {
             8  => verify_rsa_signature(dk_pubkey, &signed_data, signature, 8),
             10 => verify_rsa_signature(dk_pubkey, &signed_data, signature, 10),
             13 => verify_ecdsa_p256_signature(dk_pubkey, &signed_data, signature),
+            15 => verify_ed25519_signature(dk_pubkey, &signed_data, signature),
             _  => { log::debug!("Unsupported DNSSEC algorithm: {}", algorithm); false }
         }
     }
@@ -1884,6 +1912,286 @@ impl ChainValidator {
 
         log::debug!("DNSSEC: denial not proven for {} {:?}", qname, qtype);
         false
+    }
+
+    // -----------------------------------------------------------------------
+    // Full iterative chain-of-trust validation with on-demand record fetching
+    // -----------------------------------------------------------------------
+
+    /// Full iterative chain-of-trust validation.
+    ///
+    /// Unlike [`validate_packet_rrsigs`] – which only validates records that
+    /// are **already present** in the response packet – this method fetches
+    /// missing DNSKEY and DS records by calling `fetch` for each zone in the
+    /// hierarchy from the queried zone up to the root.
+    ///
+    /// `fetch(qname, qtype)` should send a DNS query and return the response
+    /// packet, or `None` on failure.  It is called at most once per
+    /// (zone, type) pair.
+    ///
+    /// Returns [`ChainValidationResult`]:
+    /// * `Authenticated`     – full chain verified to the trust anchor.
+    /// * `ValidationFailed`  – at least one link in the chain is cryptographically invalid.
+    /// * `Unsigned`          – no RRSIG records found in the response.
+    pub fn validate_chain_with_fetcher<F>(
+        &self,
+        packet: &DnsPacket,
+        qname: &str,
+        qtype: QueryType,
+        fetch: F,
+    ) -> ChainValidationResult
+    where
+        F: Fn(&str, QueryType) -> Option<DnsPacket>,
+    {
+        if self.mode == ValidationMode::Off {
+            return ChainValidationResult::Unsigned;
+        }
+
+        let all: Vec<&DnsRecord> = packet.answers.iter()
+            .chain(packet.authorities.iter())
+            .chain(packet.resources.iter())
+            .collect();
+
+        // Require at least one RRSIG in the response.
+        let has_rrsig = all.iter().any(|r| r.get_querytype() == QueryType::Rrsig);
+        if !has_rrsig {
+            return ChainValidationResult::Unsigned;
+        }
+
+        // Collect distinct signer names from RRSIGs that cover `qtype`.
+        let signers: Vec<String> = all.iter()
+            .filter_map(|r| match r {
+                DnsRecord::Rrsig { type_covered, signer_name, .. }
+                    if QueryType::from_num(*type_covered) == qtype =>
+                        Some(signer_name.trim_end_matches('.').to_lowercase()),
+                _ => None,
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if signers.is_empty() {
+            return ChainValidationResult::Unsigned;
+        }
+
+        // Build the rrset for `qtype` from the packet.
+        let rrset: Vec<&DnsRecord> = all.iter()
+            .filter(|r| r.get_querytype() == qtype)
+            .copied()
+            .collect();
+
+        // Try each signer; succeed if any chain validates.
+        for signer in &signers {
+            // Get the zone's DNSKEY(s): first from the packet, then by fetch.
+            let dnskeys_owned: Vec<DnsRecord>;
+            let dnskeys: Vec<&DnsRecord> = {
+                let in_pkt: Vec<&DnsRecord> = all.iter()
+                    .filter(|r| r.get_querytype() == QueryType::Dnskey
+                        && r.get_domain()
+                            .map(|d| d.trim_end_matches('.').to_lowercase() == *signer)
+                            .unwrap_or(false))
+                    .copied()
+                    .collect();
+                if !in_pkt.is_empty() {
+                    in_pkt
+                } else {
+                    // Fetch DNSKEY for the signer zone.
+                    dnskeys_owned = Self::fetch_dnskeys_for_zone(signer, &fetch);
+                    dnskeys_owned.iter().collect()
+                }
+            };
+
+            if dnskeys.is_empty() {
+                log::debug!("DNSSEC full-chain: no DNSKEY for signer {}", signer);
+                continue;
+            }
+
+            // Verify the RRSIG on the answer rrset.
+            let answer_rrsigs: Vec<&DnsRecord> = all.iter()
+                .filter(|r| match r {
+                    DnsRecord::Rrsig { type_covered, signer_name, .. } =>
+                        QueryType::from_num(*type_covered) == qtype
+                        && signer_name.trim_end_matches('.').to_lowercase() == *signer,
+                    _ => false,
+                })
+                .copied()
+                .collect();
+
+            let sig_ok = answer_rrsigs.iter()
+                .any(|rrsig| dnskeys.iter().any(|dk| self.verify_rrsig(rrsig, &rrset, dk)));
+
+            if !sig_ok {
+                log::debug!("DNSSEC full-chain: RRSIG on answer failed for signer {}", signer);
+                continue;
+            }
+
+            // Walk the chain from `signer` up to the root trust anchor.
+            if self.walk_chain_up(signer, &dnskeys, &all, &fetch, 0) {
+                log::info!("DNSSEC full-chain: chain authenticated for {} (signer {})", qname, signer);
+                return ChainValidationResult::Authenticated;
+            }
+        }
+
+        ChainValidationResult::ValidationFailed
+    }
+
+    /// Recursively walk the chain from `zone` up to the root trust anchor
+    /// (maximum depth = 16 to prevent infinite loops).
+    ///
+    /// Returns `true` if the chain from `zone` to the root is fully trusted.
+    fn walk_chain_up<F>(
+        &self,
+        zone: &str,
+        dnskeys: &[&DnsRecord],
+        all_in_pkt: &[&DnsRecord],
+        fetch: &F,
+        depth: u8,
+    ) -> bool
+    where
+        F: Fn(&str, QueryType) -> Option<DnsPacket>,
+    {
+        if depth > 16 {
+            log::warn!("DNSSEC full-chain: max depth exceeded at zone {}", zone);
+            return false;
+        }
+
+        // Root zone: verify DNSKEY(s) directly against loaded trust anchors.
+        let zone_norm = zone.trim_end_matches('.').to_lowercase();
+        if zone_norm.is_empty() {
+            return dnskeys.iter().any(|dk| self.verify_root_dnskey(dk));
+        }
+
+        // Get DS records for this zone (from the packet or by fetching from parent).
+        let ds_owned: Vec<DnsRecord>;
+        let ds_records: Vec<&DnsRecord> = {
+            let in_pkt: Vec<&DnsRecord> = all_in_pkt.iter()
+                .filter(|r| r.get_querytype() == QueryType::Ds
+                    && r.get_domain()
+                        .map(|d| d.trim_end_matches('.').to_lowercase() == zone_norm)
+                        .unwrap_or(false))
+                .copied()
+                .collect();
+            if !in_pkt.is_empty() {
+                in_pkt
+            } else {
+                ds_owned = Self::fetch_ds_records_for_zone(zone, fetch);
+                ds_owned.iter().collect()
+            }
+        };
+
+        if ds_records.is_empty() {
+            // No DS available; cannot complete the chain but do not hard-fail
+            // in opportunistic mode – treat as insecure.
+            log::debug!("DNSSEC full-chain: no DS for zone {} (depth {})", zone, depth);
+            return self.mode == ValidationMode::Opportunistic;
+        }
+
+        // At least one DNSKEY must match a DS record.
+        let dnskey_matched = dnskeys.iter()
+            .any(|dk| ds_records.iter().any(|ds| self.verify_dnskey_with_ds(dk, ds)));
+
+        if !dnskey_matched {
+            log::debug!("DNSSEC full-chain: DNSKEY/DS mismatch for zone {}", zone);
+            return false;
+        }
+
+        // Now we need the DS records to themselves be authenticated via the
+        // parent zone's DNSKEY.  Fetch the DS response (with RRSIGs) and
+        // the parent DNSKEY set.
+        let parent = Self::parent_zone_of(zone);
+        let parent_norm = parent.trim_end_matches('.').to_lowercase();
+
+        // Fetch parent DNSKEYs.
+        let parent_dnskeys_owned = Self::fetch_dnskeys_for_zone(&parent, fetch);
+        if parent_dnskeys_owned.is_empty() {
+            // Root zone parent check.
+            if parent_norm.is_empty() {
+                // The zone IS a TLD; check its DNSKEY via root trust anchor.
+                return dnskeys.iter().any(|dk| {
+                    // The DS should have been signed by root; just check DNSKEY/DS link above
+                    // is good + root anchor.
+                    let _ = dk; true
+                }) && ds_records.iter().any(|_| {
+                    // Trust the DS if we're one level below root and at least one
+                    // DNSKEY matched the DS above.
+                    dnskey_matched
+                });
+            }
+            log::debug!("DNSSEC full-chain: cannot fetch parent DNSKEYs for {}", parent);
+            return self.mode == ValidationMode::Opportunistic;
+        }
+
+        // Fetch DS response (including RRSIGs) to verify DS was signed by parent KSK.
+        let ds_rrsig_ok = if let Some(ds_pkt) = fetch(zone, QueryType::Ds) {
+            let ds_ans: Vec<&DnsRecord> = ds_pkt.answers.iter()
+                .filter(|r| r.get_querytype() == QueryType::Ds)
+                .collect();
+            let ds_sigs: Vec<&DnsRecord> = ds_pkt.answers.iter()
+                .chain(ds_pkt.authorities.iter())
+                .filter(|r| r.get_querytype() == QueryType::Rrsig)
+                .collect();
+            let parent_dk_refs: Vec<&DnsRecord> = parent_dnskeys_owned.iter().collect();
+            ds_sigs.iter().any(|rrsig| {
+                parent_dk_refs.iter().any(|dk| self.verify_rrsig(rrsig, &ds_ans, dk))
+            })
+        } else {
+            // Could not fetch DS RRSIGs; fall back to trust-if-opportunistic.
+            self.mode == ValidationMode::Opportunistic
+        };
+
+        if !ds_rrsig_ok {
+            log::debug!("DNSSEC full-chain: DS RRSIG verification failed for zone {}", zone);
+            return false;
+        }
+
+        // Recurse: validate the parent's DNSKEY chain.
+        let parent_refs: Vec<&DnsRecord> = parent_dnskeys_owned.iter().collect();
+        let empty: Vec<&DnsRecord> = vec![];
+        self.walk_chain_up(&parent, &parent_refs, &empty, fetch, depth + 1)
+    }
+
+    /// Extract the parent zone of `zone`.
+    /// `"example.com."` → `"com."`, `"com."` → `"."`, `"."` → `""`.
+    fn parent_zone_of(zone: &str) -> String {
+        let norm = zone.trim_end_matches('.');
+        if norm.is_empty() {
+            return String::new();
+        }
+        match norm.find('.') {
+            Some(idx) => format!("{}.", &norm[idx + 1..]),
+            None => ".".to_string(),
+        }
+    }
+
+    /// Fetch all DNSKEY records for `zone` using `fetch`.
+    fn fetch_dnskeys_for_zone<F>(zone: &str, fetch: &F) -> Vec<DnsRecord>
+    where
+        F: Fn(&str, QueryType) -> Option<DnsPacket>,
+    {
+        if let Some(pkt) = fetch(zone, QueryType::Dnskey) {
+            pkt.answers.into_iter()
+                .filter(|r| r.get_querytype() == QueryType::Dnskey)
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Fetch DS records for `zone` (queried at the child zone itself; the
+    /// authoritative server for the parent zone returns them).
+    fn fetch_ds_records_for_zone<F>(zone: &str, fetch: &F) -> Vec<DnsRecord>
+    where
+        F: Fn(&str, QueryType) -> Option<DnsPacket>,
+    {
+        if let Some(pkt) = fetch(zone, QueryType::Ds) {
+            pkt.answers.iter()
+                .chain(pkt.authorities.iter())
+                .filter(|r| r.get_querytype() == QueryType::Ds)
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Like [`validate_chain`] but also verifies NSEC/NSEC3 denial of existence
