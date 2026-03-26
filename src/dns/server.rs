@@ -389,13 +389,19 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             );
             
             log::info!("Security blocked query from {:?}: {:?}", ip, security_result.reason);
-            
+
+            // Log to query log
+            if let Some(ref ql) = context.query_log {
+                let ip_str = ip.to_string();
+                ql.log_query(&ip_str, &domain, &query_type, None, true, start_time.elapsed().as_millis() as i64);
+            }
+
             // Add performance monitoring for security blocked queries
             let elapsed = start_time.elapsed();
             sentry::configure_scope(|scope| {
                 scope.set_extra("query_duration_ms", (elapsed.as_millis() as u64).into());
             });
-            
+
             return packet;
         }
     }
@@ -518,6 +524,17 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         &query_type,
         cache_hit
     );
+
+    // Log to query log
+    if let (Some(ref ql), Some(ip)) = (&context.query_log, client_ip) {
+        let ip_str = ip.to_string();
+        let resolved = packet.answers.iter().find_map(|r| match r {
+            crate::dns::protocol::DnsRecord::A { addr, .. } => Some(addr.to_string()),
+            crate::dns::protocol::DnsRecord::Aaaa { addr, .. } => Some(addr.to_string()),
+            _ => None,
+        });
+        ql.log_query(&ip_str, &domain, &query_type, resolved.as_deref(), false, start_time.elapsed().as_millis() as i64);
+    }
 
     // Add performance monitoring to Sentry
     let elapsed = start_time.elapsed();

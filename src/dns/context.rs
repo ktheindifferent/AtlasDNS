@@ -35,6 +35,7 @@ use crate::storage::PersistentStorage;
 use crate::dns::blocklist_updater::BlocklistUpdater;
 use crate::dns::captive_portal::CaptivePortal;
 use crate::dns::device_tracker::DeviceTracker;
+use crate::dns::query_log::QueryLog;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -159,6 +160,8 @@ pub struct ServerContext {
     pub schedule_store: Option<Arc<crate::dns::schedule::ScheduleStore>>,
     /// DNS rebinding attack protection.
     pub rebinding_protection: Arc<RebindingProtection>,
+    /// Optional SQLite-backed DNS query log with per-client policies.
+    pub query_log: Option<Arc<QueryLog>>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -276,6 +279,7 @@ impl Default for ServerContext {
             client_rules_store: None,
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
+            query_log: None,
         }
     }
 }
@@ -359,6 +363,7 @@ impl ServerContext {
             client_rules_store: None,
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
+            query_log: None,
         })
     }
 
@@ -630,6 +635,7 @@ pub mod tests {
             client_rules_store: None,
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
+            query_log: None,
         })
     }
 

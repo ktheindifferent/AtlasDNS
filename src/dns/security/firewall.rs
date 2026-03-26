@@ -805,10 +805,93 @@ impl DnsFirewall {
     /// Load blocklist from URL
     fn load_blocklist_from_url(&self, url: &str) -> Result<Vec<String>, DnsError> {
         log::debug!("Loading blocklist from URL: {}", url);
-        
-        // For now, return empty list - could be implemented with reqwest
-        log::warn!("URL-based blocklist loading not yet implemented: {}", url);
-        Ok(Vec::new())
+
+        let url_owned = url.to_string();
+        // Spawn a dedicated thread so this works regardless of whether we're
+        // already inside a Tokio async context (avoids "runtime within runtime").
+        let handle = std::thread::spawn(move || {
+            reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(60))
+                .user_agent("AtlasDNS/1.0 blocklist-fetcher")
+                .build()
+                .and_then(|c| c.get(&url_owned).send())
+                .and_then(|r| r.text())
+        });
+
+        let text = handle
+            .join()
+            .map_err(|_| DnsError::InvalidInput)?
+            .map_err(|_| DnsError::InvalidInput)?;
+
+        let mut domains = Vec::new();
+        for (line_num, line) in text.lines().enumerate() {
+            let line = line.trim();
+
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+                continue;
+            }
+
+            // ABP / Adblock Plus format: ||domain.com^
+            let domain = if line.starts_with("||") {
+                let stripped = line.trim_start_matches("||");
+                let stripped = stripped.trim_end_matches('^');
+                stripped.split('/').next().unwrap_or(stripped)
+            } else if line.starts_with("0.0.0.0 ") || line.starts_with("127.0.0.1 ") {
+                // Hosts file format: 0.0.0.0 domain.com or 127.0.0.1 domain.com
+                match line.split_whitespace().nth(1) {
+                    Some(d) => d,
+                    None => continue,
+                }
+            } else if line.contains(' ') || line.contains('\t') {
+                // RPZ or other space-separated – take first token if it looks like a domain
+                match line.split_whitespace().next() {
+                    Some(d) if d.contains('.') => d,
+                    _ => continue,
+                }
+            } else {
+                // Plain domain list
+                line
+            };
+
+            // Strip optional trailing dot (FQDN)
+            let domain = domain.trim_end_matches('.');
+
+            if self.is_valid_domain(domain) {
+                domains.push(domain.to_lowercase());
+            } else if !domain.is_empty() {
+                log::trace!("Skipping invalid domain on line {}: {}", line_num + 1, domain);
+            }
+        }
+
+        log::info!("Fetched {} domains from {}", domains.len(), url);
+        Ok(domains)
+    }
+
+    /// Add a pre-parsed list of domains to the blocklist
+    pub fn add_domains_to_blocklist(&self, domains: &[String], _category: ThreatCategory) -> Result<(), DnsError> {
+        let new_count = {
+            let mut blocklists = self.blocklists.write();
+            for domain in domains {
+                blocklists.domains.insert(domain.clone());
+            }
+            blocklists.domains.len() as u64
+        };
+        self.metrics.write().total_blocklist_domains = new_count;
+        Ok(())
+    }
+
+    /// Remove a list of domains from the blocklist
+    pub fn remove_from_blocklist(&self, domains: &[String]) -> Result<(), DnsError> {
+        let new_count = {
+            let mut blocklists = self.blocklists.write();
+            for domain in domains {
+                blocklists.domains.remove(domain);
+            }
+            blocklists.domains.len() as u64
+        };
+        self.metrics.write().total_blocklist_domains = new_count;
+        Ok(())
     }
 
     /// Basic domain validation
