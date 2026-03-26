@@ -543,9 +543,100 @@
         </div>
     </div>
 </div>
+<!-- DNS Anomaly Detection Panel -->
+<div class="row g-3 mt-3">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-shield-exclamation me-2 text-warning"></i>
+                    DNS Anomaly Detection
+                    <span id="anomalyBadge" class="badge bg-warning text-dark ms-2">Loading…</span>
+                </h5>
+                <a href="/api/anomalies" class="btn btn-sm btn-outline-warning" target="_blank">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>Raw JSON
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height:380px;overflow-y:auto;">
+                    <table class="table table-sm table-hover mb-0" id="anomalyTable">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th style="width:140px">Time</th>
+                                <th style="width:120px">Client IP</th>
+                                <th>Domain</th>
+                                <th style="width:70px">Type</th>
+                                <th style="width:80px">Score</th>
+                                <th>Signals</th>
+                            </tr>
+                        </thead>
+                        <tbody id="anomalyTableBody">
+                            <tr><td colspan="6" class="text-center text-muted py-3">Loading anomaly data…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {{/inline}}
 
 {{#*inline "header"}}
+<script>
+    function severityClass(score) {
+        if (score >= 0.9) return 'danger';
+        if (score >= 0.7) return 'warning';
+        return 'secondary';
+    }
+
+    function loadAnomalies() {
+        fetch('/api/anomalies?limit=30')
+            .then(r => r.json())
+            .then(data => {
+                const badge = document.getElementById('anomalyBadge');
+                const tbody = document.getElementById('anomalyTableBody');
+                if (!badge || !tbody) return;
+
+                const events = data.events || [];
+                badge.textContent = events.length + ' recent';
+                badge.className = events.length > 0
+                    ? 'badge bg-warning text-dark ms-2'
+                    : 'badge bg-success ms-2';
+
+                if (events.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3"><i class="bi bi-check-circle me-1"></i>No anomalies detected</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = events.map(ev => {
+                    const sc = parseFloat(ev.score).toFixed(2);
+                    const cls = severityClass(ev.score);
+                    const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '—';
+                    const reasons = (ev.reasons || []).join(' · ') || '—';
+                    const shortDomain = ev.domain.length > 45
+                        ? ev.domain.substring(0, 42) + '…'
+                        : ev.domain;
+                    return `<tr>
+                        <td class="text-nowrap small">${ts}</td>
+                        <td class="font-monospace small">${ev.client_ip || '—'}</td>
+                        <td title="${ev.domain}"><span class="font-monospace small">${shortDomain}</span></td>
+                        <td><span class="badge bg-secondary">${ev.query_type}</span></td>
+                        <td><span class="badge bg-${cls} fw-bold">${sc}</span></td>
+                        <td class="small text-muted">${reasons}</td>
+                    </tr>`;
+                }).join('');
+            })
+            .catch(() => {
+                const tbody = document.getElementById('anomalyTableBody');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Unable to load anomaly data</td></tr>';
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAnomalies();
+        setInterval(loadAnomalies, 15000);
+    });
+</script>
 <script>
     // Define global functions that need to be accessible from HTML onclick handlers
     function refreshDashboardData() {
