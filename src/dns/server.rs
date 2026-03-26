@@ -423,9 +423,10 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
     // Analyse the query for DGA, tunneling, and behavioural signals.
     // This runs after security checks so we only score queries we will resolve.
     if let Some(question) = request.questions.first() {
+        let anomaly_qtype = crate::dns::query_type::QueryType::from_num(question.qtype.to_num());
         let (anomaly_score, anomaly_reasons) = context.anomaly_detector.analyze_query(
             &question.name,
-            &question.qtype,
+            &anomaly_qtype,
             client_ip,
         );
 
