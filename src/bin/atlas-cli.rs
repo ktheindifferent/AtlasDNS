@@ -151,6 +151,8 @@ enum ThreatIntelCommands {
         #[arg(short, long, default_value = "20")]
         limit: usize,
     },
+    /// Manually refresh all threat intelligence feeds
+    Refresh,
 }
 
 #[derive(Subcommand)]
@@ -1979,6 +1981,12 @@ async fn handle_threat_intel_commands(
             let pb = show_progress("Fetching threat intel hits...");
             let path = format!("/api/v2/threat-intel/hits?limit={}", limit);
             let data = client.get(&path).await?;
+            pb.finish_and_clear();
+            formatter.print(&data);
+        }
+        ThreatIntelCommands::Refresh => {
+            let pb = show_progress("Refreshing all threat intelligence feeds...");
+            let data = client.post("/api/v2/threat-intel/refresh", serde_json::Value::Null).await?;
             pb.finish_and_clear();
             formatter.print(&data);
         }
