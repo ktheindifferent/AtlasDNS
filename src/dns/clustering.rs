@@ -2,11 +2,15 @@
 //!
 //! Implements:
 //! * Gossip protocol for cluster membership and failure detection
+//! * UDP gossip heartbeat (5s interval, 15s dead timeout)
 //! * Raft-lite leader election (simplified single-round voting)
+//! * Zone transfer: secondaries pull full zone set from primary via TCP
 //! * Blocklist state replication between nodes via HTTP
 //! * Cluster status API with node health, roles, and sync lag
 
 use std::collections::HashMap;
+use std::io::{Read as IoRead, Write as IoWrite};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -90,6 +94,170 @@ impl Default for ClusterConfig {
             primary_url: None,
             replica_urls: Vec::new(),
             sync_interval_secs: 30,
+        }
+    }
+}
+
+// ─────────────────────────── Cluster node / state ───────────────────────────
+
+/// A node in the HA cluster.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterNode {
+    /// Unique node identifier
+    pub id: String,
+    /// Network address (host:port) used for gossip and zone transfer
+    pub addr: String,
+    /// Current role of this node
+    pub role: ClusterRole,
+    /// Unix timestamp of the last heartbeat received from this node
+    pub last_heartbeat: u64,
+}
+
+impl ClusterNode {
+    pub fn new(id: String, addr: String, role: ClusterRole) -> Self {
+        Self {
+            id,
+            addr,
+            role,
+            last_heartbeat: unix_now(),
+        }
+    }
+
+    /// Returns true if the node has been seen within `timeout_secs`.
+    pub fn is_alive(&self, timeout_secs: u64) -> bool {
+        unix_now().saturating_sub(self.last_heartbeat) < timeout_secs
+    }
+}
+
+/// Tracks all known nodes in the cluster.
+#[derive(Debug)]
+pub struct ClusterState {
+    nodes: RwLock<HashMap<String, ClusterNode>>,
+}
+
+impl ClusterState {
+    pub fn new() -> Self {
+        Self {
+            nodes: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Update or insert a node.
+    pub fn upsert(&self, node: ClusterNode) {
+        self.nodes.write().insert(node.id.clone(), node);
+    }
+
+    /// Record a heartbeat from the given node, updating its timestamp and role.
+    pub fn record_heartbeat(&self, node_id: &str, addr: &str, role: ClusterRole) {
+        let mut nodes = self.nodes.write();
+        if let Some(n) = nodes.get_mut(node_id) {
+            n.last_heartbeat = unix_now();
+            n.role = role;
+            n.addr = addr.to_string();
+        } else {
+            nodes.insert(node_id.to_string(), ClusterNode {
+                id: node_id.to_string(),
+                addr: addr.to_string(),
+                role,
+                last_heartbeat: unix_now(),
+            });
+        }
+    }
+
+    /// Return all nodes considered alive within `timeout_secs`.
+    pub fn live_nodes(&self, timeout_secs: u64) -> Vec<ClusterNode> {
+        self.nodes.read().values()
+            .filter(|n| n.is_alive(timeout_secs))
+            .cloned()
+            .collect()
+    }
+
+    /// Return all nodes (alive or dead).
+    pub fn all_nodes(&self) -> Vec<ClusterNode> {
+        self.nodes.read().values().cloned().collect()
+    }
+
+    /// Mark nodes that haven't heartbeated within `timeout_secs` with a stale timestamp.
+    /// Returns the list of node IDs that are now considered dead.
+    pub fn dead_nodes(&self, timeout_secs: u64) -> Vec<String> {
+        self.nodes.read().values()
+            .filter(|n| !n.is_alive(timeout_secs))
+            .map(|n| n.id.clone())
+            .collect()
+    }
+
+    /// Remove a node by ID.
+    pub fn remove(&self, node_id: &str) {
+        self.nodes.write().remove(node_id);
+    }
+}
+
+// ─────────────────────────── UDP heartbeat ──────────────────────────────────
+
+/// Compact UDP heartbeat packet (JSON-encoded for simplicity).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UdpHeartbeat {
+    pub node_id: String,
+    pub addr: String,
+    pub role: ClusterRole,
+    pub term: u64,
+    pub timestamp: u64,
+}
+
+/// Default UDP port used for cluster gossip heartbeats.
+pub const CLUSTER_GOSSIP_PORT: u16 = 5382;
+
+/// Default TCP port used for zone transfer.
+pub const CLUSTER_ZONE_TRANSFER_PORT: u16 = 5383;
+
+// ─────────────────────────── Zone transfer ──────────────────────────────────
+
+/// Represents a full zone snapshot for transfer from primary to secondary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZoneTransferPayload {
+    /// Node ID of the sender (primary)
+    pub from_node_id: String,
+    /// Unix timestamp of this snapshot
+    pub timestamp: u64,
+    /// Serialized zones: each entry is (domain, zone_json)
+    pub zones: Vec<ZoneTransferEntry>,
+}
+
+/// A single zone in a transfer payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZoneTransferEntry {
+    pub domain: String,
+    pub m_name: String,
+    pub r_name: String,
+    pub serial: u32,
+    pub refresh: u32,
+    pub retry: u32,
+    pub expire: u32,
+    pub minimum: u32,
+    /// Records serialized as JSON strings (using DnsRecord's Serialize impl)
+    pub records: Vec<String>,
+}
+
+/// Zone sync status for the status API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZoneSyncStatus {
+    /// Whether zone sync has completed at least once
+    pub synced: bool,
+    /// Unix timestamp of last successful zone sync
+    pub last_sync: u64,
+    /// Number of zones received in last sync
+    pub zone_count: usize,
+    /// Total records received in last sync
+    pub record_count: usize,
+}
+
+impl Default for ZoneSyncStatus {
+    fn default() -> Self {
+        Self {
+            synced: false,
+            last_sync: 0,
+            zone_count: 0,
+            record_count: 0,
         }
     }
 }
@@ -304,6 +472,10 @@ pub struct ClusterManager {
     blocklist_version: Arc<AtomicU64>,
     /// Drain-completed counter
     drain_completed: Arc<AtomicU64>,
+    /// HA cluster node tracker
+    pub cluster_state: Arc<ClusterState>,
+    /// Zone sync status (for secondary nodes)
+    pub zone_sync_status: Arc<RwLock<ZoneSyncStatus>>,
 }
 
 impl ClusterManager {
@@ -320,6 +492,8 @@ impl ClusterManager {
             started_at,
             blocklist_version: Arc::new(AtomicU64::new(0)),
             drain_completed: Arc::new(AtomicU64::new(0)),
+            cluster_state: Arc::new(ClusterState::new()),
+            zone_sync_status: Arc::new(RwLock::new(ZoneSyncStatus::default())),
         }
     }
 
@@ -599,6 +773,259 @@ impl ClusterManager {
             blocklist_version: self.blocklist_version.load(Ordering::SeqCst),
         }
     }
+
+    /// Return the zone sync status (for secondary nodes).
+    pub fn get_zone_sync_status(&self) -> ZoneSyncStatus {
+        self.zone_sync_status.read().clone()
+    }
+
+    /// Update zone sync status after a successful transfer.
+    pub fn record_zone_sync(&self, zone_count: usize, record_count: usize) {
+        let mut status = self.zone_sync_status.write();
+        status.synced = true;
+        status.last_sync = unix_now();
+        status.zone_count = zone_count;
+        status.record_count = record_count;
+    }
+
+    // ── UDP gossip heartbeat ──────────────────────────────────────────────
+
+    /// Send a UDP heartbeat ping to all configured peers.
+    /// Each peer address in config should include the gossip port (e.g. "10.0.0.2:5382").
+    pub fn send_udp_heartbeat(&self) -> Vec<(String, bool)> {
+        let cfg = self.config.read();
+        let hb = UdpHeartbeat {
+            node_id: cfg.node_id.clone(),
+            addr: String::new(), // filled by receiver from packet source
+            role: self.effective_role(),
+            term: self.election.current_term(),
+            timestamp: unix_now(),
+        };
+        let payload = match serde_json::to_vec(&hb) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("[cluster/udp] failed to serialize heartbeat: {}", e);
+                return Vec::new();
+            }
+        };
+        *self.last_heartbeat_sent.write() = unix_now();
+
+        let sock = match UdpSocket::bind("0.0.0.0:0") {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[cluster/udp] failed to bind socket: {}", e);
+                return Vec::new();
+            }
+        };
+        let _ = sock.set_write_timeout(Some(Duration::from_secs(2)));
+
+        let mut results = Vec::with_capacity(cfg.peer_addresses.len());
+        for addr in &cfg.peer_addresses {
+            // Extract host and build gossip address (use gossip port)
+            let gossip_addr = peer_gossip_addr(addr);
+            let ok = sock.send_to(&payload, &gossip_addr).is_ok();
+            log::debug!("[cluster/udp] heartbeat → {}: {}", gossip_addr, if ok { "ok" } else { "FAIL" });
+            results.push((gossip_addr, ok));
+        }
+        results
+    }
+
+    /// Start the UDP heartbeat listener. This should be spawned in a background thread.
+    /// Listens on `bind_addr` (e.g. "0.0.0.0:5382") for incoming heartbeats.
+    pub fn run_udp_listener(&self, bind_addr: &str) {
+        let sock = match UdpSocket::bind(bind_addr) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("[cluster/udp] failed to bind listener on {}: {}", bind_addr, e);
+                return;
+            }
+        };
+        let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+        log::info!("[cluster/udp] heartbeat listener started on {}", bind_addr);
+
+        let mut buf = [0u8; 4096];
+        loop {
+            match sock.recv_from(&mut buf) {
+                Ok((len, src)) => {
+                    if let Ok(hb) = serde_json::from_slice::<UdpHeartbeat>(&buf[..len]) {
+                        let addr = if hb.addr.is_empty() { src.to_string() } else { hb.addr.clone() };
+                        self.cluster_state.record_heartbeat(&hb.node_id, &addr, hb.role);
+                        // Also feed into the existing gossip/peer tracking
+                        self.receive_heartbeat(&hb.node_id, &addr, hb.timestamp, false);
+                        log::debug!("[cluster/udp] heartbeat ← {} ({})", hb.node_id, addr);
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {
+                    // Normal timeout, check for dead nodes
+                    let timeout = self.config.read().peer_timeout_secs;
+                    let dead = self.cluster_state.dead_nodes(timeout);
+                    for nid in &dead {
+                        log::warn!("[cluster/udp] node {} marked dead (no heartbeat for {}s)", nid, timeout);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[cluster/udp] recv error: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Run the background heartbeat sender loop (every `heartbeat_interval_secs`).
+    pub fn run_heartbeat_sender(&self) {
+        loop {
+            let interval = self.config.read().heartbeat_interval_secs;
+            // Send both UDP and HTTP gossip
+            self.send_udp_heartbeat();
+            self.send_gossip();
+            std::thread::sleep(Duration::from_secs(interval));
+        }
+    }
+
+    // ── Zone transfer (TCP) ───────────────────────────────────────────────
+
+    /// Start a TCP listener that serves zone transfer requests from secondaries.
+    /// Primary nodes should call this in a background thread.
+    pub fn run_zone_transfer_server<F>(&self, bind_addr: &str, get_zones: F)
+    where
+        F: Fn() -> Option<ZoneTransferPayload> + Send + Sync + 'static,
+    {
+        let listener = match TcpListener::bind(bind_addr) {
+            Ok(l) => l,
+            Err(e) => {
+                log::error!("[cluster/xfr] failed to bind zone transfer server on {}: {}", bind_addr, e);
+                return;
+            }
+        };
+        log::info!("[cluster/xfr] zone transfer server listening on {}", bind_addr);
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(mut conn) => {
+                    let peer = conn.peer_addr().map(|a| a.to_string()).unwrap_or_default();
+                    log::info!("[cluster/xfr] zone transfer request from {}", peer);
+
+                    // Read the request line (expects "ZONE_TRANSFER_REQUEST\n")
+                    let mut req_buf = [0u8; 128];
+                    let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
+                    match conn.read(&mut req_buf) {
+                        Ok(n) if n > 0 => {
+                            let req = String::from_utf8_lossy(&req_buf[..n]);
+                            if !req.trim().starts_with("ZONE_TRANSFER_REQUEST") {
+                                log::warn!("[cluster/xfr] invalid request from {}: {}", peer, req.trim());
+                                continue;
+                            }
+                        }
+                        _ => {
+                            log::warn!("[cluster/xfr] failed to read request from {}", peer);
+                            continue;
+                        }
+                    }
+
+                    if let Some(payload) = get_zones() {
+                        match serde_json::to_vec(&payload) {
+                            Ok(data) => {
+                                // Send length-prefixed JSON
+                                let len_bytes = (data.len() as u32).to_be_bytes();
+                                let _ = conn.write_all(&len_bytes);
+                                let _ = conn.write_all(&data);
+                                let _ = conn.flush();
+                                log::info!(
+                                    "[cluster/xfr] sent {} zones to {} ({} bytes)",
+                                    payload.zones.len(), peer, data.len()
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("[cluster/xfr] serialization failed: {}", e);
+                            }
+                        }
+                    } else {
+                        // Send zero-length to indicate no zones
+                        let _ = conn.write_all(&0u32.to_be_bytes());
+                        let _ = conn.flush();
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[cluster/xfr] accept error: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Request a full zone transfer from the primary node.
+    /// `primary_addr` should be "host:port" of the zone transfer server.
+    /// Returns the payload on success.
+    pub fn request_zone_transfer(&self, primary_addr: &str) -> Option<ZoneTransferPayload> {
+        log::info!("[cluster/xfr] requesting zone transfer from {}", primary_addr);
+        let mut conn = match TcpStream::connect_timeout(
+            &primary_addr.parse::<SocketAddr>().ok()?,
+            Duration::from_secs(10),
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("[cluster/xfr] failed to connect to {}: {}", primary_addr, e);
+                return None;
+            }
+        };
+        let _ = conn.set_read_timeout(Some(Duration::from_secs(30)));
+        let _ = conn.set_write_timeout(Some(Duration::from_secs(5)));
+
+        // Send request
+        if conn.write_all(b"ZONE_TRANSFER_REQUEST\n").is_err() {
+            log::error!("[cluster/xfr] failed to send request to {}", primary_addr);
+            return None;
+        }
+        let _ = conn.flush();
+
+        // Read length prefix
+        let mut len_buf = [0u8; 4];
+        if conn.read_exact(&mut len_buf).is_err() {
+            log::error!("[cluster/xfr] failed to read length from {}", primary_addr);
+            return None;
+        }
+        let len = u32::from_be_bytes(len_buf) as usize;
+        if len == 0 {
+            log::info!("[cluster/xfr] primary has no zones to transfer");
+            return None;
+        }
+
+        // Read payload
+        let mut data = vec![0u8; len];
+        if conn.read_exact(&mut data).is_err() {
+            log::error!("[cluster/xfr] failed to read payload from {}", primary_addr);
+            return None;
+        }
+
+        match serde_json::from_slice::<ZoneTransferPayload>(&data) {
+            Ok(payload) => {
+                let zone_count = payload.zones.len();
+                let record_count: usize = payload.zones.iter().map(|z| z.records.len()).sum();
+                self.record_zone_sync(zone_count, record_count);
+                log::info!(
+                    "[cluster/xfr] received {} zones ({} records) from {}",
+                    zone_count, record_count, primary_addr
+                );
+                Some(payload)
+            }
+            Err(e) => {
+                log::error!("[cluster/xfr] failed to parse zone transfer payload: {}", e);
+                None
+            }
+        }
+    }
+
+    /// Find the primary node address from cluster state for zone transfer.
+    /// Returns the address suitable for TCP zone transfer connection.
+    pub fn find_primary_transfer_addr(&self) -> Option<String> {
+        let timeout = self.config.read().peer_timeout_secs;
+        let nodes = self.cluster_state.live_nodes(timeout);
+        nodes.iter()
+            .find(|n| matches!(n.role, ClusterRole::Leader | ClusterRole::Primary))
+            .map(|n| {
+                // Convert peer HTTP addr to zone transfer port
+                peer_zone_transfer_addr(&n.addr)
+            })
+    }
 }
 
 // ─────────────────────────── Helpers ───────────────────────────────────────
@@ -608,4 +1035,37 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// Convert a peer HTTP base URL (e.g. "http://10.0.0.2:5380") to a gossip UDP address.
+/// Extracts the host and uses `CLUSTER_GOSSIP_PORT`.
+fn peer_gossip_addr(peer_url: &str) -> String {
+    extract_host(peer_url, CLUSTER_GOSSIP_PORT)
+}
+
+/// Convert a peer address to a zone transfer TCP address.
+fn peer_zone_transfer_addr(peer_url: &str) -> String {
+    extract_host(peer_url, CLUSTER_ZONE_TRANSFER_PORT)
+}
+
+/// Extract host from a URL-like string and pair with the given port.
+fn extract_host(addr: &str, port: u16) -> String {
+    // Strip scheme
+    let stripped = addr
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+    // Strip path
+    let host_port = stripped.split('/').next().unwrap_or(stripped);
+    // Strip existing port
+    let host = if let Some(colon) = host_port.rfind(':') {
+        // Check it's not an IPv6 bracket
+        if host_port.ends_with(']') {
+            host_port
+        } else {
+            &host_port[..colon]
+        }
+    } else {
+        host_port
+    };
+    format!("{}:{}", host, port)
 }

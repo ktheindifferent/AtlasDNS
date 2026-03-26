@@ -491,6 +491,9 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "blocklist-stats"]) => self.get_blocklist_stats(request),
             // Protocol status API
             (Method::Get, ["api", "protocol-status"]) => self.get_protocol_status(request),
+            // Cluster status API
+            (Method::Get, ["api", "cluster", "status"]) => self.cluster_status_api(request),
+
             // Local device discovery (mDNS)
             (Method::Get, ["devices"]) => self.devices_page(request),
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
@@ -3741,6 +3744,68 @@ impl<'a> WebServer<'a> {
             "title": "Local Devices",
         });
         self.response_from_media_type(request, "devices", data)
+    }
+
+    /// GET /api/cluster/status — HA cluster node list, roles, heartbeat times, zone sync
+    fn cluster_status_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let json = if let Some(cm) = &self.context.cluster_manager {
+            let status = cm.get_status();
+            let zone_sync = cm.get_zone_sync_status();
+            let timeout = cm.get_config().peer_timeout_secs;
+            let nodes: Vec<serde_json::Value> = cm.cluster_state.all_nodes().iter().map(|n| {
+                serde_json::json!({
+                    "id": n.id,
+                    "addr": n.addr,
+                    "role": format!("{:?}", n.role),
+                    "last_heartbeat": n.last_heartbeat,
+                    "alive": n.is_alive(timeout),
+                })
+            }).collect();
+            serde_json::json!({
+                "success": true,
+                "data": {
+                    "node_id": status.node_id,
+                    "role": format!("{:?}", status.role),
+                    "term": status.term,
+                    "leader_id": status.leader_id,
+                    "healthy_peers": status.healthy_peers,
+                    "is_draining": status.is_draining,
+                    "uptime_secs": status.uptime_secs,
+                    "last_heartbeat_sent": status.last_heartbeat_sent,
+                    "nodes": nodes,
+                    "zone_sync": {
+                        "synced": zone_sync.synced,
+                        "last_sync": zone_sync.last_sync,
+                        "zone_count": zone_sync.zone_count,
+                        "record_count": zone_sync.record_count,
+                    },
+                }
+            })
+        } else {
+            serde_json::json!({
+                "success": true,
+                "data": {
+                    "node_id": "",
+                    "role": "Standalone",
+                    "term": 0,
+                    "leader_id": "",
+                    "healthy_peers": 0,
+                    "is_draining": false,
+                    "uptime_secs": 0,
+                    "last_heartbeat_sent": 0,
+                    "nodes": [],
+                    "zone_sync": {
+                        "synced": false,
+                        "last_sync": 0,
+                        "zone_count": 0,
+                        "record_count": 0,
+                    },
+                }
+            })
+        };
+        Ok(Response::from_string(serde_json::to_string(&json)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
     }
 
     fn devices_api(&self, _request: &Request) -> Result<ResponseBox> {

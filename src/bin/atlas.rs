@@ -18,6 +18,7 @@ use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
 use atlas::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 use atlas::dns::mdns::{MdnsListener, MdnsRegistry};
+use atlas::dns::clustering::{ClusterConfig, ClusterRole, ZoneTransferPayload, ZoneTransferEntry, CLUSTER_GOSSIP_PORT, CLUSTER_ZONE_TRANSFER_PORT};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -252,6 +253,29 @@ fn main() {
         "",
         "mdns",
         "Enable passive mDNS listener for local device discovery (port 5353)",
+    );
+    opts.optflag(
+        "",
+        "cluster",
+        "Enable HA clustering with gossip heartbeat and zone transfer",
+    );
+    opts.optopt(
+        "",
+        "cluster-peers",
+        "Comma-separated list of peer addresses (e.g. http://node2:5380,http://node3:5380)",
+        "PEERS",
+    );
+    opts.optopt(
+        "",
+        "cluster-role",
+        "Cluster role: auto (default, uses leader election), primary, or secondary",
+        "ROLE",
+    );
+    opts.optopt(
+        "",
+        "cluster-node-id",
+        "Unique node ID for this cluster member (default: auto-generated UUID)",
+        "ID",
     );
 
     let opt_matches = match opts.parse(&args[1..]) {
@@ -548,6 +572,110 @@ fn main() {
         log::info!("mDNS passive listener enabled — local device discovery active");
     }
 
+    // Enable HA clustering if requested
+    if opt_matches.opt_present("cluster") {
+        let peers: Vec<String> = opt_matches.opt_str("cluster-peers")
+            .map(|s| s.split(',').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect())
+            .unwrap_or_default();
+
+        let role = match opt_matches.opt_str("cluster-role").as_deref() {
+            Some("primary") => ClusterRole::Primary,
+            Some("secondary") => ClusterRole::Replica,
+            _ => ClusterRole::Candidate, // "auto" — use leader election
+        };
+
+        let node_id = opt_matches.opt_str("cluster-node-id")
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+        let quorum = (peers.len() + 1) / 2 + 1; // majority quorum
+
+        let cluster_config = ClusterConfig {
+            enabled: true,
+            role,
+            node_id: node_id.clone(),
+            peer_addresses: peers.clone(),
+            heartbeat_interval_secs: 5,
+            quorum,
+            peer_timeout_secs: 15,
+            ..ClusterConfig::default()
+        };
+
+        if let Some(ctx) = Arc::get_mut(&mut context) {
+            ctx.enable_clustering(cluster_config);
+        }
+
+        if let Some(cm) = &context.cluster_manager {
+            // Register self in cluster state
+            let self_addr = format!("0.0.0.0:{}", CLUSTER_GOSSIP_PORT);
+            cm.cluster_state.upsert(atlas::dns::clustering::ClusterNode::new(
+                node_id.clone(), self_addr, role,
+            ));
+
+            // Spawn UDP heartbeat listener
+            let cm_listener = cm.clone();
+            let bind_addr = format!("0.0.0.0:{}", CLUSTER_GOSSIP_PORT);
+            thread::spawn(move || {
+                cm_listener.run_udp_listener(&bind_addr);
+            });
+
+            // Spawn heartbeat sender
+            let cm_sender = cm.clone();
+            thread::spawn(move || {
+                cm_sender.run_heartbeat_sender();
+            });
+
+            // If this is a secondary/replica, request initial zone transfer from primary
+            let is_secondary = matches!(role, ClusterRole::Replica | ClusterRole::Follower);
+            if is_secondary && !peers.is_empty() {
+                let cm_xfr = cm.clone();
+                let ctx_xfr = context.clone();
+                let peers_xfr = peers.clone();
+                thread::spawn(move || {
+                    // Give primary a moment to start
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    for peer in &peers_xfr {
+                        let xfr_addr = format!(
+                            "{}:{}",
+                            peer.trim_start_matches("http://")
+                                .trim_start_matches("https://")
+                                .split('/')
+                                .next()
+                                .unwrap_or("")
+                                .split(':')
+                                .next()
+                                .unwrap_or(""),
+                            CLUSTER_ZONE_TRANSFER_PORT
+                        );
+                        if let Some(payload) = cm_xfr.request_zone_transfer(&xfr_addr) {
+                            // Apply received zones to authority
+                            apply_zone_transfer(&ctx_xfr, &payload);
+                            log::info!("[cluster] initial zone transfer complete: {} zones", payload.zones.len());
+                            break;
+                        }
+                    }
+                });
+            }
+
+            // If this is a primary, start zone transfer server
+            let is_primary = matches!(role, ClusterRole::Primary | ClusterRole::Leader);
+            if is_primary {
+                let cm_srv = cm.clone();
+                let ctx_srv = context.clone();
+                let bind = format!("0.0.0.0:{}", CLUSTER_ZONE_TRANSFER_PORT);
+                thread::spawn(move || {
+                    cm_srv.run_zone_transfer_server(&bind, move || {
+                        build_zone_transfer_payload(&ctx_srv)
+                    });
+                });
+            }
+
+            log::info!(
+                "[cluster] HA clustering enabled: node_id={}, role={:?}, peers={}, gossip_port={}, xfr_port={}",
+                node_id, role, peers.len(), CLUSTER_GOSSIP_PORT, CLUSTER_ZONE_TRANSFER_PORT
+            );
+        }
+    }
+
     log::info!("Listening on port {}", context.dns_port);
 
     // Start DNS servers in background threads
@@ -679,6 +807,67 @@ fn main() {
             }
         }
         log::info!("All DNS servers have stopped");
+    }
+}
+
+/// Build a ZoneTransferPayload from the current authority zones.
+fn build_zone_transfer_payload(ctx: &Arc<ServerContext>) -> Option<ZoneTransferPayload> {
+    let zones_guard = match ctx.authority.read() {
+        Ok(z) => z,
+        Err(_) => return None,
+    };
+    let zone_list = zones_guard.zones();
+    if zone_list.is_empty() {
+        return None;
+    }
+
+    let entries: Vec<ZoneTransferEntry> = zone_list.iter().map(|zone| {
+        let records: Vec<String> = zone.records.iter()
+            .filter_map(|r| serde_json::to_string(r).ok())
+            .collect();
+        ZoneTransferEntry {
+            domain: zone.domain.clone(),
+            m_name: zone.m_name.clone(),
+            r_name: zone.r_name.clone(),
+            serial: zone.serial,
+            refresh: zone.refresh,
+            retry: zone.retry,
+            expire: zone.expire,
+            minimum: zone.minimum,
+            records,
+        }
+    }).collect();
+
+    Some(ZoneTransferPayload {
+        from_node_id: String::new(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        zones: entries,
+    })
+}
+
+/// Apply a received zone transfer payload to the authority.
+fn apply_zone_transfer(ctx: &Arc<ServerContext>, payload: &ZoneTransferPayload) {
+    for entry in &payload.zones {
+        // Create zone if it doesn't exist
+        if !ctx.authority.zone_exists(&entry.domain) {
+            if let Err(e) = ctx.authority.create_zone(&entry.domain, &entry.m_name, &entry.r_name) {
+                log::error!("[cluster/xfr] failed to create zone {}: {:?}", entry.domain, e);
+                continue;
+            }
+        }
+
+        // Apply records
+        for record_json in &entry.records {
+            if let Ok(record) = serde_json::from_str::<atlas::dns::protocol::DnsRecord>(record_json) {
+                if let Err(e) = ctx.authority.upsert(&entry.domain, record) {
+                    log::warn!("[cluster/xfr] failed to upsert record in {}: {:?}", entry.domain, e);
+                }
+            }
+        }
+        log::info!("[cluster/xfr] applied zone {} ({} records)", entry.domain, entry.records.len());
     }
 }
 
