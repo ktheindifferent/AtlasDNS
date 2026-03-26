@@ -65,6 +65,35 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
     let client_failed_queries = context.client.get_failed_count();
     let server_tcp_queries = context.statistics.get_tcp_query_count();
     let server_udp_queries = context.statistics.get_udp_query_count();
+    let total_queries = client_sent_queries + server_tcp_queries + server_udp_queries;
+
+    // Compute top 10 queried domains and blocked count from in-memory log
+    let recent_all = context.query_log_storage.get_recent(1000);
+    let blocked_count = recent_all.iter()
+        .filter(|e| e.response_code == "NXDOMAIN" || e.response_code == "REFUSED")
+        .count();
+    let mut domain_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for entry in &recent_all {
+        *domain_counts.entry(entry.domain.clone()).or_insert(0) += 1;
+    }
+    let mut top_domains_vec: Vec<(String, usize)> = domain_counts.into_iter().collect();
+    top_domains_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    let top_domains: Vec<serde_json::Value> = top_domains_vec.iter().take(10).map(|(domain, count)| {
+        json!({ "domain": domain, "count": count })
+    }).collect();
+
+    // Recent query log (last 50)
+    let recent_queries: Vec<serde_json::Value> = context.query_log_storage.get_recent(50).iter().map(|e| {
+        json!({
+            "timestamp": e.timestamp.format("%H:%M:%S").to_string(),
+            "client_ip": e.client_ip.as_deref().unwrap_or("unknown"),
+            "domain": e.domain,
+            "query_type": e.query_type,
+            "response": e.response_code,
+            "latency_ms": e.latency_ms.unwrap_or(0),
+            "cache_hit": e.cache_hit,
+        })
+    }).collect();
     
     // Get real system information
     let system_collector = get_system_collector();
@@ -171,6 +200,10 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         "client_failed_queries": client_failed_queries,
         "server_tcp_queries": server_tcp_queries,
         "server_udp_queries": server_udp_queries,
+        "total_queries": total_queries,
+        "blocked_count": blocked_count,
+        "top_domains": top_domains,
+        "recent_queries": recent_queries,
         
         // Recent activity from activity logger
         "activities": activity_logger.get_recent(10).iter().map(|entry| json!({
@@ -219,6 +252,10 @@ fn build_fallback_response(
         "client_failed_queries": client_failed_queries,
         "server_tcp_queries": server_tcp_queries,
         "server_udp_queries": server_udp_queries,
+        "total_queries": client_sent_queries + server_tcp_queries + server_udp_queries,
+        "blocked_count": 0,
+        "top_domains": serde_json::Value::Array(vec![]),
+        "recent_queries": serde_json::Value::Array(vec![]),
         "activities": activity_logger.get_recent(10).into_iter().map(|entry| json!({
             "timestamp": entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
             "action": entry.action,

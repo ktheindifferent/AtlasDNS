@@ -36,6 +36,7 @@ use crate::dns::blocklist_updater::BlocklistUpdater;
 use crate::dns::captive_portal::CaptivePortal;
 use crate::dns::device_tracker::DeviceTracker;
 use crate::dns::query_log::QueryLog;
+use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -162,6 +163,8 @@ pub struct ServerContext {
     pub rebinding_protection: Arc<RebindingProtection>,
     /// Optional SQLite-backed DNS query log with per-client policies.
     pub query_log: Option<Arc<QueryLog>>,
+    /// Threat intelligence feed manager (domain reputation + blocking).
+    pub threat_intel: Option<Arc<ThreatIntelManager>>,
     /// Whether the DNS-over-HTTPS (DoH) server is enabled at /dns-query.
     pub doh_server_enabled: bool,
     /// Whether the dedicated Prometheus metrics HTTP server is enabled.
@@ -286,6 +289,7 @@ impl Default for ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            threat_intel: None,
             doh_server_enabled: false,
             metrics_enabled: true,
             metrics_port: 9153,
@@ -373,6 +377,7 @@ impl ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            threat_intel: None,
             doh_server_enabled: false,
             metrics_enabled: true,
             metrics_port: 9153,
@@ -648,6 +653,7 @@ pub mod tests {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::disabled()),
             query_log: None,
+            threat_intel: None,
             doh_server_enabled: false,
         })
     }

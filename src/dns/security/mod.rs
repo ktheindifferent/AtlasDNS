@@ -18,7 +18,11 @@ pub use firewall::{DnsFirewall, FirewallConfig, FirewallAction, FirewallRule};
 pub use rate_limiter::{EnhancedRateLimiter, RateLimitConfig, RateLimitAlgorithm};
 pub use ddos_protection::{DDoSProtection, DDoSConfig, ThreatLevel, AttackType};
 pub use manager::{SecurityManager, SecurityConfig, SecurityEventRecord};
-pub use threat_intel::{ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry, ThreatCategory as ThreatIntelCategory};
+pub use threat_intel::{
+    ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry,
+    ThreatCategory as ThreatIntelCategory,
+    DomainReputation, ReputationLevel, FeedDescriptor,
+};
 
 #[cfg(test)]
 mod tests;

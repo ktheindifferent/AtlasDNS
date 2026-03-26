@@ -26,6 +26,7 @@ use crate::dns::security::firewall::ThreatCategory;
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
 use crate::web::blocklists::BlocklistApiHandler;
+use crate::web::threat_intel::ThreatIntelApiHandler;
 use crate::dns::client_rules::{ClientRule, RuleAction};
 use crate::dns::schedule::{TimeSchedule, ScheduleAction};
 
@@ -306,6 +307,26 @@ impl ApiV2Handler {
             }
             (Method::Post, ["blocklists", id, "refresh"]) => {
                 BlocklistApiHandler::new(Arc::clone(&self.context)).refresh_blocklist(id)
+            }
+
+            // Threat intelligence feeds + domain reputation
+            (Method::Get, ["threat-intel", "stats"]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).get_stats()
+            }
+            (Method::Get, ["threat-intel", "feeds"]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).list_feeds()
+            }
+            (Method::Post, ["threat-intel", "feeds", feed_id, "refresh"]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).refresh_feed(feed_id, request)
+            }
+            (Method::Post, ["threat-intel", "refresh"]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).refresh_all(request)
+            }
+            (Method::Get, ["threat-intel", "hits"]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).get_hits(request)
+            }
+            (Method::Get, ["threat-intel", "reputation", domain]) => {
+                ThreatIntelApiHandler::new(Arc::clone(&self.context)).get_reputation(domain)
             }
 
             // Per-client blocking rules
