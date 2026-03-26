@@ -291,8 +291,9 @@ impl DoqServer {
         send_stream: &mut SendStream,
         recv_stream: &mut RecvStream,
         context: Arc<ServerContext>,
-        _remote_addr: SocketAddr,
+        remote_addr: SocketAddr,
     ) -> Result<(), DnsError> {
+        log::debug!("DoQ query from client {}", remote_addr);
         // Read DNS message length (2 bytes, big-endian)
         let mut len_buf = [0u8; 2];
         recv_stream.read_exact(&mut len_buf).await
@@ -362,7 +363,9 @@ impl DoqServer {
         let question = &request_packet.questions[0];
         let domain = &question.name;
         let qtype = question.qtype;
-        
+
+        log::debug!("DoQ processing query: domain={} type={:?}", domain, qtype);
+
         // Log the query
         let query_log = DnsQueryLog {
             domain: domain.clone(),

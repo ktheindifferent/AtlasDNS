@@ -335,7 +335,9 @@ impl<'a> WebServer<'a> {
             (Method::Post, ["auth", "login"]) |
             (Method::Get, ["dns-query"]) |
             (Method::Post, ["dns-query"]) |
-            (Method::Get, ["api", "version"])
+            (Method::Get, ["api", "version"]) |
+            (Method::Get, ["healthz"]) |
+            (Method::Get, ["health"])
         );
 
         // Check authentication for protected routes
@@ -465,6 +467,8 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "loadbalancing", "stats"]) => self.get_loadbalancing_stats(request),
             (Method::Post, ["api", "loadbalancing", "pools"]) => self.create_loadbalancing_pool(request),
             
+            (Method::Get, ["healthz"]) => self.healthz(request),
+            (Method::Get, ["health"]) => self.healthz(request),
             (Method::Get, []) => self.home(request),
             (_, _) => self.not_found(request),
         }
@@ -1399,6 +1403,20 @@ impl<'a> WebServer<'a> {
     fn not_found(&self, _request: &Request) -> Result<ResponseBox> {
         Ok(Response::from_string("Not found")
             .with_status_code(404)
+            .boxed())
+    }
+
+    /// Health check endpoint - returns basic server health status
+    fn healthz(&self, _request: &Request) -> Result<ResponseBox> {
+        let health = serde_json::json!({
+            "status": "ok",
+            "version": env!("CARGO_PKG_VERSION"),
+            "zones": self.context.authority.list_zones().map(|z| z.len()).unwrap_or(0),
+        });
+        let body = health.to_string();
+        Ok(Response::from_string(body)
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
     

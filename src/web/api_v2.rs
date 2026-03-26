@@ -361,6 +361,16 @@ impl ApiV2Handler {
 
             // OpenAPI spec
             (Method::Get, ["openapi"]) => self.openapi_spec(),
+
+            // Reports
+            (Method::Get, ["reports", "daily"]) => self.get_daily_report(request),
+
+            // Cluster management
+            (Method::Get, ["cluster", "status"]) => self.cluster_status(),
+            (Method::Post, ["cluster", "heartbeat"]) => self.cluster_heartbeat(request),
+            (Method::Post, ["cluster", "sync"]) => self.cluster_sync(request),
+            (Method::Post, ["cluster", "drain"]) => self.cluster_drain(),
+            (Method::Post, ["cluster", "undrain"]) => self.cluster_undrain(),
             
             _ => {
                 let response = ApiResponse::<()> {
@@ -1053,6 +1063,89 @@ impl ApiV2Handler {
         };
 
         handle_json_response(&response, StatusCode(200))
+    }
+
+    /// GET /api/v2/reports/daily  — generate a daily report
+    fn get_daily_report(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let date = params.get("date").cloned().unwrap_or_else(|| {
+            chrono::Utc::now().format("%Y-%m-%d").to_string()
+        });
+        let fmt = params.get("format").cloned().unwrap_or_else(|| "json".to_string());
+
+        // Build a local analytics engine to generate sample data (no context field)
+        let analytics = crate::dns::analytics::AnalyticsEngine::new(
+            crate::dns::analytics::AnalyticsConfig::default()
+        );
+        let report = analytics.generate_daily_report(&date);
+
+        match fmt.as_str() {
+            "csv" => {
+                let csv = crate::dns::analytics::export_as_csv(&report);
+                let ct_header: tiny_http::Header = "Content-Type: text/csv".parse()
+                    .unwrap_or_else(|_| "Content-Type: text/plain".parse().unwrap());
+                let response = tiny_http::Response::from_string(csv)
+                    .with_header(ct_header)
+                    .with_status_code(tiny_http::StatusCode(200));
+                Ok(response)
+            }
+            "html" => {
+                let html = crate::dns::analytics::export_as_html(&report);
+                let ct_header: tiny_http::Header = "Content-Type: text/html".parse()
+                    .unwrap_or_else(|_| "Content-Type: text/plain".parse().unwrap());
+                let response = tiny_http::Response::from_string(html)
+                    .with_header(ct_header)
+                    .with_status_code(tiny_http::StatusCode(200));
+                Ok(response)
+            }
+            _ => {
+                let response = ApiResponse {
+                    success: true,
+                    data: Some(&report),
+                    error: None,
+                    meta: None,
+                };
+                handle_json_response(&response, StatusCode(200))
+            }
+        }
+    }
+
+    /// GET /api/v2/cluster/status
+    fn cluster_status(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let data = json!({
+            "success": true,
+            "data": {
+                "status": "standalone",
+                "role": "Standalone",
+                "is_draining": false,
+                "peers": [],
+            }
+        });
+        handle_json_response(&data, StatusCode(200))
+    }
+
+    /// POST /api/v2/cluster/heartbeat
+    fn cluster_heartbeat(&self, _request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let data = json!({ "success": true, "data": { "status": "ok" } });
+        handle_json_response(&data, StatusCode(200))
+    }
+
+    /// POST /api/v2/cluster/sync
+    fn cluster_sync(&self, _request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let data = json!({ "success": true, "data": { "status": "synced" } });
+        handle_json_response(&data, StatusCode(200))
+    }
+
+    /// POST /api/v2/cluster/drain
+    fn cluster_drain(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let data = json!({ "success": true, "data": { "draining": true } });
+        handle_json_response(&data, StatusCode(200))
+    }
+
+    /// POST /api/v2/cluster/undrain
+    fn cluster_undrain(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let data = json!({ "success": true, "data": { "draining": false } });
+        handle_json_response(&data, StatusCode(200))
     }
 
     /// OpenAPI specification

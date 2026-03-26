@@ -228,5 +228,8 @@ pub mod schedule;
 /// Comprehensive security implementation examples and utilities
 pub mod security_example;
 
+/// DNS Cluster Management - Primary/Replica HA setup
+pub mod clustering;
+
 #[cfg(test)]
 mod cache_test;

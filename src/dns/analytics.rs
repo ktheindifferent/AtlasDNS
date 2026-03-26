@@ -584,6 +584,71 @@ impl AnalyticsEngine {
         }
     }
 
+    /// Generate a daily DNS report for the given date string (e.g. "2026-03-26")
+    pub fn generate_daily_report(&self, date: &str) -> DailyReport {
+        let summary = self.get_summary();
+        let total = summary.response_codes.total_queries;
+        let blocked = summary.response_codes.nxdomain;
+        let blocking_rate = if total > 0 {
+            (blocked as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        // Top 50 domains
+        let mut top_50 = summary.top_queries.top_domains.clone();
+        top_50.truncate(50);
+
+        // Top 10 blocked (proxy: highest NXDOMAIN domains — use top_50 as approximation)
+        let top_10_blocked = top_50.iter().take(10).cloned().collect();
+
+        // Per-client stats from client_data
+        let per_client_stats: Vec<ClientDailyStat> = {
+            let clients = self.client_data.read();
+            clients.iter().map(|(ip, data)| {
+                let top_domain = data.unique_domains.iter().next().cloned();
+                ClientDailyStat {
+                    client_ip: ip.to_string(),
+                    total_queries: data.total_queries,
+                    blocked_queries: data.error_queries,
+                    top_domain,
+                }
+            }).collect()
+        };
+
+        // Trend: use last 7 points from time series error_rate as history
+        let history: Vec<TimeSeriesPoint> = summary.time_series.error_rate
+            .iter()
+            .rev()
+            .take(7)
+            .rev()
+            .cloned()
+            .collect();
+
+        let (direction, change_pct) = if history.len() >= 2 {
+            let first = history.first().map(|p| p.value).unwrap_or(0.0);
+            let last = history.last().map(|p| p.value).unwrap_or(0.0);
+            let delta = last - first;
+            let dir = if delta > 1.0 { "increasing" } else if delta < -1.0 { "decreasing" } else { "stable" };
+            (dir.to_string(), delta)
+        } else {
+            ("stable".to_string(), 0.0)
+        };
+
+        DailyReport {
+            date: date.to_string(),
+            generated_at: Self::current_timestamp(),
+            total_queries: total,
+            blocked_queries: blocked,
+            blocking_rate_pct: blocking_rate,
+            top_50_domains: top_50,
+            top_10_blocked,
+            per_client_stats,
+            new_domains: Vec::new(),
+            trend: BlockingTrend { direction, change_pct, history },
+        }
+    }
+
     /// Detect anomalies
     pub fn detect_anomalies(&self) -> Vec<Anomaly> {
         let mut anomalies = Vec::new();
@@ -623,6 +688,41 @@ pub struct AnalyticsSummary {
     pub time_series: TimeSeriesAnalytics,
 }
 
+/// Daily DNS report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyReport {
+    pub date: String,
+    pub generated_at: u64,
+    pub total_queries: u64,
+    pub blocked_queries: u64,
+    pub blocking_rate_pct: f64,
+    pub top_50_domains: Vec<DomainStat>,
+    pub top_10_blocked: Vec<DomainStat>,
+    pub per_client_stats: Vec<ClientDailyStat>,
+    pub new_domains: Vec<String>,
+    pub trend: BlockingTrend,
+}
+
+/// Per-client daily statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientDailyStat {
+    pub client_ip: String,
+    pub total_queries: u64,
+    pub blocked_queries: u64,
+    pub top_domain: Option<String>,
+}
+
+/// Blocking trend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockingTrend {
+    /// Direction: "increasing", "decreasing", "stable"
+    pub direction: String,
+    /// Change in blocking rate over the last 7 days
+    pub change_pct: f64,
+    /// Historical blocking rates (last 7 days)
+    pub history: Vec<TimeSeriesPoint>,
+}
+
 /// Anomaly detection result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Anomaly {
@@ -631,6 +731,66 @@ pub struct Anomaly {
     pub severity: String,
     pub description: String,
     pub timestamp: u64,
+}
+
+/// Export a DailyReport as CSV text
+pub fn export_as_csv(report: &DailyReport) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("date,{}\n", report.date));
+    out.push_str(&format!("generated_at,{}\n", report.generated_at));
+    out.push_str(&format!("total_queries,{}\n", report.total_queries));
+    out.push_str(&format!("blocked_queries,{}\n", report.blocked_queries));
+    out.push_str(&format!("blocking_rate_pct,{:.2}\n", report.blocking_rate_pct));
+    out.push_str("\ntop_domains\ndomain,count,percentage\n");
+    for d in &report.top_50_domains {
+        out.push_str(&format!("{},{},{:.2}\n", d.domain, d.count, d.percentage));
+    }
+    out.push_str("\ntop_blocked\ndomain,count,percentage\n");
+    for d in &report.top_10_blocked {
+        out.push_str(&format!("{},{},{:.2}\n", d.domain, d.count, d.percentage));
+    }
+    out.push_str("\nper_client\nclient_ip,total_queries,blocked_queries,top_domain\n");
+    for c in &report.per_client_stats {
+        out.push_str(&format!(
+            "{},{},{},{}\n",
+            c.client_ip,
+            c.total_queries,
+            c.blocked_queries,
+            c.top_domain.as_deref().unwrap_or("")
+        ));
+    }
+    out
+}
+
+/// Export a DailyReport as a minimal HTML page
+pub fn export_as_html(report: &DailyReport) -> String {
+    let mut rows = String::new();
+    for d in &report.top_50_domains {
+        rows.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{:.2}%</td></tr>\n",
+            d.domain, d.count, d.percentage
+        ));
+    }
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head><title>DNS Daily Report - {date}</title></head>
+<body>
+<h1>DNS Daily Report: {date}</h1>
+<p>Total queries: {total} | Blocked: {blocked} | Rate: {rate:.2}%</p>
+<h2>Top Domains</h2>
+<table border="1">
+<tr><th>Domain</th><th>Count</th><th>%</th></tr>
+{rows}
+</table>
+</body>
+</html>"#,
+        date = report.date,
+        total = report.total_queries,
+        blocked = report.blocked_queries,
+        rate = report.blocking_rate_pct,
+        rows = rows,
+    )
 }
 
 #[cfg(test)]

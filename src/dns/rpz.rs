@@ -224,6 +224,23 @@ pub struct RpzStats {
     pub policies_loaded: usize,
     /// Last policy update
     pub last_update: Option<u64>,
+    /// Hits per blocked domain
+    pub hits_per_domain: HashMap<String, u64>,
+    /// Hits per client IP
+    pub hits_per_client: HashMap<String, u64>,
+}
+
+/// IXFR delta record for incremental zone updates
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IxfrDelta {
+    /// Serial number this delta applies from
+    pub from_serial: u32,
+    /// Serial number after this delta
+    pub to_serial: u32,
+    /// Domains to add
+    pub additions: Vec<PolicyEntry>,
+    /// Domains to remove
+    pub removals: Vec<String>,
 }
 
 impl RpzEngine {
@@ -326,11 +343,13 @@ impl RpzEngine {
             }
 
             // Update statistics
-            self.stats.write().queries_blocked += 1;
-            *self.stats.write()
-                .blocks_by_category
-                .entry(policy.category)
-                .or_insert(0) += 1;
+            {
+                let mut stats = self.stats.write();
+                stats.queries_blocked += 1;
+                *stats.blocks_by_category.entry(policy.category).or_insert(0) += 1;
+                *stats.hits_per_domain.entry(qname.clone()).or_insert(0) += 1;
+                *stats.hits_per_client.entry(client_ip.to_string()).or_insert(0) += 1;
+            }
 
             // Apply policy action
             match policy.action {
@@ -489,8 +508,49 @@ impl RpzEngine {
                     self.load_policies_from_file(path)?;
                 }
                 PolicySource::Url { url } => {
-                    // Would fetch and parse policies from URL
-                    log::debug!("Would fetch policies from {}", url);
+                    log::info!("Fetching RPZ policies from URL: {}", url);
+                    match reqwest::blocking::get(url) {
+                        Ok(resp) => {
+                            match resp.text() {
+                                Ok(body) => {
+                                    let mut count = 0usize;
+                                    for line in body.lines() {
+                                        let line = line.trim();
+                                        // Skip empty lines and comments
+                                        if line.is_empty() || line.starts_with('#') {
+                                            continue;
+                                        }
+                                        // Parse hosts-format: "0.0.0.0 domain.com" or just "domain.com"
+                                        let domain = if let Some(d) = line.split_whitespace().nth(1) {
+                                            d.to_string()
+                                        } else {
+                                            line.split_whitespace().next().unwrap_or("").to_string()
+                                        };
+                                        if domain.is_empty() || domain == "localhost" {
+                                            continue;
+                                        }
+                                        self.add_policy(PolicyEntry {
+                                            domain: domain.clone(),
+                                            action: PolicyAction::NxDomain,
+                                            category: ThreatCategory::Malware,
+                                            redirect_to: None,
+                                            message: Some(format!("Blocked by RPZ URL: {}", url)),
+                                            priority: 50,
+                                            expires_at_secs: None,
+                                        });
+                                        count += 1;
+                                    }
+                                    log::info!("Loaded {} policies from URL: {}", count, url);
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to read response body from {}: {}", url, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to fetch policies from {}: {}", url, e);
+                        }
+                    }
                 }
                 PolicySource::BuiltIn { name } => {
                     self.load_builtin_policies(name)?;
@@ -558,6 +618,33 @@ impl RpzEngine {
             blocks_by_category: stats.blocks_by_category.clone(),
             policies_loaded: stats.policies_loaded,
             last_update: stats.last_update,
+            hits_per_domain: stats.hits_per_domain.clone(),
+            hits_per_client: stats.hits_per_client.clone(),
+        }
+    }
+
+    /// Apply an IXFR delta to the RPZ engine
+    pub fn apply_ixfr_delta(&self, delta: IxfrDelta) {
+        log::info!(
+            "Applying IXFR delta: serial {} -> {}  (+{} /{} removals)",
+            delta.from_serial, delta.to_serial,
+            delta.additions.len(), delta.removals.len()
+        );
+        // Add new entries
+        for entry in delta.additions {
+            self.add_policy(entry);
+        }
+        // Bloom filters cannot delete; mark removals as passthru so trie takes precedence
+        for domain in delta.removals {
+            self.add_policy(PolicyEntry {
+                domain: domain.clone(),
+                action: PolicyAction::Passthru,
+                category: ThreatCategory::Custom(0),
+                redirect_to: None,
+                message: Some("IXFR removal (passthru override)".to_string()),
+                priority: 200,
+                expires_at_secs: None,
+            });
         }
     }
 
