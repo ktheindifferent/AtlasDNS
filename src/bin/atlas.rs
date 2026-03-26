@@ -493,6 +493,7 @@ fn main() {
                         s.trim_start_matches("redirect:").to_string()
                     )
                 }
+                Some("refused") => atlas::dns::security::threat_intel::BlockAction::Refused,
                 _ => atlas::dns::security::threat_intel::BlockAction::Nxdomain,
             };
 

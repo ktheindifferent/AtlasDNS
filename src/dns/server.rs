@@ -479,6 +479,36 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
     }
     // ── End anomaly detection ────────────────────────────────────────────────
 
+    // ── RPZ DNS firewall: evaluate before upstream resolution ────────────────
+    {
+        match context.rpz_engine.evaluate(request, client_ip) {
+            Ok(Some(rpz_response)) => {
+                log::info!("RPZ firewall blocked query for {} from {:?}", domain, client_ip);
+                context.metrics.record_dns_query(&protocol, &query_type, &domain);
+                context.metrics.record_dns_response(
+                    &format!("{:?}", rpz_response.header.rescode), &protocol, &query_type
+                );
+                if let Some(ref ql) = context.query_log {
+                    let ip_str = client_ip.map(|ip| ip.to_string()).unwrap_or_default();
+                    ql.log_query(&ip_str, &domain, &query_type, None, true,
+                        start_time.elapsed().as_millis() as i64);
+                }
+                return rpz_response;
+            }
+            Err(_drop_signal) => {
+                // RPZ DROP action: return empty packet (server will not send response)
+                log::info!("RPZ firewall dropped query for {} from {:?}", domain, client_ip);
+                let mut dropped = build_response_packet(&context, request);
+                dropped.header.rescode = ResultCode::REFUSED;
+                return dropped;
+            }
+            Ok(None) => {
+                // No RPZ match — continue normal processing
+            }
+        }
+    }
+    // ── End RPZ DNS firewall ─────────────────────────────────────────────────
+
     // ── Split-horizon: synthesise a response for matching rules ─────────────
     if let (Some(client_ip), Some(question)) = (client_ip, request.questions.first()) {
         if let Some(sh_response) = context.split_horizon_manager.lookup(

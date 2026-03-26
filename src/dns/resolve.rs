@@ -74,6 +74,7 @@ pub trait DnsResolver {
         if let Some(ref ti) = context.threat_intel {
             if let Some(entry) = ti.check_domain(qname) {
                 ti.record_hit(qname, "dns-query", &entry);
+                ti.record_block();
                 log::warn!(
                     "[THREAT-INTEL] Blocked DNS query: domain={} category={} source={}",
                     qname, entry.category, entry.source
@@ -83,6 +84,9 @@ pub trait DnsResolver {
                 match ti.block_action() {
                     BlockAction::Nxdomain => {
                         packet.header.rescode = ResultCode::NXDOMAIN;
+                    }
+                    BlockAction::Refused => {
+                        packet.header.rescode = ResultCode::REFUSED;
                     }
                     BlockAction::RedirectIp(ip_str) => {
                         use crate::dns::protocol::{DnsRecord, TransientTtl};
@@ -96,6 +100,25 @@ pub trait DnsResolver {
                         } else {
                             packet.header.rescode = ResultCode::NXDOMAIN;
                         }
+                    }
+                }
+                return Ok(packet);
+            }
+        }
+
+        // Blocklist check (threat_intel::blocklist module)
+        if let Some(ref bl) = context.blocklist {
+            if bl.contains(qname) {
+                bl.record_block();
+                log::warn!("[BLOCKLIST] Blocked DNS query for domain={}", qname);
+                let mut packet = DnsPacket::new();
+                use crate::threat_intel::blocklist::BlockResponse;
+                match bl.block_response() {
+                    BlockResponse::Nxdomain => {
+                        packet.header.rescode = ResultCode::NXDOMAIN;
+                    }
+                    BlockResponse::Refused => {
+                        packet.header.rescode = ResultCode::REFUSED;
                     }
                 }
                 return Ok(packet);

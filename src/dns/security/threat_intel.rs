@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use ipnetwork::IpNetwork;
 use parking_lot::RwLock;
@@ -174,6 +175,8 @@ pub struct FeedDescriptor {
 pub enum BlockAction {
     /// Return NXDOMAIN (default).
     Nxdomain,
+    /// Return REFUSED.
+    Refused,
     /// Return a synthesized A record pointing to this IP address.
     RedirectIp(String),
 }
@@ -287,6 +290,8 @@ pub struct ThreatIntelManager {
     feed_states: Arc<RwLock<HashMap<String, FeedState>>>,
     /// Recent hits log (capped at 10 000).
     hits: Arc<RwLock<Vec<ThreatIntelHit>>>,
+    /// Counter: total DNS queries blocked by threat intelligence.
+    domains_blocked: AtomicU64,
 }
 
 impl ThreatIntelManager {
@@ -309,6 +314,7 @@ impl ThreatIntelManager {
             ip_blocks: Arc::new(RwLock::new(Vec::new())),
             feed_states: Arc::new(RwLock::new(feed_states)),
             hits: Arc::new(RwLock::new(Vec::new())),
+            domains_blocked: AtomicU64::new(0),
         }
     }
 
@@ -321,8 +327,16 @@ impl ThreatIntelManager {
         vec![
             FeedDescriptor {
                 id: "urlhaus".to_string(),
-                name: "abuse.ch URLhaus – active malware hosting".to_string(),
+                name: "abuse.ch URLhaus – active malware hosting (hostfile)".to_string(),
                 url: "https://urlhaus.abuse.ch/downloads/hostfile/".to_string(),
+                default_category: ThreatCategory::MalwareDownload,
+                domains_loaded: 0,
+                last_updated: None,
+            },
+            FeedDescriptor {
+                id: "urlhaus_text".to_string(),
+                name: "abuse.ch URLhaus – online URLs (plain text)".to_string(),
+                url: "https://urlhaus.abuse.ch/downloads/text_online/".to_string(),
                 default_category: ThreatCategory::MalwareDownload,
                 domains_loaded: 0,
                 last_updated: None,
@@ -545,6 +559,16 @@ impl ThreatIntelManager {
     // -----------------------------------------------------------------------
     // Hit logging
     // -----------------------------------------------------------------------
+
+    /// Increment the domains_blocked counter.
+    pub fn record_block(&self) {
+        self.domains_blocked.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Total number of DNS queries blocked by threat intelligence since startup.
+    pub fn domains_blocked_count(&self) -> u64 {
+        self.domains_blocked.load(Ordering::Relaxed)
+    }
 
     /// Record a threat intel hit and optionally fire a webhook.
     pub fn record_hit(&self, domain: &str, client_ip: &str, entry: &ThreatEntry) {
@@ -995,6 +1019,7 @@ impl ThreatIntelManager {
             "total_domains": self.total_domains(),
             "total_ip_blocks": self.total_ip_blocks(),
             "total_hits": self.total_hits(),
+            "domains_blocked": self.domains_blocked_count(),
             "update_interval_secs": self.config.update_interval.as_secs(),
             "feeds": feed_stats,
         })

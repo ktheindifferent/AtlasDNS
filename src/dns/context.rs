@@ -42,6 +42,7 @@ use crate::dns::clustering::{ClusterManager, ClusterConfig};
 use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
 use crate::dns::split_horizon::SplitHorizonRuleManager;
 use crate::dns::dnssec::ValidationMode;
+use crate::dns::rpz::RpzEngine;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -174,6 +175,8 @@ pub struct ServerContext {
     pub mdns_registry: Option<Arc<MdnsRegistry>>,
     /// Threat intelligence feed manager (domain reputation + blocking).
     pub threat_intel: Option<Arc<ThreatIntelManager>>,
+    /// Threat intelligence blocklist (URLhaus / Spamhaus DNSBL integration).
+    pub blocklist: Option<Arc<crate::threat_intel::blocklist::Blocklist>>,
     /// Whether the DNS-over-HTTPS (DoH) server is enabled at /dns-query.
     pub doh_server_enabled: bool,
     /// Whether the dedicated Prometheus metrics HTTP server is enabled.
@@ -190,6 +193,8 @@ pub struct ServerContext {
     pub anomaly_detector: Arc<DnsAnomalyDetector>,
     /// Split-horizon DNS rule manager — returns different answers per source IP.
     pub split_horizon_manager: Arc<SplitHorizonRuleManager>,
+    /// RPZ (Response Policy Zone) DNS firewall engine.
+    pub rpz_engine: Arc<RpzEngine>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -311,6 +316,7 @@ impl Default for ServerContext {
             query_log: None,
             mdns_registry: None,
             threat_intel: None,
+            blocklist: None,
             doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
@@ -319,6 +325,7 @@ impl Default for ServerContext {
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
+            rpz_engine: Arc::new(RpzEngine::new()),
         }
     }
 }
@@ -406,6 +413,7 @@ impl ServerContext {
             query_log: None,
             mdns_registry: None,
             threat_intel: None,
+            blocklist: None,
             doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
@@ -414,6 +422,7 @@ impl ServerContext {
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
+            rpz_engine: Arc::new(RpzEngine::new()),
         })
     }
 
@@ -704,6 +713,7 @@ pub mod tests {
             query_log: None,
             mdns_registry: None,
             threat_intel: None,
+            blocklist: None,
             doh_server_enabled: false,
             metrics_enabled: true,
             metrics_port: 9153,
@@ -712,6 +722,7 @@ pub mod tests {
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
+            rpz_engine: Arc::new(RpzEngine::new()),
         })
     }
 

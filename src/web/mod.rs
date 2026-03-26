@@ -22,6 +22,7 @@ pub mod websocket;
 pub mod blocklists;
 pub mod threat_intel;
 pub mod devices;
+pub mod rpz;
 #[cfg(feature = "pihole-api")]
 pub mod pihole_api;
 

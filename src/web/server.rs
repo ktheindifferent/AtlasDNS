@@ -496,6 +496,22 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "cluster", "nodes"]) => self.cluster_nodes_api(request),
             (Method::Get, ["api", "cluster", "health"]) => self.cluster_health_api(request),
 
+            // RPZ DNS firewall API
+            (Method::Get, ["api", "rpz", "zones"]) => crate::web::rpz::list_zones(&self.context),
+            (Method::Post, ["api", "rpz", "zones"]) => crate::web::rpz::add_zone(&self.context, request),
+            (Method::Delete, ["api", "rpz", "zones", name]) => crate::web::rpz::remove_zone(&self.context, name),
+            (Method::Post, ["api", "rpz", "zones", name, "enable"]) => crate::web::rpz::set_zone_enabled(&self.context, name, request),
+            (Method::Post, ["api", "rpz", "zones", name, "rules"]) => crate::web::rpz::add_rule(&self.context, name, request),
+            (Method::Delete, ["api", "rpz", "zones", name, "rules"]) => crate::web::rpz::remove_rule(&self.context, name, request),
+            (Method::Get, ["api", "rpz", "stats"]) => crate::web::rpz::get_stats(&self.context),
+            (Method::Post, ["api", "rpz", "stats", "reset"]) => crate::web::rpz::reset_stats(&self.context),
+            (Method::Post, ["api", "rpz", "enable"]) => crate::web::rpz::set_engine_enabled(&self.context, request),
+            (Method::Post, ["api", "rpz", "load", "file"]) => crate::web::rpz::load_from_file(&self.context, request),
+            (Method::Post, ["api", "rpz", "load", "axfr"]) => crate::web::rpz::load_from_axfr(&self.context, request),
+            (Method::Get, ["api", "rpz", "whitelist"]) => crate::web::rpz::get_whitelist(&self.context),
+            (Method::Post, ["api", "rpz", "whitelist"]) => crate::web::rpz::add_to_whitelist(&self.context, request),
+            (Method::Delete, ["api", "rpz", "whitelist", domain]) => crate::web::rpz::remove_from_whitelist(&self.context, domain),
+
             // Local device discovery (mDNS)
             (Method::Get, ["devices"]) => self.devices_page(request),
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
