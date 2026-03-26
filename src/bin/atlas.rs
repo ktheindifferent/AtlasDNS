@@ -152,6 +152,11 @@ fn main() {
         "Path to SQLite database for persistent storage (default: /opt/atlas/atlas.db)",
         "PATH",
     );
+    opts.optflag(
+        "",
+        "doh-server",
+        "Enable DNS-over-HTTPS server at /dns-query",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -224,6 +229,10 @@ fn main() {
 
         if opt_matches.opt_present("x") {
             ctx.enable_api = false;
+        }
+
+        if opt_matches.opt_present("doh-server") {
+            ctx.doh_server_enabled = true;
         }
 
         match opt_matches.opt_str("j") {

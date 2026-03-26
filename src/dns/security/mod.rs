@@ -7,6 +7,7 @@ pub mod firewall;
 pub mod rate_limiter;
 pub mod ddos_protection;
 pub mod manager;
+pub mod threat_intel;
 
 use std::net::IpAddr;
 use serde::{Serialize, Deserialize};
@@ -17,6 +18,7 @@ pub use firewall::{DnsFirewall, FirewallConfig, FirewallAction, FirewallRule};
 pub use rate_limiter::{EnhancedRateLimiter, RateLimitConfig, RateLimitAlgorithm};
 pub use ddos_protection::{DDoSProtection, DDoSConfig, ThreatLevel, AttackType};
 pub use manager::{SecurityManager, SecurityConfig, SecurityEventRecord};
+pub use threat_intel::{ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry, ThreatCategory as ThreatIntelCategory};
 
 #[cfg(test)]
 mod tests;

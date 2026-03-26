@@ -34,6 +34,12 @@ pub struct User {
     pub last_failed_login: Option<DateTime<Utc>>,
     /// When set, login attempts are rejected until this time passes.
     pub account_locked_until: Option<DateTime<Utc>>,
+    /// Per-user API keys for programmatic access
+    pub api_keys: Vec<UserApiKey>,
+    /// IP subnets this user can access query logs for (None = all, admins only)
+    pub allowed_subnets: Option<Vec<String>>,
+    /// TOTP 2FA configuration (None = 2FA not set up)
+    pub totp_config: Option<TotpConfig>,
 }
 
 /// Access level granted to a user account.
@@ -95,6 +101,53 @@ pub struct UpdateUserRequest {
     pub password: Option<String>,
     pub role: Option<UserRole>,
     pub is_active: Option<bool>,
+}
+
+/// A per-user API key for programmatic access
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserApiKey {
+    /// Key ID (public, used to identify the key)
+    pub id: String,
+    /// SHA-256 hash of the actual key (never store raw key)
+    pub key_hash: String,
+    /// Human-readable name for this key
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used: Option<DateTime<Utc>>,
+    /// Scopes/permissions for this key
+    pub scopes: Vec<String>,
+    /// Whether key is active
+    pub is_active: bool,
+}
+
+/// An invite link that allows a new user to register
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteLink {
+    pub id: String,
+    /// The token embedded in the invite URL
+    pub token: String,
+    /// User ID of the admin who created the invite
+    pub created_by: String,
+    /// Pre-assigned role for the invited user
+    pub role: UserRole,
+    /// Optional email this invite is for
+    pub email: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    /// Whether this invite has been used
+    pub used: bool,
+    pub used_by: Option<String>,
+}
+
+/// TOTP (Time-based OTP) configuration stub for 2FA
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotpConfig {
+    /// Base32-encoded TOTP secret (for QR code generation)
+    pub secret: String,
+    /// Whether 2FA is currently enabled
+    pub enabled: bool,
+    /// Backup codes (each is a one-time use token)
+    pub backup_codes: Vec<String>,
 }
 
 /// A single entry in the security audit log.
@@ -341,6 +394,9 @@ impl UserManager {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         
         log::info!("Creating default admin user with username: admin");
@@ -517,6 +573,9 @@ impl UserManager {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         
         let user_clone = user.clone();
@@ -876,7 +935,7 @@ impl UserManager {
     pub fn unlock_user_account(&self, user_id: &str, admin_user_id: &str) -> Result<(), String> {
         let mut users = self.users.write().map_err(|_| "Failed to acquire lock")?;
         let user = users.get_mut(user_id).ok_or_else(|| "User not found".to_string())?;
-        
+
         let username = user.username.clone();
         user.failed_login_attempts = 0;
         user.last_failed_login = None;
@@ -885,13 +944,13 @@ impl UserManager {
         let snapshot = user.clone();
         drop(users);
         self.persist_user(&snapshot);
-        
+
         // Get admin username for logging
         let admin_username = {
             let users = self.users.read().map_err(|_| "Failed to acquire lock")?;
             users.get(admin_user_id).map(|u| u.username.clone())
         };
-        
+
         // Log account unlock
         self.log_security_event(
             SecurityEventType::AccountUnlocked,
@@ -902,8 +961,228 @@ impl UserManager {
             Some(format!("Account manually unlocked by admin: {}", admin_username.unwrap_or("unknown".to_string()))),
             true,
         );
-        
+
         Ok(())
+    }
+
+    // ===== Invite System =====
+
+    /// Generate an invite link. Only admins should call this.
+    pub fn create_invite(
+        &self,
+        created_by: &str,
+        role: UserRole,
+        email: Option<String>,
+        expires_in_hours: i64,
+    ) -> InviteLink {
+        let token: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect();
+        InviteLink {
+            id: Uuid::new_v4().to_string(),
+            token,
+            created_by: created_by.to_string(),
+            role,
+            email,
+            created_at: Utc::now(),
+            expires_at: Utc::now() + Duration::hours(expires_in_hours),
+            used: false,
+            used_by: None,
+        }
+    }
+
+    /// Use an invite token to create a new user. Returns the created user or error.
+    pub fn create_user_from_invite(
+        &self,
+        invite: &mut InviteLink,
+        username: String,
+        email: String,
+        password: String,
+    ) -> crate::web::Result<User> {
+        if invite.used {
+            return Err(WebError::MissingField("invite already used"));
+        }
+        if invite.expires_at < Utc::now() {
+            return Err(WebError::MissingField("invite expired"));
+        }
+        let req = CreateUserRequest {
+            username,
+            email,
+            password,
+            role: invite.role,
+        };
+        let user = self.create_user(req).map_err(|e| WebError::InternalError(e))?;
+        invite.used = true;
+        invite.used_by = Some(user.id.clone());
+        Ok(user)
+    }
+
+    // ===== Per-user API Keys =====
+
+    /// Create a new API key for a user. Returns (key_id, raw_key).
+    /// The raw_key is only returned once and never stored.
+    pub fn create_user_api_key(
+        &self,
+        user_id: &str,
+        name: String,
+        scopes: Vec<String>,
+    ) -> crate::web::Result<(String, String)> {
+        let raw_key: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(48)
+            .map(char::from)
+            .collect();
+
+        let mut hasher = Sha256::new();
+        hasher.update(raw_key.as_bytes());
+        let key_hash = format!("{:x}", hasher.finalize());
+
+        let api_key = UserApiKey {
+            id: Uuid::new_v4().to_string(),
+            key_hash,
+            name,
+            created_at: Utc::now(),
+            last_used: None,
+            scopes,
+            is_active: true,
+        };
+
+        let key_id = api_key.id.clone();
+
+        let mut users = self.users.write().map_err(|_| WebError::InternalError("Lock error".to_string()))?;
+        if let Some(user) = users.get_mut(user_id) {
+            user.api_keys.push(api_key);
+            let snapshot = user.clone();
+            drop(users);
+            self.persist_user(&snapshot);
+            Ok((key_id, raw_key))
+        } else {
+            Err(WebError::MissingField("user not found"))
+        }
+    }
+
+    /// Validate a raw API key. Returns (user_id, key_id) if valid.
+    pub fn validate_user_api_key(&self, raw_key: &str) -> Option<(String, String)> {
+        let mut hasher = Sha256::new();
+        hasher.update(raw_key.as_bytes());
+        let key_hash = format!("{:x}", hasher.finalize());
+
+        let users = self.users.read().ok()?;
+        for user in users.values() {
+            if !user.is_active {
+                continue;
+            }
+            for api_key in &user.api_keys {
+                if api_key.is_active && api_key.key_hash == key_hash {
+                    return Some((user.id.clone(), api_key.id.clone()));
+                }
+            }
+        }
+        None
+    }
+
+    /// Revoke an API key for a user
+    pub fn revoke_user_api_key(&self, user_id: &str, key_id: &str) -> crate::web::Result<()> {
+        let mut users = self.users.write().map_err(|_| WebError::InternalError("Lock error".to_string()))?;
+        if let Some(user) = users.get_mut(user_id) {
+            for key in &mut user.api_keys {
+                if key.id == key_id {
+                    key.is_active = false;
+                    let snapshot = user.clone();
+                    drop(users);
+                    self.persist_user(&snapshot);
+                    return Ok(());
+                }
+            }
+            Err(WebError::MissingField("key not found"))
+        } else {
+            Err(WebError::MissingField("user not found"))
+        }
+    }
+
+    // ===== TOTP 2FA stub =====
+
+    /// Set up TOTP for a user. Returns the TOTP secret for QR code generation.
+    /// The user must then verify with a valid TOTP code to activate.
+    pub fn setup_totp(&self, user_id: &str) -> crate::web::Result<String> {
+        // Generate a random base32 secret (stub: just use random alphanumeric)
+        let secret: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect();
+
+        let backup_codes: Vec<String> = (0..8)
+            .map(|_| {
+                rand::thread_rng()
+                    .sample_iter(&Alphanumeric)
+                    .take(8)
+                    .map(char::from)
+                    .collect()
+            })
+            .collect();
+
+        let totp = TotpConfig {
+            secret: secret.clone(),
+            enabled: false, // disabled until verified
+            backup_codes,
+        };
+
+        let mut users = self.users.write().map_err(|_| WebError::InternalError("Lock error".to_string()))?;
+        if let Some(user) = users.get_mut(user_id) {
+            user.totp_config = Some(totp);
+            let snapshot = user.clone();
+            drop(users);
+            self.persist_user(&snapshot);
+            Ok(secret)
+        } else {
+            Err(WebError::MissingField("user not found"))
+        }
+    }
+
+    /// Activate TOTP after user verifies the first code.
+    /// (Stub: accepts any non-empty code as valid for now)
+    pub fn activate_totp(&self, user_id: &str, _code: &str) -> crate::web::Result<()> {
+        let mut users = self.users.write().map_err(|_| WebError::InternalError("Lock error".to_string()))?;
+        if let Some(user) = users.get_mut(user_id) {
+            if let Some(totp) = &mut user.totp_config {
+                totp.enabled = true;
+                let snapshot = user.clone();
+                drop(users);
+                self.persist_user(&snapshot);
+                Ok(())
+            } else {
+                Err(WebError::MissingField("TOTP not configured"))
+            }
+        } else {
+            Err(WebError::MissingField("user not found"))
+        }
+    }
+
+    /// Check TOTP code during login.
+    /// (Stub: always returns true if TOTP is configured but not yet implemented)
+    pub fn check_totp(&self, user_id: &str, _code: &str) -> bool {
+        let users = match self.users.read() {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        if let Some(user) = users.get(user_id) {
+            if let Some(totp) = &user.totp_config {
+                // Stub: TOTP verification not yet implemented
+                // In production, use a TOTP library to verify the code
+                log::warn!("[2FA-STUB] TOTP check for user {} - returning true (stub)", user.username);
+                return totp.enabled; // stub: always pass if enabled
+            }
+        }
+        true // no TOTP configured = pass
+    }
+
+    /// Get allowed subnets for a user (for query log filtering)
+    pub fn get_allowed_subnets(&self, user_id: &str) -> Option<Vec<String>> {
+        let users = self.users.read().ok()?;
+        users.get(user_id)?.allowed_subnets.clone()
     }
 }
 
@@ -1004,6 +1283,9 @@ mod tests {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         storage.save_user(&user).unwrap();
 

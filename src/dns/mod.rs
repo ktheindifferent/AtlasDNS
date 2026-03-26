@@ -231,5 +231,8 @@ pub mod security_example;
 /// DNS Cluster Management - Primary/Replica HA setup
 pub mod clustering;
 
+/// Certificate Transparency log monitor for owned-domain phishing detection
+pub mod ct_monitor;
+
 #[cfg(test)]
 mod cache_test;

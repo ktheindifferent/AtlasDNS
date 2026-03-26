@@ -162,6 +162,8 @@ pub struct ServerContext {
     pub rebinding_protection: Arc<RebindingProtection>,
     /// Optional SQLite-backed DNS query log with per-client policies.
     pub query_log: Option<Arc<QueryLog>>,
+    /// Whether the DNS-over-HTTPS (DoH) server is enabled at /dns-query.
+    pub doh_server_enabled: bool,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -280,6 +282,7 @@ impl Default for ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            doh_server_enabled: false,
         }
     }
 }
@@ -364,6 +367,7 @@ impl ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            doh_server_enabled: false,
         })
     }
 
@@ -636,6 +640,7 @@ pub mod tests {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            doh_server_enabled: false,
         })
     }
 

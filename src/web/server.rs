@@ -151,9 +151,9 @@ impl<'a> WebServer<'a> {
         
         let graphql_schema = create_schema(context.clone());
         
-        // Create DoH server with default config
+        // Create DoH server with config driven by context
         let doh_config = DohConfig {
-            enabled: true,
+            enabled: context.doh_server_enabled,
             port: 443,
             path: "/dns-query".to_string(),
             max_message_size: 4096,
@@ -1743,6 +1743,12 @@ impl<'a> WebServer<'a> {
     }
     
     fn doh_handler(&self, request: &mut Request) -> Result<ResponseBox> {
+        if !self.doh_server.is_enabled() {
+            return Ok(Response::from_string("DoH server not enabled")
+                .with_status_code(404)
+                .boxed());
+        }
+
         // Create a runtime for async execution
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| WebError::InternalError(format!("Failed to create runtime: {}", e)))?;

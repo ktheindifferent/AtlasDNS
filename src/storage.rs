@@ -502,6 +502,9 @@ impl PersistentStorage {
                 failed_login_attempts,
                 last_failed_login,
                 account_locked_until,
+                api_keys: vec![],
+                allowed_subnets: None,
+                totp_config: None,
             });
         }
 
@@ -1038,6 +1041,9 @@ mod tests {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
 
         storage.save_user(&user).expect("save_user failed");
@@ -1063,6 +1069,9 @@ mod tests {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         storage.save_user(&user).unwrap();
 
@@ -1135,6 +1144,9 @@ mod tests {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         storage.save_user(&user).unwrap();
         let users = storage.load_all_users().unwrap();
@@ -1160,6 +1172,9 @@ mod tests {
             failed_login_attempts: 0,
             last_failed_login: None,
             account_locked_until: None,
+            api_keys: vec![],
+            allowed_subnets: None,
+            totp_config: None,
         };
         storage.save_user(&user).unwrap();
         assert!(storage.has_users().unwrap());
