@@ -7,7 +7,8 @@ use std::vec::Vec;
 use derive_more::{Display, Error, From};
 
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode};
+use crate::dns::buffer::BytePacketBuffer;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ResolveError {
@@ -188,6 +189,108 @@ impl DnsResolver for ForwardingDnsResolver {
             log::warn!("Failed to cache DNS answers: {}", e);
         }
 
+        Ok(result)
+    }
+}
+
+/// A DNS resolver that queries upstream via DNS-over-HTTPS (DoH), falling back
+/// to standard UDP forwarding when the DoH request fails.
+///
+/// The DoH URL is typically one of:
+/// * `https://cloudflare-dns.com/dns-query`
+/// * `https://dns.google/dns-query`
+pub struct DohForwardingDnsResolver {
+    context: Arc<ServerContext>,
+    doh_url: String,
+    fallback: (String, u16),
+}
+
+impl DohForwardingDnsResolver {
+    pub fn new(
+        context: Arc<ServerContext>,
+        doh_url: String,
+        fallback: (String, u16),
+    ) -> Self {
+        Self { context, doh_url, fallback }
+    }
+
+    /// Attempt a single DNS-over-HTTPS POST query.  Returns `None` on any
+    /// transport, encoding, or parsing error.
+    fn query_doh(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
+        // Serialise a minimal DNS wire-format query
+        let mut packet = DnsPacket::new();
+        packet.header.id = rand::random::<u16>();
+        packet.header.recursion_desired = true;
+        packet.questions.push(DnsQuestion {
+            name: qname.to_string(),
+            qtype,
+        });
+
+        let mut buffer = BytePacketBuffer::new();
+        packet.write(&mut buffer, 512).ok()?;
+        let body = buffer.buf[..buffer.pos].to_vec();
+
+        let url = self.doh_url.clone();
+
+        // Run the blocking HTTP call on a dedicated thread so it is safe to
+        // call from both sync and async contexts.
+        let bytes = std::thread::spawn(move || {
+            reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .user_agent("AtlasDNS/1.0 doh-upstream")
+                .build()
+                .and_then(|c| {
+                    c.post(&url)
+                        .header("Content-Type", "application/dns-message")
+                        .header("Accept", "application/dns-message")
+                        .body(body)
+                        .send()
+                })
+                .and_then(|r| r.bytes())
+        })
+        .join()
+        .ok()?
+        .ok()?;
+
+        if bytes.len() > 512 {
+            return None; // oversized – fall back to UDP
+        }
+
+        let mut resp_buf = BytePacketBuffer::new();
+        resp_buf.buf[..bytes.len()].copy_from_slice(&bytes);
+        resp_buf.pos = 0;
+        DnsPacket::from_buffer(&mut resp_buf).ok()
+    }
+}
+
+impl DnsResolver for DohForwardingDnsResolver {
+    fn get_context(&self) -> Arc<ServerContext> {
+        self.context.clone()
+    }
+
+    fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
+        // Try DoH first
+        if let Some(response) = self.query_doh(qname, qtype) {
+            if let Err(e) = self.context.cache.store(&response.answers) {
+                log::warn!("DoH: failed to cache response for {}: {}", qname, e);
+            }
+            return Ok(response);
+        }
+
+        // Fall back to UDP forwarding
+        log::warn!(
+            "DoH upstream failed for {} {:?}, falling back to UDP {}:{}",
+            qname, qtype, self.fallback.0, self.fallback.1
+        );
+        let (ref host, port) = self.fallback;
+        let result = self
+            .context
+            .client
+            .send_query(qname, qtype, (host.as_str(), port), true)?;
+
+        if let Err(e) = self.context.cache.store(&result.answers) {
+            log::warn!("DoH fallback: failed to cache UDP response: {}", e);
+        }
         Ok(result)
     }
 }

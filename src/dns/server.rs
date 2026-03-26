@@ -484,7 +484,10 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                     Some(format!("{}:{}", host, port))
                 }
             }
-            crate::dns::context::ResolveStrategy::Recursive => None, // Recursive resolution
+            crate::dns::context::ResolveStrategy::DohForward { doh_url, .. } => {
+                if cache_hit { None } else { Some(doh_url.clone()) }
+            }
+            crate::dns::context::ResolveStrategy::Recursive => None,
         };
 
         // Log successful response
@@ -1554,7 +1557,10 @@ fn store_dns_query_log(
                 Some(format!("{}:{}", host, port))
             }
         }
-        crate::dns::context::ResolveStrategy::Recursive => None, // Recursive resolution
+        crate::dns::context::ResolveStrategy::DohForward { doh_url, .. } => {
+            if cache_hit { None } else { Some(doh_url.clone()) }
+        }
+        crate::dns::context::ResolveStrategy::Recursive => None,
     };
 
     // Create query log entry

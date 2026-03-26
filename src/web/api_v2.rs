@@ -14,6 +14,7 @@
 //! * **Versioning** - API versioning support
 //! * **OpenAPI** - Auto-generated documentation
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
@@ -23,6 +24,7 @@ use tiny_http::{Request, Response, Method, StatusCode};
 use crate::dns::protocol::DnsRecord;
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
+use crate::web::blocklists::BlocklistApiHandler;
 
 /// Get current unix timestamp safely, returning 0 on error
 fn safe_unix_timestamp() -> u64 {
@@ -243,9 +245,40 @@ impl ApiV2Handler {
             (Method::Post, ["zones", zone_name, "dnssec", "rollover"]) => self.rollover_keys(zone_name),
             (Method::Get, ["dnssec", "stats"]) => self.get_dnssec_stats(),
             
+            // Blocklist management
+            (Method::Get, ["blocklists", "presets"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).list_presets()
+            }
+            (Method::Get, ["blocklists", "bundles"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).list_bundles()
+            }
+            (Method::Post, ["blocklists", "bundle"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).apply_bundle(request)
+            }
+            (Method::Get, ["blocklists"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).list_blocklists()
+            }
+            (Method::Post, ["blocklists"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).add_blocklist(request)
+            }
+            (Method::Delete, ["blocklists", id]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).remove_blocklist(id)
+            }
+            (Method::Post, ["blocklists", id, "refresh"]) => {
+                BlocklistApiHandler::new(Arc::clone(&self.context)).refresh_blocklist(id)
+            }
+
+            // Query log and device tracking
+            (Method::Get, ["query-log"]) => self.get_query_log(request),
+            (Method::Get, ["clients"]) => self.get_clients(),
+
+            // Dashboard statistics
+            (Method::Get, ["stats", "summary"]) => self.get_stats_summary(),
+            (Method::Get, ["stats", "timeline"]) => self.get_stats_timeline(request),
+
             // Health check
             (Method::Get, ["health"]) => self.health_check(),
-            
+
             // OpenAPI spec
             (Method::Get, ["openapi"]) => self.openapi_spec(),
             
@@ -1215,6 +1248,136 @@ impl ApiV2Handler {
             }
             Err(e) => self.error_response(&format!("Failed to rollover keys: {}", e), StatusCode(500))
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Query log  (GET /api/v2/query-log)
+    // -----------------------------------------------------------------------
+
+    fn get_query_log(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let limit = params.get("limit")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100)
+            .min(1000);
+        let client = params.get("client").map(|s| s.as_str());
+
+        let entries = self.context.device_tracker.as_ref()
+            .map(|t| t.get_log(limit, client))
+            .unwrap_or_default();
+
+        let response = json!({
+            "success": true,
+            "data": entries,
+            "meta": { "count": entries.len(), "limit": limit }
+        });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -----------------------------------------------------------------------
+    // Client list  (GET /api/v2/clients)
+    // -----------------------------------------------------------------------
+
+    fn get_clients(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let clients = self.context.device_tracker.as_ref()
+            .map(|t| t.get_clients())
+            .unwrap_or_default();
+
+        let response = json!({
+            "success": true,
+            "data": clients,
+            "meta": { "count": clients.len() }
+        });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -----------------------------------------------------------------------
+    // Stats summary  (GET /api/v2/stats/summary)
+    // -----------------------------------------------------------------------
+
+    fn get_stats_summary(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let now = safe_unix_timestamp();
+        let today_start = (now / 86400) * 86400;
+
+        let (queries_today, blocked_today, top_blocked, top_clients) =
+            if let Some(tracker) = &self.context.device_tracker {
+                let today = tracker.queries_since(today_start);
+                let blocked = today.iter().filter(|e| e.blocked).count() as u64;
+                let top_blocked = tracker.top_blocked_domains(10);
+                let clients = tracker.get_clients();
+                let top_clients: Vec<_> = clients
+                    .into_iter()
+                    .take(10)
+                    .map(|c| json!({ "ip": c.client_ip, "queries": c.query_count, "blocked": c.blocked_count }))
+                    .collect();
+                (today.len() as u64, blocked, top_blocked, top_clients)
+            } else {
+                (0, 0, vec![], vec![])
+            };
+
+        let tcp = self.context.statistics.get_tcp_query_count() as u64;
+        let udp = self.context.statistics.get_udp_query_count() as u64;
+
+        let summary = json!({
+            "queries_today": queries_today,
+            "blocked_today": blocked_today,
+            "total_queries_all_time": tcp + udp,
+            "tcp_queries": tcp,
+            "udp_queries": udp,
+            "top_blocked_domains": top_blocked.iter()
+                .map(|(d, c)| json!({ "domain": d, "count": c }))
+                .collect::<Vec<_>>(),
+            "top_clients": top_clients,
+            "blocklists_count": self.context.blocklist_updater.as_ref()
+                .map(|u| u.list_entries().len())
+                .unwrap_or(0),
+        });
+
+        let response = json!({ "success": true, "data": summary });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -----------------------------------------------------------------------
+    // Stats timeline  (GET /api/v2/stats/timeline?hours=24)
+    // -----------------------------------------------------------------------
+
+    fn get_stats_timeline(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let hours = params.get("hours")
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(24)
+            .min(168); // cap at 1 week
+
+        let timeline = self.context.device_tracker.as_ref()
+            .map(|t| t.timeline_by_hour(hours))
+            .unwrap_or_default();
+
+        let points: Vec<_> = timeline.iter()
+            .map(|(ts, count)| json!({ "timestamp": ts, "count": count }))
+            .collect();
+
+        let response = json!({
+            "success": true,
+            "data": points,
+            "meta": { "hours": hours, "points": points.len() }
+        });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -----------------------------------------------------------------------
+    // URL query-string parser
+    // -----------------------------------------------------------------------
+
+    fn parse_url_params(url: &str) -> HashMap<String, String> {
+        let qs = url.splitn(2, '?').nth(1).unwrap_or("");
+        qs.split('&')
+            .filter_map(|pair| {
+                let mut it = pair.splitn(2, '=');
+                let k = it.next()?;
+                let v = it.next().unwrap_or("");
+                if k.is_empty() { None } else { Some((k.to_string(), v.to_string())) }
+            })
+            .collect()
     }
 
     /// Get global DNSSEC statistics

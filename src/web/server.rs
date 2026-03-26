@@ -2811,6 +2811,7 @@ impl<'a> WebServer<'a> {
             "resolve_strategy": match self.context.resolve_strategy {
                 crate::dns::context::ResolveStrategy::Recursive => "Recursive",
                 crate::dns::context::ResolveStrategy::Forward { .. } => "Forward",
+                crate::dns::context::ResolveStrategy::DohForward { .. } => "DohForward",
             },
         });
         self.response_from_media_type(request, "settings", data)

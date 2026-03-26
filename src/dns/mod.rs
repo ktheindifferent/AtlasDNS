@@ -204,6 +204,15 @@ pub mod dns_views;
 /// API Key Management for secure API access control
 pub mod api_keys;
 
+/// Automatic URL-based blocklist fetching and periodic refresh scheduler
+pub mod blocklist_updater;
+
+/// Captive-portal HTTP server for blocked-domain HTTP responses
+pub mod captive_portal;
+
+/// Local network device query tracker (per-client DNS log)
+pub mod device_tracker;
+
 /// Comprehensive security implementation examples and utilities
 pub mod security_example;
 

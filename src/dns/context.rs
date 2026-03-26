@@ -9,7 +9,7 @@ use derive_more::{Display, Error, From};
 use crate::dns::authority::Authority;
 use crate::dns::cache::SynchronizedCache;
 use crate::dns::client::{DnsClient, DnsNetworkClient, ClientError};
-use crate::dns::resolve::{DnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
+use crate::dns::resolve::{DnsResolver, DohForwardingDnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
 use crate::dns::acme::SslConfig;
 use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
@@ -31,6 +31,9 @@ use crate::dns::doq_manager::DoqManager;
 use crate::dns::shutdown::{ShutdownCoordinator, ShutdownConfig};
 use crate::metrics::{MetricsManager};
 use crate::storage::PersistentStorage;
+use crate::dns::blocklist_updater::BlocklistUpdater;
+use crate::dns::captive_portal::CaptivePortal;
+use crate::dns::device_tracker::DeviceTracker;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -65,8 +68,17 @@ impl ServerStatistics {
 pub enum ResolveStrategy {
     /// Perform recursive resolution starting from root servers
     Recursive,
-    /// Forward all queries to an upstream DNS server
+    /// Forward all queries to an upstream DNS server via UDP
     Forward { host: String, port: u16 },
+    /// Forward all queries via DNS-over-HTTPS, falling back to UDP on failure
+    DohForward {
+        /// DoH endpoint URL, e.g. `https://cloudflare-dns.com/dns-query`
+        doh_url: String,
+        /// UDP fallback server host
+        fallback_host: String,
+        /// UDP fallback server port (usually 53)
+        fallback_port: u16,
+    },
 }
 
 /// Main server context containing configuration and shared state
@@ -134,6 +146,12 @@ pub struct ServerContext {
     pub shutdown_coordinator: Arc<ShutdownCoordinator>,
     /// Optional SQLite persistent storage backend (zones + users).
     pub storage: Option<Arc<PersistentStorage>>,
+    /// Optional automatic blocklist fetching and update scheduler.
+    pub blocklist_updater: Option<Arc<BlocklistUpdater>>,
+    /// Optional captive-portal HTTP server for blocked-domain responses.
+    pub captive_portal: Option<Arc<CaptivePortal>>,
+    /// Optional per-client DNS query tracker for home network monitoring.
+    pub device_tracker: Option<Arc<DeviceTracker>>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -245,6 +263,9 @@ impl Default for ServerContext {
             doq_manager: None,
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
             storage: None,
+            blocklist_updater: None,
+            captive_portal: None,
+            device_tracker: None,
         }
     }
 }
@@ -322,6 +343,9 @@ impl ServerContext {
             doq_manager: None, // Will be initialized based on configuration
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
             storage: None,
+            blocklist_updater: None,
+            captive_portal: None,
+            device_tracker: None,
         })
     }
 
@@ -490,14 +514,26 @@ impl ServerContext {
             ResolveStrategy::Forward { ref host, port } => {
                 Box::new(ForwardingDnsResolver::new(ptr, (host.clone(), port)))
             }
+            ResolveStrategy::DohForward {
+                ref doh_url,
+                ref fallback_host,
+                fallback_port,
+            } => Box::new(DohForwardingDnsResolver::new(
+                ptr,
+                doh_url.clone(),
+                (fallback_host.clone(), fallback_port),
+            )),
         }
     }
 
     /// Run health checks with upstream server configuration
     pub async fn run_health_checks(&self) {
         let upstream_config = match &self.resolve_strategy {
-            ResolveStrategy::Forward { host, port } => Some((host.clone(), *port)),
             ResolveStrategy::Recursive => None,
+            ResolveStrategy::Forward { host, port } => Some((host.clone(), *port)),
+            ResolveStrategy::DohForward { fallback_host, fallback_port, .. } => {
+                Some((fallback_host.clone(), *fallback_port))
+            }
         };
         
         // Run upstream health check with proper configuration
@@ -575,6 +611,9 @@ pub mod tests {
             dnssec_enabled: false,
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
             storage: None,
+            blocklist_updater: None,
+            captive_portal: None,
+            device_tracker: None,
         })
     }
 
