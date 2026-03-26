@@ -237,6 +237,7 @@ impl<'a> WebServer<'a> {
         register_template("certificates", include_str!("templates/certificates.html"));
         register_template("templates", include_str!("templates/templates.html"));
         register_template("settings", include_str!("templates/settings.html"));
+        register_template("blocklists", include_str!("templates/blocklists.html"));
 
         server
     }
@@ -411,6 +412,11 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["analytics"]) => self.analytics_page(request),
             (Method::Get, ["dnssec"]) => self.dnssec_page(request),
             (Method::Get, ["firewall"]) => self.firewall_page(request),
+            (Method::Get, ["blocklists"]) => self.blocklists_page(request),
+            (Method::Get, ["api", "blocklists"]) => self.get_blocklists_api(request),
+            (Method::Post, ["api", "blocklists", list_id, "toggle"]) => self.toggle_blocklist(request, list_id),
+            (Method::Get, ["api", "query-log"]) => self.get_query_log_api(request),
+            (Method::Get, ["api", "rate-limiting", "stats"]) => self.get_rate_limit_stats(request),
             (Method::Post, ["api", "firewall", "rules"]) => self.add_firewall_rule(request),
             (Method::Delete, ["api", "firewall", "rules", rule_id]) => self.delete_firewall_rule(request, rule_id),
             (Method::Post, ["api", "firewall", "blocklist"]) => self.load_blocklist(request),
@@ -2143,7 +2149,78 @@ impl<'a> WebServer<'a> {
         });
         self.response_from_media_type(request, "firewall", data)
     }
-    
+
+    fn blocklists_page(&self, request: &Request) -> Result<ResponseBox> {
+        let mut data = serde_json::json!({
+            "title": "Blocklist Management",
+            "nav_active": "blocklists"
+        });
+        self.add_user_context(request, &mut data)?;
+        self.response_from_media_type(request, "blocklists", data)
+    }
+
+    fn get_blocklists_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let security_metrics = self.context.security_manager.get_metrics();
+        let data = serde_json::json!({
+            "success": true,
+            "data": {
+                "total_blocked": security_metrics.firewall_blocked,
+                "blocklists": []
+            }
+        });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn toggle_blocklist(&self, _request: &mut Request, list_id: &str) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "success": true,
+            "id": list_id
+        });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn get_query_log_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let recent = self.context.query_log_storage.get_recent(100);
+        let entries: Vec<_> = recent.into_iter().map(|q| serde_json::json!({
+            "timestamp": q.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+            "domain": q.domain,
+            "query_type": q.query_type,
+            "response_code": q.response_code,
+            "blocked": q.response_code == "REFUSED" || q.response_code == "NXDOMAIN",
+            "cache_hit": q.cache_hit,
+            "response_time_ms": 0
+        })).collect();
+        let data = serde_json::json!({ "success": true, "data": entries });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn get_rate_limit_stats(&self, _request: &Request) -> Result<ResponseBox> {
+        let client_stats = self.context.security_manager.get_rate_limit_stats();
+        let data = serde_json::json!({
+            "success": true,
+            "data": {
+                "clients": client_stats,
+                "config": {
+                    "client_limit": 100,
+                    "window_secs": 1
+                }
+            }
+        });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
     fn templates_page(&self, request: &Request) -> Result<ResponseBox> {
         let data = serde_json::json!({
             "title": "Zone Templates",

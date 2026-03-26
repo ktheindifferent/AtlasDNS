@@ -1,0 +1,162 @@
+{{#*inline "title"}}Blocklist Management{{/inline}}
+{{#*inline "current_page"}}blocklists{{/inline}}
+
+{{#*inline "content"}}
+<!-- Blocklist Management -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Blocklist Management</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Security</li>
+                    <li class="breadcrumb-item active">Blocklists</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" id="refreshBlocklists">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Total Blocked Domains</h6>
+                        <div class="h3 mb-0" id="totalBlocked">0</div>
+                        <small class="text-danger">Blocked queries</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-shield-fill-x text-danger" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Blocklists</h6>
+                        <div class="h3 mb-0" id="activeBlocklists">0</div>
+                        <small class="text-success">Lists enabled</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-list-check text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Last Updated</h6>
+                        <div class="h3 mb-0" style="font-size: 1.2rem;" id="lastUpdated">Never</div>
+                        <small class="text-muted">Auto-update available</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-clock-history text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Blocklists Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Blocklists</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Domains</th>
+                        <th>Last Updated</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="blocklistsTableBody">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                            No blocklists configured
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadBlocklists() {
+    fetch('/api/blocklists')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('totalBlocked').textContent = data.data.total_blocked || 0;
+                const lists = data.data.blocklists || [];
+                document.getElementById('activeBlocklists').textContent = lists.filter(l => l.enabled).length;
+                const tbody = document.getElementById('blocklistsTableBody');
+                if (lists.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="bi bi-inbox fs-3 d-block mb-2"></i>No blocklists configured</td></tr>';
+                } else {
+                    tbody.innerHTML = lists.map(list => `
+                        <tr>
+                            <td>${list.name || '-'}</td>
+                            <td>${list.domain_count || 0}</td>
+                            <td>${list.last_updated || 'Never'}</td>
+                            <td>
+                                <span class="badge ${list.enabled ? 'bg-success' : 'bg-secondary'}">
+                                    ${list.enabled ? 'Active' : 'Disabled'}
+                                </span>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary"
+                                    onclick="toggleBlocklist('${list.id}')">
+                                    ${list.enabled ? 'Disable' : 'Enable'}
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        })
+        .catch(err => console.error('Failed to load blocklists:', err));
+}
+
+function toggleBlocklist(listId) {
+    fetch(`/api/blocklists/${listId}/toggle`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadBlocklists();
+            }
+        })
+        .catch(err => console.error('Failed to toggle blocklist:', err));
+}
+
+document.getElementById('refreshBlocklists').addEventListener('click', loadBlocklists);
+
+document.addEventListener('DOMContentLoaded', loadBlocklists);
+</script>
+{{/inline}}
+
+{{> layout}}

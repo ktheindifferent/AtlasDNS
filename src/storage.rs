@@ -33,6 +33,8 @@ use tokio::runtime::Runtime;
 use crate::dns::authority::Zone;
 use crate::dns::protocol::DnsRecord;
 use crate::web::users::{User, UserRole, Session};
+use crate::dns::client_rules::ClientRule;
+use crate::dns::schedule::TimeSchedule;
 
 /// Error type for storage operations.
 #[derive(Debug)]
@@ -203,6 +205,43 @@ impl PersistentStorage {
             sqlx::query(
                 "CREATE INDEX IF NOT EXISTS idx_blocklists_name ON blocklists(list_name)"
             ).execute(&self.pool).await?;
+
+            sqlx::query(r#"
+                CREATE TABLE IF NOT EXISTS client_rules (
+                    id              TEXT PRIMARY KEY,
+                    client_ip       TEXT NOT NULL,
+                    domain_pattern  TEXT NOT NULL,
+                    action_json     TEXT NOT NULL,
+                    created_at      INTEGER NOT NULL DEFAULT 0
+                );
+            "#).execute(&self.pool).await?;
+
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_client_rules_ip ON client_rules(client_ip)"
+            ).execute(&self.pool).await?;
+
+            sqlx::query(r#"
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id              TEXT PRIMARY KEY,
+                    client_ip       TEXT NOT NULL,
+                    days_of_week    TEXT NOT NULL,
+                    start_time      TEXT NOT NULL,
+                    end_time        TEXT NOT NULL,
+                    action_json     TEXT NOT NULL,
+                    created_at      INTEGER NOT NULL DEFAULT 0
+                );
+            "#).execute(&self.pool).await?;
+
+            sqlx::query(r#"
+                CREATE TABLE IF NOT EXISTS local_records (
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
+                    record_type TEXT NOT NULL,
+                    value       TEXT NOT NULL,
+                    ttl         INTEGER NOT NULL DEFAULT 300,
+                    created_at  INTEGER NOT NULL DEFAULT 0
+                );
+            "#).execute(&self.pool).await?;
 
             Ok::<_, sqlx::Error>(())
         })?;
@@ -725,6 +764,189 @@ impl PersistentStorage {
             .fetch_all(&self.pool).await
         })?;
         Ok(rows.iter().map(|r| (r.get::<String, _>(0), r.get::<i64, _>(1))).collect())
+    }
+
+    // -------------------------------------------------------------------------
+    // Client rules
+    // -------------------------------------------------------------------------
+
+    /// Persist (insert or replace) a per-client DNS rule.
+    pub fn save_client_rule(&self, rule: &ClientRule) -> Result<()> {
+        let id = rule.id.clone();
+        let client_ip = rule.client_ip.clone();
+        let domain_pattern = rule.domain_pattern.clone();
+        let action_json = serde_json::to_string(&rule.action)?;
+        let created_at = rule.created_at as i64;
+
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query(
+                "INSERT INTO client_rules (id, client_ip, domain_pattern, action_json, created_at) \
+                 VALUES (?, ?, ?, ?, ?) \
+                 ON CONFLICT(id) DO UPDATE SET \
+                 client_ip=excluded.client_ip, domain_pattern=excluded.domain_pattern, \
+                 action_json=excluded.action_json"
+            )
+            .bind(&id).bind(&client_ip).bind(&domain_pattern).bind(&action_json).bind(created_at)
+            .execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Delete a per-client DNS rule by ID.
+    pub fn delete_client_rule(&self, id: &str) -> Result<()> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query("DELETE FROM client_rules WHERE id = ?").bind(id).execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Load all per-client DNS rules from the database.
+    pub fn load_all_client_rules(&self) -> Result<Vec<ClientRule>> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        let rows = rt.block_on(async {
+            sqlx::query("SELECT id, client_ip, domain_pattern, action_json, created_at FROM client_rules")
+                .fetch_all(&self.pool).await
+        })?;
+
+        let mut rules = Vec::new();
+        for row in &rows {
+            let id: String = row.get(0);
+            let client_ip: String = row.get(1);
+            let domain_pattern: String = row.get(2);
+            let action_json: String = row.get(3);
+            let created_at: i64 = row.get(4);
+
+            match serde_json::from_str(&action_json) {
+                Ok(action) => rules.push(ClientRule { id, client_ip, domain_pattern, action, created_at: created_at as u64 }),
+                Err(e) => log::warn!("Skipping malformed client rule: {}", e),
+            }
+        }
+        Ok(rules)
+    }
+
+    // -------------------------------------------------------------------------
+    // Schedules
+    // -------------------------------------------------------------------------
+
+    /// Persist (insert or replace) a time-based blocking schedule.
+    pub fn save_schedule(&self, sched: &TimeSchedule) -> Result<()> {
+        let id = sched.id.clone();
+        let client_ip = sched.client_ip.clone();
+        let days_json = serde_json::to_string(&sched.days_of_week)?;
+        let start_time = sched.start_time.clone();
+        let end_time = sched.end_time.clone();
+        let action_json = serde_json::to_string(&sched.action)?;
+        let created_at = sched.created_at as i64;
+
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query(
+                "INSERT INTO schedules (id, client_ip, days_of_week, start_time, end_time, action_json, created_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(id) DO UPDATE SET \
+                 client_ip=excluded.client_ip, days_of_week=excluded.days_of_week, \
+                 start_time=excluded.start_time, end_time=excluded.end_time, \
+                 action_json=excluded.action_json"
+            )
+            .bind(&id).bind(&client_ip).bind(&days_json).bind(&start_time).bind(&end_time).bind(&action_json).bind(created_at)
+            .execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Delete a schedule by ID.
+    pub fn delete_schedule(&self, id: &str) -> Result<()> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query("DELETE FROM schedules WHERE id = ?").bind(id).execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Load all time-based blocking schedules from the database.
+    pub fn load_all_schedules(&self) -> Result<Vec<TimeSchedule>> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        let rows = rt.block_on(async {
+            sqlx::query("SELECT id, client_ip, days_of_week, start_time, end_time, action_json, created_at FROM schedules")
+                .fetch_all(&self.pool).await
+        })?;
+
+        let mut scheds = Vec::new();
+        for row in &rows {
+            let id: String = row.get(0);
+            let client_ip: String = row.get(1);
+            let days_json: String = row.get(2);
+            let start_time: String = row.get(3);
+            let end_time: String = row.get(4);
+            let action_json: String = row.get(5);
+            let created_at: i64 = row.get(6);
+
+            let days_of_week = serde_json::from_str::<Vec<u8>>(&days_json).unwrap_or_default();
+            match serde_json::from_str(&action_json) {
+                Ok(action) => scheds.push(TimeSchedule { id, client_ip, days_of_week, start_time, end_time, action, created_at: created_at as u64 }),
+                Err(e) => log::warn!("Skipping malformed schedule: {}", e),
+            }
+        }
+        Ok(scheds)
+    }
+
+    // -------------------------------------------------------------------------
+    // Local records
+    // -------------------------------------------------------------------------
+
+    /// Persist (insert or replace) a local DNS record using raw fields.
+    pub fn save_local_record_raw(&self, id: &str, name: &str, record_type: &str, value: &str, ttl: u32, created_at: u64) -> Result<()> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query(
+                "INSERT INTO local_records (id, name, record_type, value, ttl, created_at) \
+                 VALUES (?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(id) DO UPDATE SET \
+                 name=excluded.name, record_type=excluded.record_type, \
+                 value=excluded.value, ttl=excluded.ttl"
+            )
+            .bind(id).bind(name).bind(record_type).bind(value).bind(ttl as i64).bind(created_at as i64)
+            .execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Delete a local DNS record by ID.
+    pub fn delete_local_record(&self, id: &str) -> Result<()> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        rt.block_on(async {
+            sqlx::query("DELETE FROM local_records WHERE id = ?").bind(id).execute(&self.pool).await?;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
+    /// Load all local DNS records as raw field tuples.
+    pub fn load_local_records_raw(&self) -> Result<Vec<(String, String, String, String, u32, u64)>> {
+        let rt = self.rt.lock().expect("storage runtime mutex poisoned");
+        let rows = rt.block_on(async {
+            sqlx::query("SELECT id, name, record_type, value, ttl, created_at FROM local_records ORDER BY created_at ASC")
+                .fetch_all(&self.pool).await
+        })?;
+
+        let mut records = Vec::new();
+        for row in &rows {
+            let id: String = row.get(0);
+            let name: String = row.get(1);
+            let record_type: String = row.get(2);
+            let value: String = row.get(3);
+            let ttl: i64 = row.get(4);
+            let created_at: i64 = row.get(5);
+            records.push((id, name, record_type, value, ttl as u32, created_at as u64));
+        }
+        Ok(records)
     }
 }
 

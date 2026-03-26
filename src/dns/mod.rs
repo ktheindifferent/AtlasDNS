@@ -138,6 +138,9 @@ pub mod ddos_protection;
 /// Cache Poisoning Protection with multiple defense layers
 pub mod cache_poisoning;
 
+/// DNS rebinding attack protection
+pub mod rebinding;
+
 /// Request Size Limits and DoS Protection for oversized packet prevention
 pub mod request_limits;
 
@@ -212,6 +215,15 @@ pub mod captive_portal;
 
 /// Local network device query tracker (per-client DNS log)
 pub mod device_tracker;
+
+/// SQLite-backed DNS query log with per-client policies.
+pub mod query_log;
+
+/// Per-client DNS blocking rules
+pub mod client_rules;
+
+/// Time-based scheduled DNS blocking (parental controls)
+pub mod schedule;
 
 /// Comprehensive security implementation examples and utilities
 pub mod security_example;

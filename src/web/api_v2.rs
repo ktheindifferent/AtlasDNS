@@ -25,6 +25,8 @@ use crate::dns::protocol::DnsRecord;
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
 use crate::web::blocklists::BlocklistApiHandler;
+use crate::dns::client_rules::{ClientRule, RuleAction};
+use crate::dns::schedule::{TimeSchedule, ScheduleAction};
 
 /// Get current unix timestamp safely, returning 0 on error
 fn safe_unix_timestamp() -> u64 {
@@ -192,6 +194,43 @@ pub struct QueryParams {
     pub fields: Option<String>,
 }
 
+/// Request body for creating a client rule.
+#[derive(Debug, Deserialize)]
+struct ClientRuleRequest {
+    domain_pattern: String,
+    action: RuleAction,
+}
+
+/// Request body for creating a schedule.
+#[derive(Debug, Deserialize)]
+struct ScheduleRequest {
+    client_ip: String,
+    days_of_week: Vec<u8>,
+    start_time: String,
+    end_time: String,
+    action: ScheduleAction,
+}
+
+/// Request body for creating a local record.
+#[derive(Debug, Deserialize)]
+struct LocalRecordRequest {
+    name: String,
+    record_type: String,
+    value: String,
+    ttl: Option<u32>,
+}
+
+/// A local DNS record (home network shorthand).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LocalRecord {
+    id: String,
+    name: String,
+    record_type: String,
+    value: String,
+    ttl: u32,
+    created_at: u64,
+}
+
 impl ApiV2Handler {
     /// Create new API v2 handler
     pub fn new(context: Arc<ServerContext>) -> Self {
@@ -267,6 +306,27 @@ impl ApiV2Handler {
             (Method::Post, ["blocklists", id, "refresh"]) => {
                 BlocklistApiHandler::new(Arc::clone(&self.context)).refresh_blocklist(id)
             }
+
+            // Per-client blocking rules
+            (Method::Get, ["clients", client_ip, "rules"]) => self.get_client_rules(client_ip),
+            (Method::Post, ["clients", client_ip, "rules"]) => self.add_client_rule(client_ip, request),
+            (Method::Delete, ["clients", client_ip, "rules", rule_id]) => self.delete_client_rule(client_ip, rule_id),
+
+            // Scheduled blocking
+            (Method::Get, ["schedules"]) => self.get_schedules(),
+            (Method::Post, ["schedules"]) => self.add_schedule(request),
+            (Method::Delete, ["schedules", id]) => self.delete_schedule(id),
+
+            // Analytics
+            (Method::Get, ["analytics", "top-domains"]) => self.analytics_top_domains(request),
+            (Method::Get, ["analytics", "top-blocked"]) => self.analytics_top_blocked(request),
+            (Method::Get, ["analytics", "top-clients"]) => self.analytics_top_clients(request),
+            (Method::Get, ["analytics", "timeline"]) => self.analytics_timeline(request),
+
+            // Local DNS records
+            (Method::Get, ["local-records"]) => self.list_local_records(),
+            (Method::Post, ["local-records"]) => self.create_local_record(request),
+            (Method::Delete, ["local-records", id]) => self.delete_local_record(id),
 
             // Query log and device tracking
             (Method::Get, ["query-log"]) => self.get_query_log(request),
@@ -1378,6 +1438,271 @@ impl ApiV2Handler {
                 if k.is_empty() { None } else { Some((k.to_string(), v.to_string())) }
             })
             .collect()
+    }
+
+    // -----------------------------------------------------------------------
+    // Per-client rules  /api/v2/clients/{ip}/rules
+    // -----------------------------------------------------------------------
+
+    fn get_client_rules(&self, client_ip: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let rules = self.context.client_rules_store.as_ref()
+            .map(|s| s.get_rules(client_ip))
+            .unwrap_or_default();
+        let count = rules.len();
+        let response = json!({ "success": true, "data": rules, "meta": { "count": count } });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn add_client_rule(&self, client_ip: &str, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let req: ClientRuleRequest = self.parse_json_body(request)?;
+        let store = self.context.client_rules_store.as_ref()
+            .ok_or_else(|| WebError::InternalError("Client rules store not initialized".into()))?;
+        let rule = ClientRule {
+            id: uuid::Uuid::new_v4().to_string(),
+            client_ip: client_ip.to_string(),
+            domain_pattern: req.domain_pattern,
+            action: req.action,
+            created_at: safe_unix_timestamp(),
+        };
+        if let Some(storage) = &self.context.storage {
+            if let Err(e) = storage.save_client_rule(&rule) {
+                log::warn!("Failed to persist client rule: {}", e);
+            }
+        }
+        store.add_rule(rule.clone());
+        let response = json!({ "success": true, "data": rule });
+        handle_json_response(&response, StatusCode(201))
+    }
+
+    fn delete_client_rule(&self, client_ip: &str, rule_id: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let deleted = self.context.client_rules_store.as_ref()
+            .map(|s| s.delete_rule(client_ip, rule_id))
+            .unwrap_or(false);
+        if let Some(storage) = &self.context.storage {
+            let _ = storage.delete_client_rule(rule_id);
+        }
+        if deleted {
+            let response = json!({ "success": true });
+            handle_json_response(&response, StatusCode(200))
+        } else {
+            self.error_response("Rule not found", StatusCode(404))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Schedules  /api/v2/schedules
+    // -----------------------------------------------------------------------
+
+    fn get_schedules(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let schedules = self.context.schedule_store.as_ref()
+            .map(|s| s.get_schedules())
+            .unwrap_or_default();
+        let count = schedules.len();
+        let response = json!({ "success": true, "data": schedules, "meta": { "count": count } });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn add_schedule(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let req: ScheduleRequest = self.parse_json_body(request)?;
+        let store = self.context.schedule_store.as_ref()
+            .ok_or_else(|| WebError::InternalError("Schedule store not initialized".into()))?;
+        let sched = TimeSchedule {
+            id: uuid::Uuid::new_v4().to_string(),
+            client_ip: req.client_ip,
+            days_of_week: req.days_of_week,
+            start_time: req.start_time,
+            end_time: req.end_time,
+            action: req.action,
+            created_at: safe_unix_timestamp(),
+        };
+        if let Some(storage) = &self.context.storage {
+            if let Err(e) = storage.save_schedule(&sched) {
+                log::warn!("Failed to persist schedule: {}", e);
+            }
+        }
+        store.add_schedule(sched.clone());
+        let response = json!({ "success": true, "data": sched });
+        handle_json_response(&response, StatusCode(201))
+    }
+
+    fn delete_schedule(&self, id: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let deleted = self.context.schedule_store.as_ref()
+            .map(|s| s.delete_schedule(id))
+            .unwrap_or(false);
+        if let Some(storage) = &self.context.storage {
+            let _ = storage.delete_schedule(id);
+        }
+        if deleted {
+            let response = json!({ "success": true });
+            handle_json_response(&response, StatusCode(200))
+        } else {
+            self.error_response("Schedule not found", StatusCode(404))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Analytics  /api/v2/analytics/*
+    // -----------------------------------------------------------------------
+
+    fn analytics_top_domains(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let limit = params.get("limit").and_then(|v| v.parse::<usize>().ok()).unwrap_or(20).min(100);
+        let hours = params.get("hours").and_then(|v| v.parse::<u64>().ok()).unwrap_or(24);
+        let since = safe_unix_timestamp().saturating_sub(hours * 3600);
+
+        let top = self.context.device_tracker.as_ref().map(|t| {
+            let entries = t.queries_since(since);
+            let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+            for e in &entries { *counts.entry(e.domain.clone()).or_insert(0) += 1; }
+            let mut sorted: Vec<_> = counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            sorted.truncate(limit);
+            sorted.into_iter().map(|(d, c)| json!({ "domain": d, "count": c })).collect::<Vec<_>>()
+        }).unwrap_or_default();
+
+        let response = json!({ "success": true, "data": top });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn analytics_top_blocked(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let limit = params.get("limit").and_then(|v| v.parse::<usize>().ok()).unwrap_or(20).min(100);
+        let hours = params.get("hours").and_then(|v| v.parse::<u64>().ok()).unwrap_or(24);
+        let since = safe_unix_timestamp().saturating_sub(hours * 3600);
+
+        let top = self.context.device_tracker.as_ref().map(|t| {
+            let entries = t.queries_since(since);
+            let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+            for e in entries.iter().filter(|e| e.blocked) {
+                *counts.entry(e.domain.clone()).or_insert(0) += 1;
+            }
+            let mut sorted: Vec<_> = counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            sorted.truncate(limit);
+            sorted.into_iter().map(|(d, c)| json!({ "domain": d, "count": c })).collect::<Vec<_>>()
+        }).unwrap_or_default();
+
+        let response = json!({ "success": true, "data": top });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn analytics_top_clients(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let limit = params.get("limit").and_then(|v| v.parse::<usize>().ok()).unwrap_or(10).min(50);
+
+        let clients = self.context.device_tracker.as_ref()
+            .map(|t| t.get_clients())
+            .unwrap_or_default();
+        let top: Vec<_> = clients.into_iter().take(limit)
+            .map(|c| json!({ "client_ip": c.client_ip, "query_count": c.query_count, "blocked_count": c.blocked_count, "last_seen": c.last_seen }))
+            .collect();
+
+        let response = json!({ "success": true, "data": top });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn analytics_timeline(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let params = Self::parse_url_params(request.url());
+        let hours = params.get("hours").and_then(|v| v.parse::<u64>().ok()).unwrap_or(24).min(168);
+        let bucket = params.get("bucket").map(|s| s.as_str()).unwrap_or("hour");
+
+        let points: Vec<_> = if bucket == "hour" {
+            self.context.device_tracker.as_ref()
+                .map(|t| t.timeline_by_hour(hours))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(ts, count)| json!({ "timestamp": ts, "count": count, "bucket": "hour" }))
+                .collect()
+        } else {
+            // minute buckets
+            let since = safe_unix_timestamp().saturating_sub(hours * 3600);
+            self.context.device_tracker.as_ref().map(|t| {
+                let entries = t.queries_since(since);
+                let mut buckets: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+                for e in &entries {
+                    let bucket_ts = (e.timestamp / 60) * 60;
+                    *buckets.entry(bucket_ts).or_insert(0) += 1;
+                }
+                let mut sorted: Vec<_> = buckets.into_iter().collect();
+                sorted.sort_by_key(|(ts, _)| *ts);
+                sorted.into_iter().map(|(ts, c)| json!({ "timestamp": ts, "count": c, "bucket": "minute" })).collect::<Vec<_>>()
+            }).unwrap_or_default()
+        };
+
+        let response = json!({ "success": true, "data": points, "meta": { "hours": hours, "bucket": bucket } });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -----------------------------------------------------------------------
+    // Local DNS records  /api/v2/local-records
+    // -----------------------------------------------------------------------
+
+    fn list_local_records(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let records: Vec<LocalRecord> = self.context.storage.as_ref()
+            .and_then(|s| s.load_local_records_raw().ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, name, record_type, value, ttl, created_at)| LocalRecord { id, name, record_type, value, ttl, created_at })
+            .collect();
+        let count = records.len();
+        let response = json!({ "success": true, "data": records, "meta": { "count": count } });
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn create_local_record(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let req: LocalRecordRequest = self.parse_json_body(request)?;
+
+        match req.record_type.to_uppercase().as_str() {
+            "A" | "AAAA" | "CNAME" => {}
+            _ => return self.error_response("record_type must be A, AAAA, or CNAME", StatusCode(400)),
+        }
+
+        let record = LocalRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: req.name.to_ascii_lowercase(),
+            record_type: req.record_type.to_uppercase(),
+            value: req.value,
+            ttl: req.ttl.unwrap_or(300),
+            created_at: safe_unix_timestamp(),
+        };
+
+        match record.record_type.as_str() {
+            "A" => {
+                if let Ok(addr) = record.value.parse::<std::net::Ipv4Addr>() {
+                    let _ = self.context.authority.add_a_record("local", &record.name, addr, record.ttl);
+                }
+            }
+            "AAAA" => {
+                if let Ok(addr) = record.value.parse::<std::net::Ipv6Addr>() {
+                    let _ = self.context.authority.add_aaaa_record("local", &record.name, addr, record.ttl);
+                }
+            }
+            "CNAME" => {
+                let _ = self.context.authority.add_cname_record("local", &record.name, &record.value, record.ttl);
+            }
+            _ => {}
+        }
+
+        if let Some(storage) = &self.context.storage {
+            if let Err(e) = storage.save_local_record_raw(&record.id, &record.name, &record.record_type, &record.value, record.ttl, record.created_at) {
+                log::warn!("Failed to persist local record: {}", e);
+            }
+        }
+
+        let response = json!({ "success": true, "data": record });
+        handle_json_response(&response, StatusCode(201))
+    }
+
+    fn delete_local_record(&self, id: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let deleted = self.context.storage.as_ref()
+            .map(|s| s.delete_local_record(id).is_ok())
+            .unwrap_or(false);
+        if deleted {
+            let response = json!({ "success": true });
+            handle_json_response(&response, StatusCode(200))
+        } else {
+            self.error_response("Record not found", StatusCode(404))
+        }
     }
 
     /// Get global DNSSEC statistics

@@ -93,7 +93,37 @@ pub trait DnsResolver {
             }
         }
 
-        self.perform(qname, qtype)
+        let result = self.perform(qname, qtype)?;
+
+        // DNS rebinding protection: block responses returning private IPs for public domains
+        let context = self.get_context();
+        let rebind = &context.rebinding_protection;
+        if rebind.enabled {
+            let blocked_addrs: Vec<_> = result.answers.iter()
+                .filter_map(|r| match r {
+                    crate::dns::protocol::DnsRecord::A { addr, .. } => {
+                        Some(std::net::IpAddr::V4(*addr))
+                    }
+                    crate::dns::protocol::DnsRecord::Aaaa { addr, .. } => {
+                        Some(std::net::IpAddr::V6(*addr))
+                    }
+                    _ => None,
+                })
+                .filter(|ip| rebind.should_block(qname, ip))
+                .collect();
+
+            if !blocked_addrs.is_empty() {
+                log::warn!(
+                    "DNS rebinding protection: blocked {} private IP(s) in response for {} ({:?})",
+                    blocked_addrs.len(), qname, blocked_addrs
+                );
+                let mut blocked = crate::dns::protocol::DnsPacket::new();
+                blocked.header.rescode = crate::dns::protocol::ResultCode::REFUSED;
+                return Ok(blocked);
+            }
+        }
+
+        Ok(result)
     }
 
     fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket>;

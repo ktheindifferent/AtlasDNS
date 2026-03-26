@@ -250,6 +250,16 @@ impl SecurityManager {
         Ok(())
     }
 
+    /// Add pre-parsed domains directly to the blocklist (used by BlocklistUpdater)
+    pub fn add_domains_to_blocklist(&self, domains: &[String], category: super::firewall::ThreatCategory) -> Result<(), DnsError> {
+        self.firewall.add_domains_to_blocklist(domains, category)
+    }
+
+    /// Remove specific domains from the blocklist (used by BlocklistUpdater)
+    pub fn remove_from_blocklist(&self, domains: &[String]) -> Result<(), DnsError> {
+        self.firewall.remove_from_blocklist(domains)
+    }
+
     /// Unblock client
     pub fn unblock_client(&self, client_ip: IpAddr) {
         self.rate_limiter.unblock_client(client_ip);
@@ -345,6 +355,16 @@ impl SecurityManager {
     /// Get the count of active threat feeds
     pub fn get_threat_feed_count(&self) -> usize {
         self.firewall.get_threat_feed_count()
+    }
+
+    /// Get per-client rate limiting stats as a JSON-serializable value
+    pub fn get_rate_limit_stats(&self) -> serde_json::Value {
+        let metrics = self.rate_limiter.get_metrics();
+        serde_json::json!({
+            "total_queries": metrics.total_queries,
+            "blocked_queries": metrics.blocked_queries,
+            "current_qps": metrics.current_qps,
+        })
     }
 
     /// Update rate limiting configuration

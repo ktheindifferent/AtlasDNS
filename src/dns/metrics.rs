@@ -396,6 +396,16 @@ lazy_static! {
         // Continue without metrics - return a dummy metric
         IntGaugeVec::new(prometheus::Opts::new("dummy", "dummy"), &["dummy"]).expect("dummy fallback metric is always valid")
     });
+
+    /// Blocked DNS queries counter
+    pub static ref DNS_BLOCKED_TOTAL: IntCounterVec = register_int_counter_vec!(
+        "dns_blocked_total",
+        "Total number of blocked DNS queries",
+        &["query_type", "reason"]
+    ).unwrap_or_else(|e| {
+        log::error!("Failed to register Prometheus metric: {}", e);
+        IntCounterVec::new(prometheus::Opts::new("dummy_blocked", "dummy"), &["dummy"]).expect("dummy fallback")
+    });
 }
 
 /// Comprehensive metrics summary structure
@@ -1051,6 +1061,11 @@ impl MetricsCollector {
         SYSTEM_METRICS
             .with_label_values(&[&format!("system_{}", metric_name)])
             .set(value);
+    }
+
+    /// Increment blocked query counter
+    pub fn record_blocked_query(&self, query_type: &str, reason: &str) {
+        DNS_BLOCKED_TOTAL.with_label_values(&[query_type, reason]).inc();
     }
 }
 

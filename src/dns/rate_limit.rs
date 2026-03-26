@@ -54,6 +54,22 @@ struct GlobalRateLimit {
     current_limit: u32,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ClientStats {
+    pub client_ip: String,
+    pub queries_in_window: u32,
+    pub limit: u32,
+    pub blocked: bool,
+    pub blocked_until_secs: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GlobalStats {
+    pub queries_in_window: u32,
+    pub limit: u32,
+    pub window_secs: u64,
+}
+
 impl RateLimiter {
     /// Create a new rate limiter with the given configuration
     pub fn new(config: RateLimitConfig) -> Self {
@@ -228,6 +244,45 @@ impl RateLimiter {
                 }
             }
         });
+    }
+
+    /// Get current stats for all tracked clients
+    pub fn get_client_stats(&self) -> Vec<ClientStats> {
+        let now = std::time::Instant::now();
+        if let Ok(clients) = self.clients.lock() {
+            clients.iter().map(|(ip, entry)| {
+                let cutoff = now.checked_sub(self.config.client_window).unwrap_or(now);
+                let recent_queries = entry.queries.iter().filter(|&&t| t > cutoff).count();
+                ClientStats {
+                    client_ip: ip.to_string(),
+                    queries_in_window: recent_queries as u32,
+                    limit: self.config.client_limit,
+                    blocked: entry.blocked_until.map(|u| u > now).unwrap_or(false),
+                    blocked_until_secs: entry.blocked_until
+                        .filter(|&u| u > now)
+                        .map(|u| u.duration_since(now).as_secs())
+                        .unwrap_or(0),
+                }
+            }).collect()
+        } else {
+            vec![]
+        }
+    }
+
+    /// Get global rate limit stats
+    pub fn get_global_stats(&self) -> GlobalStats {
+        let now = std::time::Instant::now();
+        if let Ok(global) = self.global.lock() {
+            let cutoff = now.checked_sub(self.config.global_window).unwrap_or(now);
+            let recent = global.queries.iter().filter(|&&t| t > cutoff).count();
+            GlobalStats {
+                queries_in_window: recent as u32,
+                limit: global.current_limit,
+                window_secs: self.config.global_window.as_secs(),
+            }
+        } else {
+            GlobalStats { queries_in_window: 0, limit: self.config.global_limit, window_secs: 1 }
+        }
     }
 }
 

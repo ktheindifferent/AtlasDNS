@@ -26,6 +26,7 @@ use crate::dns::health_check_analytics::{HealthCheckAnalyticsHandler, HealthChec
 use crate::dns::traffic_steering::{TrafficSteeringHandler, TrafficSteeringConfig};
 use crate::dns::request_limits::RequestLimiter;
 use crate::dns::cache_poisoning::CachePoisonProtection;
+use crate::dns::rebinding::RebindingProtection;
 use crate::dns::dot_manager::DotManager;
 use crate::dns::doq_manager::DoqManager;
 use crate::dns::shutdown::{ShutdownCoordinator, ShutdownConfig};
@@ -152,6 +153,12 @@ pub struct ServerContext {
     pub captive_portal: Option<Arc<CaptivePortal>>,
     /// Optional per-client DNS query tracker for home network monitoring.
     pub device_tracker: Option<Arc<DeviceTracker>>,
+    /// Per-client blocking rules store.
+    pub client_rules_store: Option<Arc<crate::dns::client_rules::ClientRulesStore>>,
+    /// Time-based schedule blocking store.
+    pub schedule_store: Option<Arc<crate::dns::schedule::ScheduleStore>>,
+    /// DNS rebinding attack protection.
+    pub rebinding_protection: Arc<RebindingProtection>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -266,6 +273,9 @@ impl Default for ServerContext {
             blocklist_updater: None,
             captive_portal: None,
             device_tracker: None,
+            client_rules_store: None,
+            schedule_store: None,
+            rebinding_protection: Arc::new(RebindingProtection::new()),
         }
     }
 }
@@ -346,6 +356,9 @@ impl ServerContext {
             blocklist_updater: None,
             captive_portal: None,
             device_tracker: None,
+            client_rules_store: None,
+            schedule_store: None,
+            rebinding_protection: Arc::new(RebindingProtection::new()),
         })
     }
 
@@ -614,6 +627,9 @@ pub mod tests {
             blocklist_updater: None,
             captive_portal: None,
             device_tracker: None,
+            client_rules_store: None,
+            schedule_store: None,
+            rebinding_protection: Arc::new(RebindingProtection::new()),
         })
     }
 
