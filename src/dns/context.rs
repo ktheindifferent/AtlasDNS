@@ -164,6 +164,10 @@ pub struct ServerContext {
     pub query_log: Option<Arc<QueryLog>>,
     /// Whether the DNS-over-HTTPS (DoH) server is enabled at /dns-query.
     pub doh_server_enabled: bool,
+    /// Whether the dedicated Prometheus metrics HTTP server is enabled.
+    pub metrics_enabled: bool,
+    /// Port for the dedicated Prometheus metrics HTTP server (default 9153).
+    pub metrics_port: u16,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -283,6 +287,8 @@ impl Default for ServerContext {
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
             doh_server_enabled: false,
+            metrics_enabled: true,
+            metrics_port: 9153,
         }
     }
 }
@@ -368,6 +374,8 @@ impl ServerContext {
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
             doh_server_enabled: false,
+            metrics_enabled: true,
+            metrics_port: 9153,
         })
     }
 
@@ -638,7 +646,7 @@ pub mod tests {
             device_tracker: None,
             client_rules_store: None,
             schedule_store: None,
-            rebinding_protection: Arc::new(RebindingProtection::new()),
+            rebinding_protection: Arc::new(RebindingProtection::disabled()),
             query_log: None,
             doh_server_enabled: false,
         })

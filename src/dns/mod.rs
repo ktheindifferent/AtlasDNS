@@ -90,6 +90,9 @@ pub mod acme;
 /// Prometheus metrics collection and export
 pub mod metrics;
 
+/// Standalone Prometheus metrics HTTP server (default port 9153)
+pub mod prometheus_server;
+
 /// Structured JSON logging with correlation IDs
 pub mod logging;
 

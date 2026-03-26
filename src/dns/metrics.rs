@@ -467,6 +467,100 @@ lazy_static! {
         ).expect("dummy")
     });
 
+    // -----------------------------------------------------------------------
+    // Standard atlasdns_* metrics (DNS exporter naming convention, port 9153)
+    // These follow the naming used by the coredns_* / bind_* community exporters
+    // so that existing Grafana dashboards can be adapted with minimal changes.
+    // -----------------------------------------------------------------------
+
+    /// Total DNS queries (labels: type=record type, status=NOERROR|NXDOMAIN|…, upstream=host:port or "local")
+    pub static ref ATLASDNS_QUERIES_TOTAL: IntCounterVec = prometheus::register_int_counter_vec!(
+        "atlasdns_queries_total",
+        "Total DNS queries processed",
+        &["type", "status", "upstream"]
+    ).unwrap_or_else(|_| {
+        IntCounterVec::new(prometheus::Opts::new("dummy_adqt", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// DNS query processing duration histogram (label: type=record type)
+    pub static ref ATLASDNS_QUERY_DURATION_SECONDS: HistogramVec = register_histogram_vec!(
+        "atlasdns_query_duration_seconds",
+        "DNS query processing duration in seconds",
+        &["type"],
+        vec![0.0005, 0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5]
+    ).unwrap_or_else(|_| {
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy_adqds", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Total DNS cache hits
+    pub static ref ATLASDNS_CACHE_HITS_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "atlasdns_cache_hits_total",
+        "Total DNS cache hits"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_adcht", "dummy").expect("dummy")
+    });
+
+    /// Total DNS cache misses
+    pub static ref ATLASDNS_CACHE_MISSES_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "atlasdns_cache_misses_total",
+        "Total DNS cache misses"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_adcmt", "dummy").expect("dummy")
+    });
+
+    /// Current DNS cache entry count
+    pub static ref ATLASDNS_CACHE_SIZE: IntGauge = register_int_gauge!(
+        "atlasdns_cache_size",
+        "Current number of entries in the DNS cache"
+    ).unwrap_or_else(|_| {
+        IntGauge::new("dummy_adcs", "dummy").expect("dummy")
+    });
+
+    /// Total blocked DNS queries (label: list=blocklist name / category)
+    pub static ref ATLASDNS_BLOCKED_QUERIES_TOTAL: IntCounterVec = prometheus::register_int_counter_vec!(
+        "atlasdns_blocked_queries_total",
+        "Total number of DNS queries blocked",
+        &["list"]
+    ).unwrap_or_else(|_| {
+        IntCounterVec::new(prometheus::Opts::new("dummy_adbqt", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Total upstream DNS errors (label: upstream=host:port)
+    pub static ref ATLASDNS_UPSTREAM_ERRORS_TOTAL: IntCounterVec = prometheus::register_int_counter_vec!(
+        "atlasdns_upstream_errors_total",
+        "Total upstream DNS query errors",
+        &["upstream"]
+    ).unwrap_or_else(|_| {
+        IntCounterVec::new(prometheus::Opts::new("dummy_aduet", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Upstream DNS query latency histogram (label: upstream=host:port)
+    pub static ref ATLASDNS_UPSTREAM_LATENCY_SECONDS: HistogramVec = register_histogram_vec!(
+        "atlasdns_upstream_latency_seconds",
+        "Upstream DNS query latency in seconds",
+        &["upstream"],
+        vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
+    ).unwrap_or_else(|_| {
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy_aduls", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Number of active (unique) clients seen in the current window
+    pub static ref ATLASDNS_ACTIVE_CLIENTS: IntGauge = register_int_gauge!(
+        "atlasdns_active_clients",
+        "Number of unique clients observed since server start"
+    ).unwrap_or_else(|_| {
+        IntGauge::new("dummy_adac", "dummy").expect("dummy")
+    });
+
+    /// Build information (value always 1; carry version in labels)
+    pub static ref ATLASDNS_BUILD_INFO: IntGaugeVec = register_int_gauge_vec!(
+        "atlasdns_build_info",
+        "Atlas DNS server build information",
+        &["version"]
+    ).unwrap_or_else(|_| {
+        IntGaugeVec::new(prometheus::Opts::new("dummy_adbi", "dummy"), &["dummy"]).expect("dummy")
+    });
+
 }
 
 /// Comprehensive metrics summary structure
@@ -525,7 +619,9 @@ impl MetricsTracker {
     pub fn track_client(&self, client_ip: String) {
         if let Ok(mut clients) = self.unique_clients.write() {
             clients.insert(client_ip);
-            UNIQUE_CLIENTS.set(clients.len() as i64);
+            let count = clients.len() as i64;
+            UNIQUE_CLIENTS.set(count);
+            ATLASDNS_ACTIVE_CLIENTS.set(count);
         }
     }
 
@@ -819,6 +915,10 @@ impl MetricsCollector {
         DNS_QUERIES_TOTAL
             .with_label_values(&[protocol, query_type, zone])
             .inc();
+        // atlasdns_* mirror — status populated later via record_dns_response; use "unknown" as placeholder
+        ATLASDNS_QUERIES_TOTAL
+            .with_label_values(&[query_type, "unknown", "local"])
+            .inc();
         
         // Track query type distribution
         self.tracker.track_query_type(query_type);
@@ -852,7 +952,10 @@ impl MetricsCollector {
         DNS_QUERY_DURATION
             .with_label_values(&[protocol, query_type, cache_hit_str])
             .observe(duration_secs);
-        
+        ATLASDNS_QUERY_DURATION_SECONDS
+            .with_label_values(&[query_type])
+            .observe(duration_secs);
+
         // Track response time in milliseconds for percentile calculation
         self.tracker.track_response_time(duration_secs * 1000.0);
     }
@@ -860,8 +963,14 @@ impl MetricsCollector {
     /// Record cache operation
     pub fn record_cache_operation(&self, operation: &str, record_type: &str) {
         match operation {
-            "hit" => self.tracker.track_cache_hit(record_type),
-            "miss" => self.tracker.track_cache_miss(record_type),
+            "hit" => {
+                self.tracker.track_cache_hit(record_type);
+                ATLASDNS_CACHE_HITS_TOTAL.inc();
+            }
+            "miss" => {
+                self.tracker.track_cache_miss(record_type);
+                ATLASDNS_CACHE_MISSES_TOTAL.inc();
+            }
             _ => {
                 DNS_CACHE_OPERATIONS
                     .with_label_values(&[operation, record_type])
@@ -875,6 +984,8 @@ impl MetricsCollector {
         DNS_CACHE_SIZE
             .with_label_values(&[cache_type])
             .set(size);
+        // Sum all cache types into the single atlasdns gauge (best effort — use the last set value)
+        ATLASDNS_CACHE_SIZE.set(size);
     }
 
     /// Update active connections
@@ -951,11 +1062,17 @@ impl MetricsCollector {
         UPSTREAM_QUERIES
             .with_label_values(&[upstream, status])
             .inc();
+        if status == "failure" || status == "error" || status == "timeout" {
+            ATLASDNS_UPSTREAM_ERRORS_TOTAL.with_label_values(&[upstream]).inc();
+        }
     }
 
     /// Record upstream query duration
     pub fn record_upstream_duration(&self, upstream: &str, duration: Duration) {
         UPSTREAM_DURATION
+            .with_label_values(&[upstream])
+            .observe(duration.as_secs_f64());
+        ATLASDNS_UPSTREAM_LATENCY_SECONDS
             .with_label_values(&[upstream])
             .observe(duration.as_secs_f64());
     }
@@ -1127,6 +1244,7 @@ impl MetricsCollector {
     /// Increment blocked query counter
     pub fn record_blocked_query(&self, query_type: &str, reason: &str) {
         DNS_BLOCKED_TOTAL.with_label_values(&[query_type, reason]).inc();
+        ATLASDNS_BLOCKED_QUERIES_TOTAL.with_label_values(&[reason]).inc();
     }
 }
 
@@ -1234,7 +1352,16 @@ pub fn initialize_metrics() {
     THREAD_POOL_UTILIZATION.with_label_values(&["udp_dns"]).set(0.0);
     THREAD_POOL_UTILIZATION.with_label_values(&["tcp_dns"]).set(0.0);
     
-    log::info!("Prometheus metrics initialized");
+    // Initialize atlasdns_* gauge metrics to 0
+    ATLASDNS_CACHE_SIZE.set(0);
+    ATLASDNS_ACTIVE_CLIENTS.set(0);
+
+    // Set build info (value=1; version in label)
+    ATLASDNS_BUILD_INFO
+        .with_label_values(&[env!("CARGO_PKG_VERSION")])
+        .set(1);
+
+    log::info!("Prometheus metrics initialized (atlasdns_* metrics available on port 9153)");
 }
 
 #[cfg(test)]

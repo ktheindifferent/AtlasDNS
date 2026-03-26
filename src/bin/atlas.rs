@@ -10,6 +10,7 @@ use atlas::dns::protocol::{DnsRecord, TransientTtl};
 use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::dns::acme::{AcmeConfig, AcmeProvider};
+use atlas::dns::prometheus_server::PrometheusServer;
 use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
 
@@ -157,6 +158,17 @@ fn main() {
         "doh-server",
         "Enable DNS-over-HTTPS server at /dns-query",
     );
+    opts.optopt(
+        "",
+        "metrics-port",
+        "Port for the Prometheus metrics HTTP server (default 9153)",
+        "PORT",
+    );
+    opts.optflag(
+        "",
+        "no-metrics",
+        "Disable the standalone Prometheus metrics HTTP server",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -233,6 +245,17 @@ fn main() {
 
         if opt_matches.opt_present("doh-server") {
             ctx.doh_server_enabled = true;
+        }
+
+        if opt_matches.opt_present("no-metrics") {
+            ctx.metrics_enabled = false;
+        }
+
+        if let Some(port_str) = opt_matches.opt_str("metrics-port") {
+            match port_str.parse::<u16>() {
+                Ok(p) => ctx.metrics_port = p,
+                Err(_) => log::warn!("Invalid --metrics-port value '{}', using default {}", port_str, ctx.metrics_port),
+            }
         }
 
         match opt_matches.opt_str("j") {
@@ -345,6 +368,15 @@ fn main() {
         });
         dns_handles.push(handle);
         log::info!("TCP DNS server started successfully on port {}", context.dns_port);
+    }
+
+    // Start dedicated Prometheus metrics server (port 9153 by default)
+    if context.metrics_enabled {
+        let ctx = context.clone();
+        thread::spawn(move || {
+            PrometheusServer::new(ctx).run();
+        });
+        log::info!("Prometheus metrics server started on port {}", context.metrics_port);
     }
 
     // Start web server (this blocks to keep the process alive)

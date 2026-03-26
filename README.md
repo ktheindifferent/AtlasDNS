@@ -420,6 +420,98 @@ This is an active development fork with significant enhancements over the origin
 - ✅ Revamped UI with Bootstrap 5
 - ✅ Enhanced error handling and logging throughout
 
+## Prometheus & Grafana Monitoring
+
+Atlas DNS exposes a dedicated Prometheus metrics endpoint on **port 9153** (the standard port for DNS exporters, matching CoreDNS and BIND exporter conventions).
+
+### Quick Start
+
+The metrics server starts automatically alongside the DNS server:
+
+```bash
+# Default: metrics on :9153
+./atlas
+
+# Custom port
+./atlas --metrics-port 9090
+
+# Disable metrics server
+./atlas --no-metrics
+```
+
+Verify it's working:
+
+```bash
+curl http://localhost:9153/metrics
+```
+
+### Prometheus scrape config
+
+Add to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: atlasdns
+    static_configs:
+      - targets: ['localhost:9153']
+    scrape_interval: 15s
+```
+
+### Exposed metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `atlasdns_queries_total` | Counter | `type`, `status`, `upstream` | Total DNS queries processed |
+| `atlasdns_query_duration_seconds` | Histogram | `type` | Query processing latency |
+| `atlasdns_cache_hits_total` | Counter | — | DNS cache hits |
+| `atlasdns_cache_misses_total` | Counter | — | DNS cache misses |
+| `atlasdns_cache_size` | Gauge | — | Current entries in the DNS cache |
+| `atlasdns_blocked_queries_total` | Counter | `list` | Queries blocked by blocklist |
+| `atlasdns_upstream_errors_total` | Counter | `upstream` | Upstream DNS error count |
+| `atlasdns_upstream_latency_seconds` | Histogram | `upstream` | Upstream query latency |
+| `atlasdns_active_clients` | Gauge | — | Unique clients seen since start |
+| `atlasdns_build_info` | Gauge | `version` | Build information (always 1) |
+
+Atlas also exposes a rich set of `atlas_*` and `atlas_dns_*` metrics (cache operations, security events, thread pool stats, web request latency, DNSSEC operations, etc.) on the same endpoint.
+
+### Grafana dashboard
+
+Import the community [CoreDNS dashboard](https://grafana.com/grafana/dashboards/14981) and replace `coredns_` metric prefixes with `atlasdns_` to get instant visualisation. Key panels:
+
+- **Query rate** — `rate(atlasdns_queries_total[5m])`
+- **Cache hit ratio** — `rate(atlasdns_cache_hits_total[5m]) / (rate(atlasdns_cache_hits_total[5m]) + rate(atlasdns_cache_misses_total[5m]))`
+- **p99 latency** — `histogram_quantile(0.99, rate(atlasdns_query_duration_seconds_bucket[5m]))`
+- **Blocked queries** — `rate(atlasdns_blocked_queries_total[5m])`
+- **Upstream errors** — `rate(atlasdns_upstream_errors_total[5m])`
+
+### Docker Compose with Prometheus + Grafana
+
+```yaml
+version: '3.8'
+services:
+  atlasdns:
+    image: atlasdns:latest
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "5380:5380"
+      - "9153:9153"   # Prometheus metrics
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
