@@ -335,6 +335,9 @@ impl Cache {
 #[derive(Default)]
 pub struct SynchronizedCache {
     pub cache: RwLock<Cache>,
+    /// DNSSEC validation status keyed by `"domain|qtype_num"`.
+    /// Values: `"secure"`, `"bogus"`, or `"insecure"`.
+    pub dnssec_status: RwLock<std::collections::HashMap<String, String>>,
 }
 
 /// Cache statistics for monitoring
@@ -351,7 +354,26 @@ impl SynchronizedCache {
     pub fn new() -> SynchronizedCache {
         SynchronizedCache {
             cache: RwLock::new(Cache::new()),
+            dnssec_status: RwLock::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Store the DNSSEC validation status for a `(domain, qtype)` pair.
+    ///
+    /// `status` should be `"secure"`, `"bogus"`, or `"insecure"`.
+    pub fn store_dnssec_status(&self, domain: &str, qtype: QueryType, status: &str) {
+        let key = format!("{}|{}", domain, qtype.to_num());
+        if let Ok(mut map) = self.dnssec_status.write() {
+            map.insert(key, status.to_string());
+        }
+    }
+
+    /// Retrieve the cached DNSSEC validation status for a `(domain, qtype)` pair.
+    ///
+    /// Returns `None` if no status has been recorded yet.
+    pub fn get_dnssec_status(&self, domain: &str, qtype: QueryType) -> Option<String> {
+        let key = format!("{}|{}", domain, qtype.to_num());
+        self.dnssec_status.read().ok()?.get(&key).cloned()
     }
     
     pub fn get_stats(&self) -> Result<CacheStats> {

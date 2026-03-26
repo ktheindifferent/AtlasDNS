@@ -686,6 +686,8 @@ pub mod tests {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            cluster_manager: None,
+            anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
         })
     }
 

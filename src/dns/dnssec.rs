@@ -2356,4 +2356,99 @@ mod tests {
             "valid signed zone must yield ChainValidationResult::Authenticated (secure)"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // ValidationMode + validate_chain tests
+    // -----------------------------------------------------------------------
+
+    /// validate_chain must return Indeterminate for an unsigned packet in
+    /// Opportunistic mode (not an error).
+    #[test]
+    fn test_validate_chain_opportunistic_unsigned_packet() {
+        use crate::dns::protocol::DnsPacket;
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        let packet = DnsPacket::new();
+        let result = validator.validate_chain(&packet);
+        assert!(result.is_ok(), "Opportunistic mode must not error on unsigned packet");
+        assert_eq!(result.unwrap(), ValidationStatus::Indeterminate);
+    }
+
+    /// validate_chain must return Indeterminate when mode is Off, regardless of
+    /// packet content.
+    #[test]
+    fn test_validate_chain_off_mode_returns_indeterminate() {
+        use crate::dns::protocol::{DnsPacket, TransientTtl};
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Off);
+        let mut packet = DnsPacket::new();
+        packet.answers.push(DnsRecord::A {
+            domain: "example.com".to_string(),
+            addr: "198.51.100.1".parse().unwrap(),
+            ttl: TransientTtl(300),
+        });
+        let result = validator.validate_chain(&packet);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ValidationStatus::Indeterminate,
+            "Off mode must always return Indeterminate");
+    }
+
+    /// ChainValidator::mode() round-trips all three variants.
+    #[test]
+    fn test_chain_validator_mode_roundtrip() {
+        for mode in [ValidationMode::Strict, ValidationMode::Opportunistic, ValidationMode::Off] {
+            let v = ChainValidator::with_root_ksk(mode);
+            assert_eq!(v.mode(), mode, "mode() should return the configured mode");
+        }
+    }
+
+    /// validate_nxdomain_proof returns false for an empty packet (no NSEC/NSEC3).
+    #[test]
+    fn test_validate_nxdomain_proof_empty_packet() {
+        use crate::dns::protocol::{DnsPacket, QueryType};
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        let packet = DnsPacket::new();
+        assert!(
+            !validator.validate_nxdomain_proof(&packet, "nonexistent.example.com", QueryType::A),
+            "empty packet must not prove denial"
+        );
+    }
+
+    /// A forged DNSKEY with dummy bytes must not match the root trust anchor.
+    #[test]
+    fn test_verify_root_dnskey_rejects_fake_key() {
+        use crate::dns::protocol::TransientTtl;
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        let fake_dnskey = DnsRecord::Dnskey {
+            domain: ".".to_string(),
+            flags: 257,
+            protocol: 3,
+            algorithm: 8,
+            public_key: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            ttl: TransientTtl(86400),
+        };
+        assert!(
+            !validator.verify_root_dnskey(&fake_dnskey),
+            "forged DNSKEY must not match the embedded root trust anchor"
+        );
+    }
+
+    /// The root KSK trust anchor has key tag 20326 (RFC-mandated value).
+    #[test]
+    fn test_iana_root_ksk_key_tag_value() {
+        assert_eq!(IANA_ROOT_KSK_TAG, 20326,
+            "IANA root KSK-2017 key tag must be 20326 (RFC mandated)");
+        let anchor = TrustAnchor::root_ksk_2017();
+        assert_eq!(anchor.key_tag, 20326);
+        assert_eq!(anchor.algorithm, 8, "root KSK uses algorithm 8 (RSA/SHA-256)");
+        assert_eq!(anchor.flags, 257, "root KSK flags must be 257 (Zone Key + SEP)");
+        assert_eq!(anchor.zone, ".", "root KSK zone must be \".\"");
+    }
+
+    /// compute_dnskey_tag produces the well-known tag 20326 for the root KSK.
+    #[test]
+    fn test_compute_dnskey_tag_root_ksk() {
+        let anchor = TrustAnchor::root_ksk_2017();
+        let tag = compute_dnskey_tag(anchor.flags, 3, anchor.algorithm, &anchor.public_key);
+        assert_eq!(tag, IANA_ROOT_KSK_TAG,
+            "compute_dnskey_tag must return 20326 for the IANA root KSK");
+    }
 }

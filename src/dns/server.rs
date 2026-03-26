@@ -268,17 +268,20 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 
 /// Validate DNSSEC signatures in a response packet using real crypto.
 ///
-/// Also checks NSEC/NSEC3 authenticated denial of existence for NXDOMAIN
-/// responses, using the original question from `request`.
+/// Uses the validation mode configured on the server context.  Also checks
+/// NSEC/NSEC3 authenticated denial of existence for NXDOMAIN responses,
+/// using the original question from `request`.
 ///
 /// Returns `Ok(ChainValidationResult)` reflecting authentication status.
 fn validate_dnssec(
-    _context: &Arc<ServerContext>,
+    context: &Arc<ServerContext>,
     request: &DnsPacket,
     packet: &DnsPacket,
 ) -> std::result::Result<ChainValidationResult, Box<dyn std::error::Error>> {
     use crate::dns::protocol::ResultCode;
-    let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+    // Use the configured validation mode rather than hardcoding Opportunistic.
+    let mode = context.authority.get_validation_mode();
+    let validator = ChainValidator::with_root_ksk(mode);
     let result = validator.validate_packet_rrsigs(packet);
 
     // For NXDOMAIN / NODATA responses, additionally verify NSEC/NSEC3 denial proof.
@@ -539,35 +542,80 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         // • dnssec_enabled controls whether we validate at all.
         // • checking_disabled (CD bit) signals the client wants raw data;
         //   we skip validation but still return the records.
-        // • On Strict mode a BOGUS response becomes SERVFAIL.
+        // • Strict mode: SERVFAIL for both BOGUS and Unsigned (unsigned-is-insecure).
+        // • Opportunistic: BOGUS passes through with warning; Unsigned is allowed.
         let dnssec_status = if context.dnssec_enabled && !request.header.checking_disabled {
-            match validate_dnssec(&context, request, &packet) {
-                Ok(ChainValidationResult::Authenticated) => {
-                    packet.header.authed_data = true; // AD bit: authenticated data
-                    log::debug!("DNSSEC: AD bit set");
-                    Some("secure".to_string())
-                }
-                Ok(ChainValidationResult::ValidationFailed) => {
-                    // Check the configured validation mode
-                    let mode = context.authority.get_dnssec_validation_status().validation_mode;
-                    if mode == "strict" {
-                        log::warn!("DNSSEC strict: returning SERVFAIL for BOGUS response");
-                        packet.header.rescode = ResultCode::SERVFAIL;
-                        packet.answers.clear();
-                        packet.authorities.clear();
-                        packet.resources.clear();
+            let mode = context.authority.get_validation_mode();
+            let is_strict = mode == ValidationMode::Strict;
+
+            // On cache hits, use the previously-stored validation status so we
+            // don't incorrectly classify cached records (which may lack RRSIGs
+            // in the response) as unsigned.
+            let (status_str, already_decided) = if cache_hit {
+                if let Some(q) = request.questions.first() {
+                    if let Some(cached_status) = context.cache.get_dnssec_status(&q.name, q.qtype) {
+                        if cached_status == "secure" {
+                            packet.header.authed_data = true;
+                            log::debug!("DNSSEC: AD bit set from cache ({})", q.name);
+                        }
+                        (Some(cached_status), true)
                     } else {
-                        log::debug!("DNSSEC opportunistic: BOGUS response passed through");
+                        (None, false)
                     }
-                    Some("bogus".to_string())
+                } else {
+                    (None, false)
                 }
-                Ok(ChainValidationResult::Unsigned) => {
-                    // Unsigned – pass through; AD bit remains clear
-                    Some("insecure".to_string())
-                }
-                Err(e) => {
-                    log::warn!("DNSSEC validation error: {}", e);
-                    Some("error".to_string())
+            } else {
+                (None, false)
+            };
+
+            if already_decided {
+                status_str
+            } else {
+                match validate_dnssec(&context, request, &packet) {
+                    Ok(ChainValidationResult::Authenticated) => {
+                        packet.header.authed_data = true; // AD bit: authenticated data
+                        log::debug!("DNSSEC: AD bit set");
+                        // Persist validation status in cache for future hits.
+                        if let Some(q) = request.questions.first() {
+                            context.cache.store_dnssec_status(&q.name, q.qtype, "secure");
+                        }
+                        Some("secure".to_string())
+                    }
+                    Ok(ChainValidationResult::ValidationFailed) => {
+                        if is_strict {
+                            log::warn!("DNSSEC strict: returning SERVFAIL for BOGUS response");
+                            packet.header.rescode = ResultCode::SERVFAIL;
+                            packet.answers.clear();
+                            packet.authorities.clear();
+                            packet.resources.clear();
+                        } else {
+                            log::debug!("DNSSEC opportunistic: BOGUS response passed through");
+                        }
+                        if let Some(q) = request.questions.first() {
+                            context.cache.store_dnssec_status(&q.name, q.qtype, "bogus");
+                        }
+                        Some("bogus".to_string())
+                    }
+                    Ok(ChainValidationResult::Unsigned) => {
+                        // In Strict mode, an unsigned response is also unacceptable.
+                        if is_strict {
+                            log::warn!("DNSSEC strict: returning SERVFAIL for unsigned response");
+                            packet.header.rescode = ResultCode::SERVFAIL;
+                            packet.answers.clear();
+                            packet.authorities.clear();
+                            packet.resources.clear();
+                        }
+                        if let Some(q) = request.questions.first() {
+                            context.cache.store_dnssec_status(&q.name, q.qtype, "insecure");
+                        }
+                        // Unsigned – AD bit remains clear
+                        Some("insecure".to_string())
+                    }
+                    Err(e) => {
+                        log::warn!("DNSSEC validation error: {}", e);
+                        Some("error".to_string())
+                    }
                 }
             }
         } else if context.dnssec_enabled && request.header.checking_disabled {
