@@ -158,7 +158,12 @@ fn main() {
     opts.optflag(
         "",
         "doh-server",
-        "Enable DNS-over-HTTPS server at /dns-query",
+        "Enable DNS-over-HTTPS server at /dns-query (enabled by default; kept for compatibility)",
+    );
+    opts.optflag(
+        "",
+        "no-doh-server",
+        "Disable the DNS-over-HTTPS server at /dns-query",
     );
     opts.optflag(
         "",
@@ -268,8 +273,9 @@ fn main() {
             ctx.enable_api = false;
         }
 
-        if opt_matches.opt_present("doh-server") {
-            ctx.doh_server_enabled = true;
+        // DoH is enabled by default; --no-doh-server disables it
+        if opt_matches.opt_present("no-doh-server") {
+            ctx.doh_server_enabled = false;
         }
 
         if opt_matches.opt_present("no-metrics") {

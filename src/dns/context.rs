@@ -290,7 +290,7 @@ impl Default for ServerContext {
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
             threat_intel: None,
-            doh_server_enabled: false,
+            doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
         }
@@ -378,7 +378,7 @@ impl ServerContext {
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
             threat_intel: None,
-            doh_server_enabled: false,
+            doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
         })
