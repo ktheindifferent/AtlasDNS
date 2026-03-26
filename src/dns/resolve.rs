@@ -102,6 +102,39 @@ pub trait DnsResolver {
             }
         }
 
+        // mDNS .local resolution: answer from device registry before upstream
+        if (qtype == QueryType::A || qtype == QueryType::Aaaa)
+            && qname.ends_with(".local")
+        {
+            if let Some(ref registry) = context.mdns_registry {
+                let bare = qname.trim_end_matches(".local");
+                if let Some(ip_str) = registry.lookup_ip(bare) {
+                    if let Ok(ip) = ip_str.parse::<std::net::Ipv4Addr>() {
+                        let mut packet = DnsPacket::new();
+                        packet.header.rescode = ResultCode::NOERROR;
+                        packet.answers.push(crate::dns::protocol::DnsRecord::A {
+                            domain: qname.to_string(),
+                            addr: ip,
+                            ttl: crate::dns::protocol::TransientTtl(120),
+                        });
+                        log::info!("[mDNS] resolved {}.local → {}", bare, ip);
+                        return Ok(packet);
+                    }
+                    if let Ok(ip6) = ip_str.parse::<std::net::Ipv6Addr>() {
+                        let mut packet = DnsPacket::new();
+                        packet.header.rescode = ResultCode::NOERROR;
+                        packet.answers.push(crate::dns::protocol::DnsRecord::Aaaa {
+                            domain: qname.to_string(),
+                            addr: ip6,
+                            ttl: crate::dns::protocol::TransientTtl(120),
+                        });
+                        log::info!("[mDNS] resolved {}.local → {}", bare, ip6);
+                        return Ok(packet);
+                    }
+                }
+            }
+        }
+
         if let Some(qr) = context.authority.query(qname, qtype) {
             log::info!("context.authority.query");
             return Ok(qr);

@@ -123,6 +123,22 @@ enum Commands {
         #[command(subcommand)]
         action: SplitHorizonCommands,
     },
+
+    /// List local network devices discovered via mDNS
+    Devices {
+        #[command(subcommand)]
+        action: DevicesCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DevicesCommands {
+    /// List all discovered local devices
+    List {
+        /// Filter by hostname, IP, or service type
+        #[arg(short, long)]
+        filter: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -905,6 +921,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Completions { shell } => generate_completions(shell),
         Commands::ThreatIntel { action } => handle_threat_intel_commands(action, &client, &formatter).await?,
         Commands::SplitHorizon { action } => handle_split_horizon_commands(action, &client, &formatter).await?,
+        Commands::Devices { action } => handle_devices_commands(action, &client, &formatter).await?,
     }
     
     Ok(())
@@ -2006,6 +2023,46 @@ async fn handle_split_horizon_commands(
                 formatter.print_success(&format!("Rule {} removed", id));
             } else {
                 formatter.print_error(&format!("Failed to remove rule {}", id));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_devices_commands(
+    action: DevicesCommands,
+    client: &AtlasClient,
+    formatter: &OutputFormatter,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        DevicesCommands::List { filter } => {
+            let pb = show_progress("Fetching local devices...");
+            let data = client.get("/api/devices").await?;
+            pb.finish_and_clear();
+
+            // Apply optional client-side filter
+            if let (Some(q), Some(arr)) = (&filter, data.as_array()) {
+                let q = q.to_lowercase();
+                let filtered: Vec<_> = arr
+                    .iter()
+                    .filter(|d| {
+                        let hostname = d["hostname"].as_str().unwrap_or("").to_lowercase();
+                        let ip = d["ip"].as_str().unwrap_or("").to_lowercase();
+                        let services = d["services"]
+                            .as_array()
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|s| s.as_str())
+                                    .any(|s| s.to_lowercase().contains(&q))
+                            })
+                            .unwrap_or(false);
+                        hostname.contains(&q) || ip.contains(&q) || services
+                    })
+                    .cloned()
+                    .collect();
+                formatter.print(&serde_json::Value::Array(filtered));
+            } else {
+                formatter.print(&data);
             }
         }
     }

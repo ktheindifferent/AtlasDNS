@@ -21,6 +21,7 @@ pub mod secure_password;
 pub mod websocket;
 pub mod blocklists;
 pub mod threat_intel;
+pub mod devices;
 #[cfg(feature = "pihole-api")]
 pub mod pihole_api;
 

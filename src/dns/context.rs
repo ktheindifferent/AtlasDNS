@@ -35,6 +35,7 @@ use crate::storage::PersistentStorage;
 use crate::dns::blocklist_updater::BlocklistUpdater;
 use crate::dns::captive_portal::CaptivePortal;
 use crate::dns::device_tracker::DeviceTracker;
+use crate::dns::mdns::MdnsRegistry;
 use crate::dns::query_log::QueryLog;
 use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 use crate::dns::clustering::{ClusterManager, ClusterConfig};
@@ -169,6 +170,8 @@ pub struct ServerContext {
     pub rebinding_protection: Arc<RebindingProtection>,
     /// Optional SQLite-backed DNS query log with per-client policies.
     pub query_log: Option<Arc<QueryLog>>,
+    /// Passive mDNS device registry — populated by the background mDNS listener.
+    pub mdns_registry: Option<Arc<MdnsRegistry>>,
     /// Threat intelligence feed manager (domain reputation + blocking).
     pub threat_intel: Option<Arc<ThreatIntelManager>>,
     /// Whether the DNS-over-HTTPS (DoH) server is enabled at /dns-query.
@@ -304,6 +307,7 @@ impl Default for ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            mdns_registry: None,
             threat_intel: None,
             doh_server_enabled: true,
             metrics_enabled: true,
@@ -397,6 +401,7 @@ impl ServerContext {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::new()),
             query_log: None,
+            mdns_registry: None,
             threat_intel: None,
             doh_server_enabled: true,
             metrics_enabled: true,
@@ -692,6 +697,7 @@ pub mod tests {
             schedule_store: None,
             rebinding_protection: Arc::new(RebindingProtection::disabled()),
             query_log: None,
+            mdns_registry: None,
             threat_intel: None,
             doh_server_enabled: false,
             metrics_enabled: true,

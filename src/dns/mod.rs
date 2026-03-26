@@ -240,5 +240,8 @@ pub mod ct_monitor;
 /// ML-free heuristic DNS anomaly detection (DGA, tunneling, behavioural scoring)
 pub mod anomaly;
 
+/// Passive mDNS listener for local network device discovery
+pub mod mdns;
+
 #[cfg(test)]
 mod cache_test;

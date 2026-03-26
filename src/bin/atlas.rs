@@ -17,6 +17,7 @@ use atlas::dns::prometheus_server::PrometheusServer;
 use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
 use atlas::dns::security::{ThreatIntelManager, ThreatIntelConfig};
+use atlas::dns::mdns::{MdnsListener, MdnsRegistry};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -246,6 +247,11 @@ fn main() {
         "threat-intel-block-action",
         "Block action for threat intel matches: nxdomain (default) or redirect:<IP>",
         "ACTION",
+    );
+    opts.optflag(
+        "",
+        "mdns",
+        "Enable passive mDNS listener for local device discovery (port 5353)",
     );
 
     let opt_matches = match opts.parse(&args[1..]) {
@@ -527,6 +533,19 @@ fn main() {
                 });
             });
         }
+    }
+
+    // Start passive mDNS listener if requested
+    if opt_matches.opt_present("mdns") {
+        let registry = Arc::new(MdnsRegistry::new());
+        if let Some(ctx) = Arc::get_mut(&mut context) {
+            ctx.mdns_registry = Some(registry.clone());
+        }
+        thread::spawn(move || {
+            let listener = MdnsListener::new(registry);
+            listener.run();
+        });
+        log::info!("mDNS passive listener enabled — local device discovery active");
     }
 
     log::info!("Listening on port {}", context.dns_port);

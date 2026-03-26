@@ -1,0 +1,207 @@
+{{#*inline "title"}}Local Devices{{/inline}}
+{{#*inline "current_page"}}devices{{/inline}}
+
+{{#*inline "content"}}
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Local Devices</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item">Monitoring</li>
+                    <li class="breadcrumb-item active">Local Devices</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" onclick="loadDevices()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Discovered Devices</h6>
+                        <div class="h3 mb-0" id="device-count">—</div>
+                        <small class="text-muted">via mDNS</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-router text-primary" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">With IP Address</h6>
+                        <div class="h3 mb-0" id="with-ip-count">—</div>
+                        <small class="text-muted">resolved .local</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-hdd-network text-success" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Services Seen</h6>
+                        <div class="h3 mb-0" id="service-count">—</div>
+                        <small class="text-muted">unique types</small>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-broadcast text-info" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Device table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="bi bi-laptop me-2"></i>mDNS Device Registry
+        </h5>
+        <div>
+            <input type="text" class="form-control form-control-sm d-inline-block w-auto"
+                   id="device-filter" placeholder="Filter…" oninput="filterDevices()">
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="devices-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Hostname (.local)</th>
+                        <th>IP Address</th>
+                        <th>Services</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody id="devices-tbody">
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-4">
+                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                            Loading…
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3 text-muted small" id="mdns-status"></div>
+{{/inline}}
+
+{{#*inline "scripts"}}
+<script>
+let allDevices = [];
+
+async function loadDevices() {
+    try {
+        const resp = await fetch('/api/devices');
+        const data = await resp.json();
+        allDevices = data;
+        renderDevices(data);
+    } catch (e) {
+        document.getElementById('devices-tbody').innerHTML =
+            '<tr><td colspan="4" class="text-center text-danger py-4">Failed to load devices: ' + e.message + '</td></tr>';
+    }
+}
+
+function renderDevices(devices) {
+    const tbody = document.getElementById('devices-tbody');
+    const countEl = document.getElementById('device-count');
+    const withIpEl = document.getElementById('with-ip-count');
+    const svcEl = document.getElementById('service-count');
+    const statusEl = document.getElementById('mdns-status');
+
+    countEl.textContent = devices.length;
+    withIpEl.textContent = devices.filter(d => d.ip).length;
+
+    const allSvcs = new Set();
+    devices.forEach(d => (d.services || []).forEach(s => allSvcs.add(s)));
+    svcEl.textContent = allSvcs.size;
+
+    if (devices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No devices discovered yet. mDNS listener is passive — devices will appear as they announce themselves on the network.</td></tr>';
+        statusEl.textContent = '';
+        return;
+    }
+
+    // Sort: devices with IPs first, then by hostname
+    devices.sort((a, b) => {
+        if (!!a.ip !== !!b.ip) return a.ip ? -1 : 1;
+        return a.hostname.localeCompare(b.hostname);
+    });
+
+    tbody.innerHTML = devices.map(d => {
+        const age = d.last_seen ? formatAge(d.last_seen) : '—';
+        const ip = d.ip
+            ? `<span class="badge bg-success-subtle text-success font-monospace">${escHtml(d.ip)}</span>`
+            : '<span class="text-muted">—</span>';
+        const svcs = (d.services || []).length > 0
+            ? d.services.map(s => `<span class="badge bg-secondary me-1">${escHtml(s)}</span>`).join('')
+            : '<span class="text-muted">—</span>';
+        return `<tr>
+            <td><strong>${escHtml(d.hostname)}.local</strong></td>
+            <td>${ip}</td>
+            <td>${svcs}</td>
+            <td><small class="text-muted">${age}</small></td>
+        </tr>`;
+    }).join('');
+
+    statusEl.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
+}
+
+function filterDevices() {
+    const q = document.getElementById('device-filter').value.toLowerCase();
+    const filtered = q
+        ? allDevices.filter(d =>
+            d.hostname.toLowerCase().includes(q) ||
+            (d.ip && d.ip.includes(q)) ||
+            (d.services || []).some(s => s.toLowerCase().includes(q))
+          )
+        : allDevices;
+    renderDevices(filtered);
+}
+
+function formatAge(unixSecs) {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - unixSecs;
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function escHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Load on page init and auto-refresh every 30 s
+loadDevices();
+setInterval(loadDevices, 30000);
+</script>
+{{/inline}}
+
+{{> layout}}
