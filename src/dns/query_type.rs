@@ -11,17 +11,23 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(PartialEq, Eq, Debug, Clone, Hash, Copy, Serialize, Deserialize)]
 pub enum QueryType {
     Unknown(u16),
-    A,     // 1
-    Ns,    // 2
-    Cname, // 5
-    Soa,   // 6
-    Mx,    // 15
-    Txt,   // 16
-    Aaaa,  // 28
-    Srv,   // 33
-    Opt,   // 41
-    Axfr,  // 252
-    Ixfr,  // 251
+    A,          // 1
+    Ns,         // 2
+    Cname,      // 5
+    Soa,        // 6
+    Mx,         // 15
+    Txt,        // 16
+    Aaaa,       // 28
+    Srv,        // 33
+    Opt,        // 41
+    Ds,         // 43
+    Rrsig,      // 46
+    Nsec,       // 47
+    Dnskey,     // 48
+    Nsec3,      // 50
+    Nsec3param, // 51
+    Ixfr,       // 251
+    Axfr,       // 252
 }
 
 impl QueryType {
@@ -37,8 +43,14 @@ impl QueryType {
             QueryType::Aaaa => 28,
             QueryType::Srv => 33,
             QueryType::Opt => 41,
-            QueryType::Axfr => 252,
+            QueryType::Ds => 43,
+            QueryType::Rrsig => 46,
+            QueryType::Nsec => 47,
+            QueryType::Dnskey => 48,
+            QueryType::Nsec3 => 50,
+            QueryType::Nsec3param => 51,
             QueryType::Ixfr => 251,
+            QueryType::Axfr => 252,
         }
     }
 
@@ -53,8 +65,14 @@ impl QueryType {
             28 => QueryType::Aaaa,
             33 => QueryType::Srv,
             41 => QueryType::Opt,
-            252 => QueryType::Axfr,
+            43 => QueryType::Ds,
+            46 => QueryType::Rrsig,
+            47 => QueryType::Nsec,
+            48 => QueryType::Dnskey,
+            50 => QueryType::Nsec3,
+            51 => QueryType::Nsec3param,
             251 => QueryType::Ixfr,
+            252 => QueryType::Axfr,
             _ => QueryType::Unknown(num),
         }
     }

@@ -65,38 +65,35 @@ fn test_cache_integration() {
 #[test]
 fn test_user_authentication_flow() {
     let user_manager = UserManager::new();
-    
-    // Test default admin exists
-    let admin = user_manager.authenticate("admin", "admin123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
-    assert_eq!(admin.role, UserRole::Admin);
-    
-    // Create a new user
+
+    // Default admin password is randomly generated, so we cannot test it
+    // directly.  Instead, create a new user and authenticate with it.
     let create_request = CreateUserRequest {
         username: "testuser".to_string(),
         email: "test@example.com".to_string(),
         password: "testpass123".to_string(),
         role: UserRole::User,
     };
-    
+
     let user = user_manager.create_user(create_request).unwrap();
-    
+
     // Test authentication with new user
     let authenticated_user = user_manager.authenticate("testuser", "testpass123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
     assert_eq!(authenticated_user.id, user.id);
     assert_eq!(authenticated_user.role, UserRole::User);
-    
+
     // Create session for authenticated user
     let session = user_manager.create_session(
         authenticated_user.id.clone(),
         Some("127.0.0.1".to_string()),
         Some("Test Agent".to_string())
     ).unwrap();
-    
+
     // Validate session
     let (validated_session, validated_user) = user_manager
         .validate_session(&session.token)
         .unwrap();
-    
+
     assert_eq!(validated_session.user_id, authenticated_user.id);
     assert_eq!(validated_user.username, "testuser");
 }
@@ -232,9 +229,15 @@ fn test_cache_memory_management() {
 #[test]
 fn test_session_lifecycle() {
     let user_manager = UserManager::new();
-    
-    // Authenticate and create session
-    let user = user_manager.authenticate("admin", "admin123", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
+
+    // Create a test user (default admin password is random)
+    let _created = user_manager.create_user(CreateUserRequest {
+        username: "session_test".to_string(),
+        email: "session@test.com".to_string(),
+        password: "testpass456".to_string(),
+        role: UserRole::Admin,
+    }).unwrap();
+    let user = user_manager.authenticate("session_test", "testpass456", Some("127.0.0.1".to_string()), Some("Test Agent".to_string())).unwrap();
     let session = user_manager.create_session(
         user.id.clone(),
         Some("192.168.1.100".to_string()),

@@ -173,7 +173,10 @@ impl ZoneParser {
                 let stripped = if let Some(pos) = line.find(';') { &line[..pos] } else { line };
                 multiline_buffer.push(' ');
                 multiline_buffer.push_str(stripped.trim());
-                if line.contains(')') {
+                // Check the comment-stripped portion for ')' to avoid
+                // premature closure when comments contain parentheses
+                // (e.g. "; refresh (1 hour)").
+                if stripped.contains(')') {
                     // Remove the parentheses from the assembled buffer
                     let clean = multiline_buffer.replace('(', " ").replace(')', " ");
                     in_multiline = false;
@@ -184,13 +187,15 @@ impl ZoneParser {
                 continue;
             }
 
-            if line.contains('(') && !line.contains(')') {
-                in_multiline = true;
-                multiline_start = self.line_number;
-                // Strip inline comment from the opening line too
-                let stripped = if let Some(pos) = line.find(';') { &line[..pos] } else { line };
-                multiline_buffer = stripped.to_string();
-                continue;
+            {
+                // Check for multi-line start only in the non-comment portion
+                let no_comment = if let Some(pos) = line.find(';') { &line[..pos] } else { line };
+                if no_comment.contains('(') && !no_comment.contains(')') {
+                    in_multiline = true;
+                    multiline_start = self.line_number;
+                    multiline_buffer = no_comment.to_string();
+                    continue;
+                }
             }
 
             self.parse_line(&mut zone, line)?;
@@ -331,9 +336,16 @@ impl ZoneParser {
         let mut ttl = None;
         let mut _class = None;
 
-        // Parse domain (optional, uses last domain if blank)
-        if !parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) 
-            && !parts[idx].eq_ignore_ascii_case("IN") 
+        // Parse domain (optional, uses last domain if blank).
+        // A token that starts with a digit could be either a TTL or a
+        // domain like "1.0.0.10.in-addr.arpa.".  Heuristic: if it
+        // contains a dot followed by a non-digit, treat it as a domain.
+        let looks_like_domain = {
+            let t = &parts[idx];
+            t.contains('.') && t.split('.').any(|p| !p.is_empty() && !p.chars().all(|c| c.is_ascii_digit()))
+        };
+        if (!parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) || looks_like_domain)
+            && !parts[idx].eq_ignore_ascii_case("IN")
             && !is_record_type(&parts[idx]) {
             domain = Some(self.normalize_domain(&parts[idx]));
             self.last_domain = domain.clone();
@@ -343,7 +355,8 @@ impl ZoneParser {
         }
 
         // Parse TTL (optional)
-        if idx < parts.len() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        if idx < parts.len() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit())
+            && !parts[idx].contains('.') {
             ttl = Some(self.parse_ttl(&parts[idx])?);
             idx += 1;
         }
@@ -355,7 +368,8 @@ impl ZoneParser {
         }
 
         // Parse TTL again if it comes after class
-        if idx < parts.len() && ttl.is_none() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) {
+        if idx < parts.len() && ttl.is_none() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit())
+            && !parts[idx].contains('.') {
             ttl = Some(self.parse_ttl(&parts[idx])?);
             idx += 1;
         }

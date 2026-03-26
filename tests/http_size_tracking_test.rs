@@ -36,12 +36,12 @@ mod tests {
         let method = "GET";
         let path = "/test";
         let request_line = format!("{} {} HTTP/1.1\r\n", method, path);
-        assert_eq!(request_line.len(), 19);
+        assert_eq!(request_line.len(), 20);
         
         // Header size calculation
         let header = "User-Agent: TestAgent/1.0";
-        let header_size = header.len() + 4; // ": " and "\r\n"
-        assert_eq!(header_size, 30);
+        let header_size = header.len() + 2; // "\r\n" line ending
+        assert_eq!(header_size, 27);
         
         // Response size components
         let status_line = "HTTP/1.1 200 OK\r\n";

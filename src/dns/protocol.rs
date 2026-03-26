@@ -375,12 +375,23 @@ impl DnsRecord {
             QueryType::Txt => {
                 let mut txt = String::new();
 
-                let cur_pos = buffer.pos();
-                txt.push_str(&String::from_utf8_lossy(
-                    buffer.get_range(cur_pos, data_len as usize)?,
-                ));
-
-                buffer.step(data_len as usize)?;
+                // TXT RDATA consists of one or more <character-string>s
+                // (RFC 1035 §3.3.14). Each is a length byte followed by
+                // that many data bytes. We concatenate the strings.
+                let mut remaining = data_len as usize;
+                while remaining > 0 {
+                    let str_len = buffer.read()? as usize;
+                    remaining -= 1;
+                    let actual = std::cmp::min(str_len, remaining);
+                    if actual > 0 {
+                        let cur_pos = buffer.pos();
+                        txt.push_str(&String::from_utf8_lossy(
+                            buffer.get_range(cur_pos, actual)?,
+                        ));
+                        buffer.step(actual)?;
+                        remaining -= actual;
+                    }
+                }
 
                 Ok(DnsRecord::Txt {
                     domain,
