@@ -1258,11 +1258,18 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
 
-    /// Dispatch Pi-hole v5 compatible API requests at `/admin/api.php?<action>`.
+    /// Dispatch Pi-hole v3/v4/v5 compatible API requests at `/admin/api.php?<action>`.
     fn pihole_api_dispatch(&self, request: &Request) -> Result<ResponseBox> {
-        let handler = crate::web::pihole_api::PiholeApiHandler::new(Arc::clone(&self.context));
-        handler.handle(request)
-            .map(|r| r.boxed())
+        #[cfg(feature = "pihole-api")]
+        {
+            let handler = crate::web::pihole_api::PiholeApiHandler::new(Arc::clone(&self.context));
+            return handler.handle(request).map(|r| r.boxed());
+        }
+        #[cfg(not(feature = "pihole-api"))]
+        {
+            let _ = request;
+            Ok(Response::empty(404).boxed())
+        }
     }
 
     /// Public Prometheus scrape endpoint at `/metrics` (no authentication required).

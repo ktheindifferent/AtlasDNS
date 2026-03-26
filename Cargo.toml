@@ -4,6 +4,12 @@ version = "0.0.1"
 authors = ["emil", "p0indexter", "PixelCoda"]
 edition = "2018"
 
+[features]
+# Enable the Pi-hole compatible API layer at /admin/api.php
+# Enabled by default; disable with --no-default-features if not needed.
+default = ["pihole-api"]
+pihole-api = []
+
 [dependencies]
 ascii = "1.0.0"
 chrono = { version = "0.4.13", features = ["serde"] }

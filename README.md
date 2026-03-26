@@ -382,6 +382,50 @@ The RESTful API provides complete DNS management capabilities:
 - `POST /api/v2/zones/{zone}/records` - Create record
 - Plus many more...
 
+## 🔌 Pi-hole API Compatibility
+
+AtlasDNS ships with a built-in Pi-hole v3/v4/v5 compatible API layer, enabled by
+default via the `pihole-api` Cargo feature.  Third-party tools that speak to a
+Pi-hole instance—Pi-hole Admin dashboards, Gravity Sync, mobile apps, and Grafana
+Pi-hole data-source panels—can connect to AtlasDNS without any modification.
+
+### Endpoint
+
+All Pi-hole API calls go to:
+
+```
+GET http://<atlas-host>:5380/admin/api.php?<action>
+```
+
+No authentication is required (the `/admin/` path is intentionally public,
+matching Pi-hole's own behavior).
+
+### Supported Actions
+
+| Query parameter | Description |
+|---|---|
+| `?summary` | Formatted statistics (domains blocked, queries today, cache size, …) |
+| `?summaryRaw` | Same as `?summary` with raw numeric values |
+| `?type` | Query-type percentage breakdown (A, AAAA, MX, PTR, …) |
+| `?recentBlocked` | Plain-text most-recently-blocked domain |
+| `?topItems[=N]` | Top *N* queried domains and top *N* blocked domains |
+| `?getQuerySources[=N]` | Top *N* client IPs by query count |
+| `?getQueryLog` / `?getAllQueries` | Recent query log (last 100 entries) |
+| `?enable` | Report blocking as enabled (no-op in AtlasDNS) |
+| `?disable` | Report blocking as disabled (no-op in AtlasDNS) |
+| `?status` | Current blocking status |
+| `?version` | API version (`5`) and server identifier |
+| `?list=black&add=<domain>` | Add *domain* to the AtlasDNS blocklist |
+| `?list=black&sub=<domain>` | Remove *domain* from the AtlasDNS blocklist |
+
+### Disabling the Pi-hole API
+
+If you don't need Pi-hole compatibility, compile without the default feature:
+
+```bash
+cargo build --release --no-default-features
+```
+
 ## 🧪 Development
 
 ### Running Tests

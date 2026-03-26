@@ -20,6 +20,7 @@ pub mod token_rotation;
 pub mod secure_password;
 pub mod websocket;
 pub mod blocklists;
+#[cfg(feature = "pihole-api")]
 pub mod pihole_api;
 
 #[derive(Debug)]

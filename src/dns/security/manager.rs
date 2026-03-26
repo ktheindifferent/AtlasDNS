@@ -295,6 +295,11 @@ impl SecurityManager {
         self.metrics.read().clone()
     }
 
+    /// Return the current number of domains in the blocklist.
+    pub fn get_blocklist_count(&self) -> u64 {
+        self.firewall.get_metrics().total_blocklist_domains
+    }
+
     /// Get security statistics
     pub fn get_statistics(&self) -> SecurityStatistics {
         let metrics = self.metrics.read();
