@@ -52,6 +52,7 @@ libc = "0.2"
 # DNS-over-QUIC dependencies
 quinn = "0.10"
 rustls = { version = "0.21", features = ["dangerous_configuration"] }
+rustls-pemfile = "1"
 rcgen = "0.11"
 
 # CLI dependencies

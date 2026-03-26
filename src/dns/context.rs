@@ -171,6 +171,8 @@ pub struct ServerContext {
     pub metrics_enabled: bool,
     /// Port for the dedicated Prometheus metrics HTTP server (default 9153).
     pub metrics_port: u16,
+    /// Whether the DNS-over-TLS (DoT) server is running on port 853.
+    pub dot_enabled: bool,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -293,6 +295,7 @@ impl Default for ServerContext {
             doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
+            dot_enabled: false,
         }
     }
 }
@@ -381,6 +384,7 @@ impl ServerContext {
             doh_server_enabled: true,
             metrics_enabled: true,
             metrics_port: 9153,
+            dot_enabled: false,
         })
     }
 
@@ -657,6 +661,7 @@ pub mod tests {
             doh_server_enabled: false,
             metrics_enabled: true,
             metrics_port: 9153,
+            dot_enabled: false,
         })
     }
 
