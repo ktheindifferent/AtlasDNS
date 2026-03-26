@@ -2104,18 +2104,36 @@ impl ChainValidator {
         // Fetch parent DNSKEYs.
         let parent_dnskeys_owned = Self::fetch_dnskeys_for_zone(&parent, fetch);
         if parent_dnskeys_owned.is_empty() {
-            // Root zone parent check.
             if parent_norm.is_empty() {
-                // The zone IS a TLD; check its DNSKEY via root trust anchor.
-                return dnskeys.iter().any(|dk| {
-                    // The DS should have been signed by root; just check DNSKEY/DS link above
-                    // is good + root anchor.
-                    let _ = dk; true
-                }) && ds_records.iter().any(|_| {
-                    // Trust the DS if we're one level below root and at least one
-                    // DNSKEY matched the DS above.
-                    dnskey_matched
-                });
+                // The zone IS a TLD; its DS must have been signed by the root.
+                // Fetch root DNSKEYs and verify at least one matches a trust anchor.
+                let root_dnskeys = Self::fetch_dnskeys_for_zone(".", fetch);
+                if root_dnskeys.is_empty() {
+                    // Cannot fetch root DNSKEYs; trust only in opportunistic mode.
+                    return self.mode == ValidationMode::Opportunistic;
+                }
+                let root_trusted = root_dnskeys.iter().any(|dk| self.verify_root_dnskey(dk));
+                if !root_trusted {
+                    log::debug!("DNSSEC full-chain: root DNSKEY does not match trust anchor for TLD {}", zone);
+                    return false;
+                }
+                // Verify DS RRSIGs were signed by a root DNSKEY.
+                let ds_rrsig_ok = if let Some(ds_pkt) = fetch(zone, QueryType::Ds) {
+                    let ds_ans: Vec<&DnsRecord> = ds_pkt.answers.iter()
+                        .filter(|r| r.get_querytype() == QueryType::Ds)
+                        .collect();
+                    let ds_sigs: Vec<&DnsRecord> = ds_pkt.answers.iter()
+                        .chain(ds_pkt.authorities.iter())
+                        .filter(|r| r.get_querytype() == QueryType::Rrsig)
+                        .collect();
+                    let root_dk_refs: Vec<&DnsRecord> = root_dnskeys.iter().collect();
+                    ds_sigs.iter().any(|rrsig| {
+                        root_dk_refs.iter().any(|dk| self.verify_rrsig(rrsig, &ds_ans, dk))
+                    })
+                } else {
+                    self.mode == ValidationMode::Opportunistic
+                };
+                return ds_rrsig_ok && dnskey_matched;
             }
             log::debug!("DNSSEC full-chain: cannot fetch parent DNSKEYs for {}", parent);
             return self.mode == ValidationMode::Opportunistic;
@@ -2816,5 +2834,338 @@ mod tests {
         // Strict mode with no RRSIGs → Indeterminate (no signatures to reject)
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), ValidationStatus::Indeterminate);
+    }
+
+    // -----------------------------------------------------------------------
+    // Full chain-of-trust validation with mock fetcher
+    // -----------------------------------------------------------------------
+
+    /// Helper: generate an RSA-1024 key and return (PKey<Private>, RFC3110 pubkey, key_tag).
+    fn gen_rsa_key() -> (PKey<Private>, Vec<u8>, u16) {
+        let rsa = Rsa::generate(1024).unwrap();
+        let e = rsa.e().to_vec();
+        let n = rsa.n().to_vec();
+        let mut rfc3110: Vec<u8> = vec![e.len() as u8];
+        rfc3110.extend_from_slice(&e);
+        rfc3110.extend_from_slice(&n);
+        let tag = compute_dnskey_tag(256, 3, 8, &rfc3110);
+        let pkey = PKey::from_rsa(rsa).unwrap();
+        (pkey, rfc3110, tag)
+    }
+
+    /// Helper: sign an RRset and produce an RRSIG DnsRecord.
+    fn make_rrsig(
+        rrset: &[&DnsRecord],
+        signer_name: &str,
+        key_tag: u16,
+        pkey: &PKey<Private>,
+        type_covered: u16,
+        labels: u8,
+        ttl: u32,
+        expired: bool,
+    ) -> DnsRecord {
+        use crate::dns::protocol::TransientTtl;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+        let (inception, expiration) = if expired {
+            (now - 172800, now - 86400) // expired yesterday
+        } else {
+            (now - 3600, now + 86400) // valid
+        };
+        let signed_data = build_rrsig_signed_data(
+            type_covered, 8, labels, ttl,
+            expiration, inception, key_tag, signer_name, rrset,
+        );
+        let mut signer = openssl::sign::Signer::new(MessageDigest::sha256(), pkey).unwrap();
+        signer.update(&signed_data).unwrap();
+        let signature = signer.sign_to_vec().unwrap();
+        DnsRecord::Rrsig {
+            domain: signer_name.to_string(),
+            type_covered,
+            algorithm: 8,
+            labels,
+            original_ttl: ttl,
+            expiration,
+            inception,
+            key_tag,
+            signer_name: signer_name.to_string(),
+            signature,
+            ttl: TransientTtl(ttl),
+        }
+    }
+
+    /// Full chain validation with a mock fetcher: the signer zone's DNSKEY is
+    /// fetched on demand and verified via a DS record from the parent.
+    #[test]
+    fn test_validate_chain_with_fetcher_valid() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        use std::collections::HashMap;
+
+        // Zone: example.com, Parent: com, Root: .
+        let (zone_pkey, zone_pubkey, zone_tag) = gen_rsa_key();
+
+        // Build A record + RRSIG over it.
+        let a_rec = DnsRecord::A {
+            domain: "example.com".to_string(),
+            addr: "192.0.2.1".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        let rrsig = make_rrsig(&[&a_rec], "example.com", zone_tag, &zone_pkey, 1, 2, 300, false);
+
+        // Build DNSKEY record for example.com.
+        let dnskey_rec = DnsRecord::Dnskey {
+            domain: "example.com".to_string(),
+            flags: 256, protocol: 3, algorithm: 8,
+            public_key: zone_pubkey.clone(),
+            ttl: TransientTtl(3600),
+        };
+
+        // Build DS record for example.com (hash of DNSKEY).
+        let ds_digest = compute_ds_digest_from_dnskey("example.com", 256, 3, 8, &zone_pubkey, 2);
+        let ds_rec = DnsRecord::Ds {
+            domain: "example.com".to_string(),
+            key_tag: zone_tag, algorithm: 8, digest_type: 2,
+            digest: ds_digest,
+            ttl: TransientTtl(3600),
+        };
+
+        // Set up a mock fetcher that returns DNSKEY for example.com and DS.
+        let mut fetch_map: HashMap<(String, u16), DnsPacket> = HashMap::new();
+
+        // DNSKEY query for example.com
+        let mut dk_pkt = DnsPacket::new();
+        dk_pkt.answers.push(dnskey_rec.clone());
+        fetch_map.insert(("example.com".to_string(), QueryType::Dnskey.to_num()), dk_pkt);
+
+        // DS query for example.com
+        let mut ds_pkt = DnsPacket::new();
+        ds_pkt.answers.push(ds_rec.clone());
+        fetch_map.insert(("example.com".to_string(), QueryType::Ds.to_num()), ds_pkt);
+
+        // Parent DNSKEY for "com" - just return empty (will fall through to opportunistic)
+        let empty_pkt = DnsPacket::new();
+        fetch_map.insert(("com".to_string(), QueryType::Dnskey.to_num()), empty_pkt.clone());
+        fetch_map.insert(("com".to_string(), QueryType::Ds.to_num()), empty_pkt.clone());
+        fetch_map.insert((".".to_string(), QueryType::Dnskey.to_num()), empty_pkt);
+
+        let fetch = |name: &str, qt: QueryType| -> Option<DnsPacket> {
+            fetch_map.get(&(name.trim_end_matches('.').to_string(), qt.to_num())).cloned()
+                .or_else(|| fetch_map.get(&(name.to_string(), qt.to_num())).cloned())
+        };
+
+        // Assemble the response packet (A + RRSIG, no DNSKEY in packet).
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_rec);
+        packet.answers.push(rrsig);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        let result = validator.validate_chain_with_fetcher(&packet, "example.com", QueryType::A, fetch);
+        assert_eq!(result, ChainValidationResult::Authenticated,
+            "valid chain with fetcher must yield Authenticated");
+    }
+
+    /// Broken chain: DNSKEY does not match DS record → ValidationFailed.
+    #[test]
+    fn test_validate_chain_with_fetcher_broken_chain() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        use std::collections::HashMap;
+
+        let (zone_pkey, zone_pubkey, zone_tag) = gen_rsa_key();
+
+        let a_rec = DnsRecord::A {
+            domain: "broken.com".to_string(),
+            addr: "192.0.2.99".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        let rrsig = make_rrsig(&[&a_rec], "broken.com", zone_tag, &zone_pkey, 1, 2, 300, false);
+
+        let dnskey_rec = DnsRecord::Dnskey {
+            domain: "broken.com".to_string(),
+            flags: 256, protocol: 3, algorithm: 8,
+            public_key: zone_pubkey.clone(),
+            ttl: TransientTtl(3600),
+        };
+
+        // Deliberately wrong DS digest (corrupted).
+        let ds_rec = DnsRecord::Ds {
+            domain: "broken.com".to_string(),
+            key_tag: zone_tag, algorithm: 8, digest_type: 2,
+            digest: vec![0xBA, 0xAD, 0xF0, 0x0D],
+            ttl: TransientTtl(3600),
+        };
+
+        let mut fetch_map: HashMap<(String, u16), DnsPacket> = HashMap::new();
+        let mut dk_pkt = DnsPacket::new();
+        dk_pkt.answers.push(dnskey_rec);
+        fetch_map.insert(("broken.com".to_string(), QueryType::Dnskey.to_num()), dk_pkt);
+
+        let mut ds_pkt = DnsPacket::new();
+        ds_pkt.answers.push(ds_rec);
+        fetch_map.insert(("broken.com".to_string(), QueryType::Ds.to_num()), ds_pkt);
+
+        let fetch = |name: &str, qt: QueryType| -> Option<DnsPacket> {
+            fetch_map.get(&(name.trim_end_matches('.').to_string(), qt.to_num())).cloned()
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_rec);
+        packet.answers.push(rrsig);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Strict);
+        let result = validator.validate_chain_with_fetcher(&packet, "broken.com", QueryType::A, fetch);
+        assert_eq!(result, ChainValidationResult::ValidationFailed,
+            "broken DS chain must yield ValidationFailed");
+    }
+
+    /// Expired RRSIG must be rejected even if the signature bytes are correct.
+    #[test]
+    fn test_expired_rrsig_rejected() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+
+        let (zone_pkey, zone_pubkey, zone_tag) = gen_rsa_key();
+
+        let a_rec = DnsRecord::A {
+            domain: "expired.com".to_string(),
+            addr: "192.0.2.50".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        // Create an RRSIG that is expired (inception and expiration in the past).
+        let rrsig = make_rrsig(&[&a_rec], "expired.com", zone_tag, &zone_pkey, 1, 2, 300, true);
+
+        let dnskey_rec = DnsRecord::Dnskey {
+            domain: "expired.com".to_string(),
+            flags: 256, protocol: 3, algorithm: 8,
+            public_key: zone_pubkey,
+            ttl: TransientTtl(3600),
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_rec);
+        packet.answers.push(dnskey_rec);
+        packet.answers.push(rrsig);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        assert_eq!(
+            validator.validate_packet_rrsigs(&packet),
+            ChainValidationResult::ValidationFailed,
+            "expired RRSIG must yield ValidationFailed"
+        );
+    }
+
+    /// An RRSIG with an unknown/unsupported algorithm must not validate.
+    #[test]
+    fn test_unknown_algorithm_rejected() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+
+        let a_rec = DnsRecord::A {
+            domain: "algo.com".to_string(),
+            addr: "192.0.2.77".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+
+        // DNSKEY with algorithm 253 (private use / unknown).
+        let fake_pubkey = vec![0x03, 0x01, 0x00, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
+        let tag = compute_dnskey_tag(256, 3, 253, &fake_pubkey);
+        let dnskey_rec = DnsRecord::Dnskey {
+            domain: "algo.com".to_string(),
+            flags: 256, protocol: 3, algorithm: 253,
+            public_key: fake_pubkey,
+            ttl: TransientTtl(3600),
+        };
+
+        let rrsig = DnsRecord::Rrsig {
+            domain: "algo.com".to_string(),
+            type_covered: 1, algorithm: 253, labels: 2,
+            original_ttl: 300,
+            expiration: now + 86400,
+            inception: now,
+            key_tag: tag,
+            signer_name: "algo.com".to_string(),
+            signature: vec![0x11; 64],
+            ttl: TransientTtl(3600),
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_rec);
+        packet.answers.push(dnskey_rec);
+        packet.answers.push(rrsig);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        assert_eq!(
+            validator.validate_packet_rrsigs(&packet),
+            ChainValidationResult::ValidationFailed,
+            "unknown algorithm must yield ValidationFailed"
+        );
+    }
+
+    /// Full chain with fetcher: Strict mode rejects when no DS records exist
+    /// (cannot complete chain to root).
+    #[test]
+    fn test_validate_chain_with_fetcher_strict_no_ds() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        use std::collections::HashMap;
+
+        let (zone_pkey, zone_pubkey, zone_tag) = gen_rsa_key();
+
+        let a_rec = DnsRecord::A {
+            domain: "strict.com".to_string(),
+            addr: "192.0.2.10".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        let rrsig = make_rrsig(&[&a_rec], "strict.com", zone_tag, &zone_pkey, 1, 2, 300, false);
+
+        let dnskey_rec = DnsRecord::Dnskey {
+            domain: "strict.com".to_string(),
+            flags: 256, protocol: 3, algorithm: 8,
+            public_key: zone_pubkey,
+            ttl: TransientTtl(3600),
+        };
+
+        let mut fetch_map: HashMap<(String, u16), DnsPacket> = HashMap::new();
+        let mut dk_pkt = DnsPacket::new();
+        dk_pkt.answers.push(dnskey_rec);
+        fetch_map.insert(("strict.com".to_string(), QueryType::Dnskey.to_num()), dk_pkt);
+        // No DS records → chain cannot reach root.
+        fetch_map.insert(("strict.com".to_string(), QueryType::Ds.to_num()), DnsPacket::new());
+
+        let fetch = |name: &str, qt: QueryType| -> Option<DnsPacket> {
+            fetch_map.get(&(name.trim_end_matches('.').to_string(), qt.to_num())).cloned()
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_rec);
+        packet.answers.push(rrsig);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Strict);
+        let result = validator.validate_chain_with_fetcher(&packet, "strict.com", QueryType::A, fetch);
+        assert_eq!(result, ChainValidationResult::ValidationFailed,
+            "strict mode with no DS must yield ValidationFailed");
+    }
+
+    /// CD bit bypass: when checking_disabled is set, validation should be skipped.
+    #[test]
+    fn test_cd_bit_skips_validation() {
+        use crate::dns::protocol::DnsPacket;
+        // This tests the ValidationMode::Off path (equivalent to CD bit handling).
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Off);
+        let mut packet = DnsPacket::new();
+        // Add bogus RRSIG that would fail validation.
+        packet.answers.push(DnsRecord::Rrsig {
+            domain: "test.com".to_string(),
+            type_covered: 1, algorithm: 8, labels: 2,
+            original_ttl: 300,
+            expiration: 0, inception: 0, key_tag: 12345,
+            signer_name: "test.com".to_string(),
+            signature: vec![0xFF; 16],
+            ttl: crate::dns::protocol::TransientTtl(300),
+        });
+        let result = validator.validate_chain_with_fetcher(
+            &packet, "test.com", QueryType::A, |_, _| None,
+        );
+        assert_eq!(result, ChainValidationResult::Unsigned,
+            "Off mode must return Unsigned regardless of packet content");
     }
 }

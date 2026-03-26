@@ -197,13 +197,29 @@ pub trait DnsResolver {
                     validator.validate_packet_rrsigs(&result)
                 };
 
-                // Also run NSEC/NSEC3 denial-of-existence check for negative responses.
+                // For negative responses, factor NSEC/NSEC3 denial proof into
+                // the validation result.  An authenticated negative response
+                // with no valid denial proof is downgraded to ValidationFailed
+                // in Strict mode or Unsigned in Opportunistic mode.
                 let is_negative = result.header.rescode == ResultCode::NXDOMAIN
                     || result.answers.is_empty();
-                if is_negative {
+                let chain_result = if is_negative && chain_result == ChainValidationResult::Authenticated {
                     let denial_ok = validator.validate_nxdomain_proof(&result, qname, qtype);
                     log::debug!("DNSSEC: denial proof for {} {:?}: {}", qname, qtype, denial_ok);
-                }
+                    if !denial_ok {
+                        log::warn!("DNSSEC: negative response missing valid NSEC/NSEC3 denial for {} {:?}", qname, qtype);
+                        if mode == ValidationMode::Strict {
+                            ChainValidationResult::ValidationFailed
+                        } else {
+                            // Opportunistic: accept but don't claim authenticated
+                            ChainValidationResult::Unsigned
+                        }
+                    } else {
+                        ChainValidationResult::Authenticated
+                    }
+                } else {
+                    chain_result
+                };
 
                 let status = match chain_result {
                     ChainValidationResult::Authenticated => {

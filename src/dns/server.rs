@@ -17,7 +17,7 @@ extern crate sentry;
 use crate::dns::buffer::{BytePacketBuffer, PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::context::ServerContext;
 use crate::dns::netutil::{read_packet_length, write_packet_length};
-use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultCode, ValidationStatus};
 use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 use crate::dns::security::SecurityAction;
@@ -274,29 +274,26 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 ///
 /// Returns `Ok(ChainValidationResult)` reflecting authentication status.
 fn validate_dnssec(
-    context: &Arc<ServerContext>,
-    request: &DnsPacket,
+    _context: &Arc<ServerContext>,
+    _request: &DnsPacket,
     packet: &DnsPacket,
 ) -> std::result::Result<ChainValidationResult, Box<dyn std::error::Error>> {
-    use crate::dns::protocol::ResultCode;
-    // Use the configured validation mode rather than hardcoding Opportunistic.
-    let mode = context.authority.get_validation_mode();
-    let validator = ChainValidator::with_root_ksk(mode);
-    let result = validator.validate_packet_rrsigs(packet);
-
-    // For NXDOMAIN / NODATA responses, additionally verify NSEC/NSEC3 denial proof.
-    let is_negative = packet.header.rescode == ResultCode::NXDOMAIN || packet.answers.is_empty();
-    if is_negative {
-        if let Some(question) = request.questions.first() {
-            let denial_proven = validator.validate_nxdomain_proof(packet, &question.name, question.qtype);
-            log::debug!(
-                "DNSSEC: NSEC/NSEC3 denial proof for {} {:?}: {}",
-                question.name, question.qtype, denial_proven
-            );
-        }
+    // If the resolver already validated this packet (dnssec_status is set),
+    // translate that into a ChainValidationResult so the server layer does
+    // not re-validate with a weaker (packet-only) check.
+    if let Some(ref status) = packet.dnssec_status {
+        return Ok(match status {
+            ValidationStatus::Secure => ChainValidationResult::Authenticated,
+            ValidationStatus::Bogus  => ChainValidationResult::ValidationFailed,
+            _                        => ChainValidationResult::Unsigned,
+        });
     }
 
-    Ok(result)
+    // Fallback: the packet did not go through the resolver (e.g. authoritative
+    // response).  Use packet-level validation.
+    let mode = _context.authority.get_validation_mode();
+    let validator = ChainValidator::with_root_ksk(mode);
+    Ok(validator.validate_packet_rrsigs(packet))
 }
 
 /// This function will always return a valid packet, even if the request could not
