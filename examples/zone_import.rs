@@ -2,8 +2,8 @@
 //!
 //! Run with: cargo run --example zone_import
 
-use dns_server::dns::zone_parser::{ZoneParser, validate_zone};
-use dns_server::dns::authority::Authority;
+use atlas::dns::zone_parser::{ZoneParser, validate_zone};
+use atlas::dns::authority::Authority;
 use std::sync::Arc;
 
 fn main() {
@@ -87,31 +87,37 @@ _http._tcp  IN  SRV 10 60 80 www.example.com.
 
     println!();
 
-    // Method 2: Using Authority's import_zone
+    // Method 2: Parse zone and upsert records into Authority
     println!("Method 2: Import via Authority");
     println!("-------------------------------");
-    
+
     let authority = Arc::new(Authority::new());
-    
-    match authority.import_zone("example.com", zone_content) {
-        Ok(_) => {
-            println!("✓ Successfully imported zone into authority");
-            
+
+    let mut parser2 = ZoneParser::new("example.com");
+    match parser2.parse_string(zone_content) {
+        Ok(zone) => {
+            println!("✓ Successfully parsed zone into authority");
+
+            // Upsert each record
+            for record in zone.records.iter() {
+                if let Err(e) = authority.upsert("example.com", record.clone()) {
+                    eprintln!("  Failed to add record: {:?}", e);
+                }
+            }
+
             // Query the imported zone
-            match authority.query_zone("example.com", "www.example.com") {
-                Ok(records) => {
-                    println!("  Query for www.example.com returned {} records:", records.len());
-                    for record in records {
-                        println!("    - {:?}", record);
-                    }
+            use atlas::dns::protocol::QueryType;
+            if let Some(packet) = authority.query("www.example.com", QueryType::A) {
+                println!("  Query for www.example.com returned {} answers:", packet.answers.len());
+                for record in &packet.answers {
+                    println!("    - {:?}", record);
                 }
-                Err(e) => {
-                    eprintln!("  Failed to query zone: {:?}", e);
-                }
+            } else {
+                println!("  No records found for www.example.com (may need zone to be fully set up)");
             }
         }
         Err(e) => {
-            eprintln!("✗ Failed to import zone: {}", e);
+            eprintln!("✗ Failed to parse zone: {}", e);
         }
     }
 

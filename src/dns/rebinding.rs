@@ -47,6 +47,14 @@ impl RebindingProtection {
         }
     }
 
+    /// Create a disabled instance (used in tests to avoid blocking mock responses).
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            whitelist: Arc::new(RwLock::new(HashSet::new())),
+        }
+    }
+
     /// Returns true if the response for `domain` returning `ip` should be blocked.
     pub fn should_block(&self, domain: &str, ip: &IpAddr) -> bool {
         if !self.enabled {

@@ -169,12 +169,16 @@ impl ZoneParser {
 
             // Handle multi-line records (parentheses)
             if in_multiline {
+                // Strip inline comments before appending to avoid losing fields
+                let stripped = if let Some(pos) = line.find(';') { &line[..pos] } else { line };
                 multiline_buffer.push(' ');
-                multiline_buffer.push_str(line.trim());
+                multiline_buffer.push_str(stripped.trim());
                 if line.contains(')') {
+                    // Remove the parentheses from the assembled buffer
+                    let clean = multiline_buffer.replace('(', " ").replace(')', " ");
                     in_multiline = false;
                     self.line_number = multiline_start;
-                    self.parse_line(&mut zone, &multiline_buffer)?;
+                    self.parse_line(&mut zone, &clean)?;
                     multiline_buffer.clear();
                 }
                 continue;
@@ -183,7 +187,9 @@ impl ZoneParser {
             if line.contains('(') && !line.contains(')') {
                 in_multiline = true;
                 multiline_start = self.line_number;
-                multiline_buffer = line.to_string();
+                // Strip inline comment from the opening line too
+                let stripped = if let Some(pos) = line.find(';') { &line[..pos] } else { line };
+                multiline_buffer = stripped.to_string();
                 continue;
             }
 

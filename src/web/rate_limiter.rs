@@ -151,6 +151,8 @@ struct SlidingWindow {
     tokens: f64,
     /// Last token refill time
     last_refill: Instant,
+    /// Whether tokens have been initialized to the burst capacity
+    initialized: bool,
 }
 
 impl SlidingWindow {
@@ -159,25 +161,33 @@ impl SlidingWindow {
             timestamps: Vec::new(),
             tokens: 0.0,
             last_refill: Instant::now(),
+            initialized: false,
         }
     }
 
     /// Check if request is allowed under the given limit
     fn check(&mut self, limit: &RateLimit) -> Result<(), Duration> {
         let now = Instant::now();
-        
+
         // Clean old timestamps
         let cutoff = now - limit.window;
         self.timestamps.retain(|&t| t > cutoff);
-        
+
         // Handle burst with token bucket
         if let Some(burst) = limit.burst {
+            // On first use, fill the bucket to burst capacity
+            if !self.initialized {
+                self.tokens = burst as f64;
+                self.initialized = true;
+                self.last_refill = now;
+            }
+
             // Refill tokens
             let elapsed = now.duration_since(self.last_refill);
             let refill_rate = limit.requests as f64 / limit.window.as_secs_f64();
             self.tokens = (self.tokens + elapsed.as_secs_f64() * refill_rate).min(burst as f64);
             self.last_refill = now;
-            
+
             // Check if we have tokens available
             if self.tokens >= 1.0 {
                 self.tokens -= 1.0;

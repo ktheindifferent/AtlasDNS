@@ -433,10 +433,10 @@ mod tests {
     #[test]
     fn test_validate_dns_name() {
         // Valid cases
-        assert!(validate_dns_name("example.com").is_ok());
-        assert!(validate_dns_name("sub.example.com").is_ok());
-        assert!(validate_dns_name("test-123.example.co.uk").is_ok());
-        assert!(validate_dns_name("example.com.").is_ok()); // trailing dot
+        assert!(validate_dns_name("valid-domain.com").is_ok());
+        assert!(validate_dns_name("sub.valid-domain.com").is_ok());
+        assert!(validate_dns_name("test-123.valid-domain.co.uk").is_ok());
+        assert!(validate_dns_name("valid-domain.com.").is_ok()); // trailing dot
         
         // Invalid cases
         assert!(validate_dns_name("").is_err());

@@ -17,7 +17,8 @@ mod tests {
     }
 
     fn create_test_ip() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100))
+        // Use a public TEST-NET IP (RFC 5737) to avoid internal-network bypass logic
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1))
     }
 
     mod firewall_tests {
@@ -212,6 +213,9 @@ mod tests {
                 per_client_burst: 2,
                 ban_threshold: 3,
                 ban_duration: Duration::from_secs(60),
+                // Use nanosecond throttle so it expires immediately, allowing
+                // violation_count to keep incrementing toward ban_threshold
+                throttle_duration: Duration::from_nanos(1),
                 ..RateLimitConfig::default()
             };
             
@@ -237,7 +241,8 @@ mod tests {
         #[test]
         fn test_query_type_rate_limiting() {
             let mut query_type_limits = std::collections::HashMap::new();
-            query_type_limits.insert("ANY".to_string(), 2);
+            // Key must match the Debug format of the QueryType variant
+            query_type_limits.insert("Txt".to_string(), 2);
             
             let config = RateLimitConfig {
                 enabled: true,
@@ -248,18 +253,18 @@ mod tests {
             let limiter = EnhancedRateLimiter::new(config);
             let client_ip = create_test_ip();
             
-            // First two ANY queries should pass
+            // First two Txt queries should pass
             for i in 0..2 {
-                let packet = create_test_packet(&format!("test{}.com", i), QueryType::Unknown(255));
+                let packet = create_test_packet(&format!("test{}.com", i), QueryType::Txt);
                 let result = limiter.check_rate_limit(&packet, client_ip);
                 assert!(result.allowed);
             }
-            
-            // Third ANY query should be rate limited
-            let packet = create_test_packet("test3.com", QueryType::Unknown(255));
+
+            // Third Txt query should be rate limited
+            let packet = create_test_packet("test3.com", QueryType::Txt);
             let result = limiter.check_rate_limit(&packet, client_ip);
             assert!(!result.allowed);
-            
+
             // A queries should still work
             let packet = create_test_packet("test4.com", QueryType::A);
             let result = limiter.check_rate_limit(&packet, client_ip);
@@ -303,6 +308,8 @@ mod tests {
             let config = DDoSConfig {
                 enabled: true,
                 detection_threshold: 10,
+                enable_dns_cookies: false,
+                max_connections_per_ip: 5,
                 ..DDoSConfig::default()
             };
             
@@ -329,6 +336,7 @@ mod tests {
             let config = DDoSConfig {
                 enabled: true,
                 enable_pattern_analysis: true,
+                enable_dns_cookies: false,
                 amplification_threshold: 5.0,
                 ..DDoSConfig::default()
             };
@@ -336,8 +344,8 @@ mod tests {
             let ddos_protection = DDoSProtection::new(config);
             let client_ip = create_test_ip();
             
-            // Test ANY query (common in amplification attacks)
-            let packet = create_test_packet("example.com", QueryType::A);
+            // Test TXT query (common in amplification attacks)
+            let packet = create_test_packet("example.com", QueryType::Txt);
             let result = ddos_protection.check_attack(&packet, client_ip);
             
             // Should detect potential amplification
@@ -351,6 +359,7 @@ mod tests {
             let config = DDoSConfig {
                 enabled: true,
                 enable_entropy_detection: true,
+                enable_dns_cookies: false,
                 random_subdomain_threshold: 0.5,
                 ..DDoSConfig::default()
             };
@@ -373,6 +382,7 @@ mod tests {
             let config = DDoSConfig {
                 enabled: true,
                 max_connections_per_ip: 5,
+                enable_dns_cookies: false,
                 ..DDoSConfig::default()
             };
             
@@ -437,7 +447,13 @@ mod tests {
 
         #[test]
         fn test_security_manager_integration() {
-            let config = SecurityConfig::default();
+            let config = SecurityConfig {
+                ddos_protection: crate::dns::security::ddos_protection::DDoSConfig {
+                    enable_dns_cookies: false,
+                    ..crate::dns::security::ddos_protection::DDoSConfig::default()
+                },
+                ..SecurityConfig::default()
+            };
             let manager = SecurityManager::new(config);
             
             let packet = create_test_packet("example.com", QueryType::A);
@@ -544,19 +560,37 @@ mod tests {
 
         #[test]
         fn test_security_events_logging() {
+            use crate::dns::security::firewall::{FirewallRule, FirewallAction, MatchType, ThreatCategory};
             let config = SecurityConfig {
                 log_security_events: true,
                 max_event_log_size: 100,
                 ..SecurityConfig::default()
             };
             let manager = SecurityManager::new(config);
-            
-            // Generate some events
-            for i in 0..10 {
-                let packet = create_test_packet(&format!("test{}.com", i), QueryType::A);
+
+            // Add a blocking rule so queries generate logged events
+            manager.add_firewall_rule(FirewallRule {
+                id: "event-test-rule".to_string(),
+                name: "Event test block".to_string(),
+                description: "Test".to_string(),
+                enabled: true,
+                priority: 1,
+                action: FirewallAction::BlockNxDomain,
+                match_type: MatchType::ExactDomain,
+                match_value: "blocked-event.com".to_string(),
+                categories: vec![ThreatCategory::Malware],
+                source_ips: vec![],
+                query_types: vec![],
+                expires_at: None,
+                hit_count: 0,
+            }).unwrap();
+
+            // Generate events by hitting the blocked domain
+            for _ in 0..5 {
+                let packet = create_test_packet("blocked-event.com", QueryType::A);
                 manager.check_request(&packet, create_test_ip());
             }
-            
+
             let events = manager.get_events(100);
             assert!(!events.is_empty());
         }

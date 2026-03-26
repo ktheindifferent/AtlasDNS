@@ -273,7 +273,8 @@ impl DDoSProtection {
     /// Create new DDoS protection system
     pub fn new(config: DDoSConfig) -> Self {
         let server_secret = Self::generate_server_secret();
-        
+        let max_connections = config.max_connections_per_ip;
+
         DDoSProtection {
             config: Arc::new(RwLock::new(config)),
             attack_detector: Arc::new(RwLock::new(AttackDetector {
@@ -294,8 +295,8 @@ impl DDoSProtection {
             })),
             connection_limiter: Arc::new(RwLock::new(ConnectionLimiter {
                 connections: HashMap::new(),
-                max_connections: 100,
-                rate_per_second: 50,  // Allow 50 queries per second per IP (reasonable for normal DNS usage)
+                max_connections,
+                rate_per_second: max_connections,
             })),
             entropy_detector: Arc::new(RwLock::new(EntropyDetector {
                 entropy_threshold: 3.5,

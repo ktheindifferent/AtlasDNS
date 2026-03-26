@@ -88,16 +88,31 @@ impl CsrfProtection {
             return Ok(false);
         }
         
-        // Decode payload
-        let payload = base64::decode(parts[0])
-            .map_err(|e| WebError::InvalidInput(format!("Invalid token encoding: {}", e)))?;
-        let payload = String::from_utf8(payload)
-            .map_err(|e| WebError::InvalidInput(format!("Invalid token payload: {}", e)))?;
-        
+        // Decode payload - return Ok(false) for malformed tokens rather than an error
+        let payload_bytes = match base64::decode(parts[0]) {
+            Ok(b) => b,
+            Err(_) => {
+                log::warn!("Invalid CSRF token base64 encoding");
+                return Ok(false);
+            }
+        };
+        let payload = match String::from_utf8(payload_bytes) {
+            Ok(s) => s,
+            Err(_) => {
+                log::warn!("Invalid CSRF token payload encoding");
+                return Ok(false);
+            }
+        };
+
         // Verify signature
         let expected_signature = self.sign_token(&payload)?;
-        let provided_signature = base64::decode(parts[1])
-            .map_err(|e| WebError::InvalidInput(format!("Invalid signature encoding: {}", e)))?;
+        let provided_signature = match base64::decode(parts[1]) {
+            Ok(b) => b,
+            Err(_) => {
+                log::warn!("Invalid CSRF token signature encoding");
+                return Ok(false);
+            }
+        };
         
         if expected_signature != provided_signature {
             log::warn!("CSRF token signature mismatch");

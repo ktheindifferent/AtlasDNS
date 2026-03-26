@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Real-Time Analytics ===\n");
     
     // 1. Query volume and performance metrics
-    let snapshot = metrics_manager.collector().get_snapshot().await?;
+    let snapshot = metrics_manager.collector().get_snapshot().await.map_err(|e| e.to_string())?;
     println!("📊 Current Metrics Snapshot:");
     println!("   • Total Queries: {}", snapshot.query_count);
     println!("   • Cache Hits: {}", snapshot.cache_hits);
@@ -170,11 +170,11 @@ async fn simulate_dns_traffic(manager: &MetricsManager) -> Result<(), Box<dyn st
     ];
     
     // Generate queries
-    let mut query_count = 0;
+    let mut query_count: usize = 0;
     for (query_type, count) in query_types {
         for _ in 0..count {
             let metric = DnsQueryMetric {
-                timestamp: SystemTime::now() - Duration::from_secs(query_count * 30),
+                timestamp: SystemTime::now() - Duration::from_secs((query_count * 30) as u64),
                 domain: domains[query_count % domains.len()].to_string(),
                 query_type: query_type.to_string(),
                 client_ip: client_ips[query_count % client_ips.len()].to_string(),
@@ -182,10 +182,10 @@ async fn simulate_dns_traffic(manager: &MetricsManager) -> Result<(), Box<dyn st
                 response_time_ms: 5.0 + (query_count as f64 % 45.0),
                 cache_hit: query_count % 3 != 0, // 66% cache hit rate
                 protocol: if query_count % 10 == 0 { "TCP" } else { "UDP" }.to_string(),
-                upstream_server: if query_count % 3 == 0 { 
-                    Some("8.8.8.8".to_string()) 
-                } else { 
-                    None 
+                upstream_server: if query_count % 3 == 0 {
+                    Some("8.8.8.8".to_string())
+                } else {
+                    None
                 },
                 dnssec_validated: if query_count % 5 == 0 { Some(true) } else { None },
             };

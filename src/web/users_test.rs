@@ -22,13 +22,14 @@ mod tests {
         let password = "test123";
         let hash1 = UserManager::hash_password(password);
         let hash2 = UserManager::hash_password(password);
-        
-        // Same password should produce same hash
-        assert_eq!(hash1, hash2);
-        
-        // Different passwords should produce different hashes
+
+        // bcrypt is non-deterministic, but both hashes must verify correctly
+        assert!(UserManager::verify_password(password, &hash1));
+        assert!(UserManager::verify_password(password, &hash2));
+
+        // Different passwords should not verify against each other's hash
         let different_hash = UserManager::hash_password("different");
-        assert_ne!(hash1, different_hash);
+        assert!(!UserManager::verify_password(password, &different_hash));
     }
 
     #[test]
@@ -77,24 +78,34 @@ mod tests {
         assert_eq!(result.unwrap_err(), "Username already exists");
     }
 
+    fn create_test_user(manager: &UserManager) -> crate::web::users::User {
+        manager.create_user(CreateUserRequest {
+            username: "testadmin".to_string(),
+            email: "testadmin@example.com".to_string(),
+            password: "TestPass123!".to_string(),
+            role: UserRole::Admin,
+        }).unwrap()
+    }
+
     #[test]
     fn test_authentication_success() {
         let manager = UserManager::new();
-        
-        // Test default admin authentication
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
-        assert_eq!(user.username, "admin");
+        create_test_user(&manager);
+
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
+        assert_eq!(user.username, "testadmin");
         assert_eq!(user.role, UserRole::Admin);
     }
 
     #[test]
     fn test_authentication_failure() {
         let manager = UserManager::new();
-        
+        create_test_user(&manager);
+
         // Wrong password
-        let result = manager.authenticate("admin", "wrongpassword", None, None);
+        let result = manager.authenticate("testadmin", "wrongpassword", None, None);
         assert!(result.is_err());
-        
+
         // Non-existent user
         let result = manager.authenticate("nonexistent", "password", None, None);
         assert!(result.is_err());
@@ -121,9 +132,10 @@ mod tests {
     #[test]
     fn test_session_validation() {
         let manager = UserManager::new();
-        
+        create_test_user(&manager);
+
         // First authenticate to get a user
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
         
         // Create a session for the user
         let session = manager.create_session(
@@ -152,7 +164,8 @@ mod tests {
     #[test]
     fn test_session_invalidation() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
+        create_test_user(&manager);
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
         let session = manager.create_session(user.id, None, None).unwrap();
         
         // Session should be valid initially
@@ -168,7 +181,8 @@ mod tests {
     #[test]
     fn test_update_user() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
+        create_test_user(&manager);
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
         
         let update_request = UpdateUserRequest {
             email: Some("newemail@example.com".to_string()),
@@ -218,7 +232,8 @@ mod tests {
     #[test]
     fn test_list_sessions() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
+        create_test_user(&manager);
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
         
         // Initially no sessions
         let sessions = manager.list_sessions(Some(&user.id)).unwrap();
@@ -240,7 +255,8 @@ mod tests {
     #[test]
     fn test_cleanup_expired_sessions() {
         let manager = UserManager::new();
-        let user = manager.authenticate("admin", "admin123", None, None).unwrap();
+        create_test_user(&manager);
+        let user = manager.authenticate("testadmin", "TestPass123!", None, None).unwrap();
         
         // Create a session
         let _session = manager.create_session(user.id, None, None).unwrap();

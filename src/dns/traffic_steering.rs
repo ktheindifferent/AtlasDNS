@@ -619,6 +619,44 @@ impl TrafficSteeringHandler {
                 let index = (client_ip.to_string().len()) % active_pools.len();
                 active_pools[index].clone()
             }
+            SteeringMode::Weighted => {
+                // Consistent hash on client IP to get a value in [0, 100)
+                let ip_hash = {
+                    let ip_bytes = match client_ip {
+                        IpAddr::V4(v4) => u32::from(v4) as u64,
+                        IpAddr::V6(v6) => {
+                            let segs = v6.segments();
+                            (segs[0] as u64) ^ ((segs[7] as u64) << 16)
+                        }
+                    };
+                    // Simple hash to spread values
+                    let h = ip_bytes.wrapping_mul(2654435761).wrapping_add(ip_bytes >> 16);
+                    (h % 100) as f64
+                };
+
+                // Walk pools sorted by id (stable order) and pick by cumulative weight
+                let mut sorted_pools: Vec<&String> = active_pools.iter().collect();
+                sorted_pools.sort();
+
+                // Build cumulative percentage ranges using target_percentage
+                let total_weight: f64 = sorted_pools.iter().map(|id| {
+                    pools.get(*id).map(|p| p.target_percentage).unwrap_or(0.0)
+                }).sum();
+
+                let total_weight = if total_weight <= 0.0 { 1.0 } else { total_weight };
+                let mut cumulative = 0.0;
+                let mut selected = sorted_pools[0].clone();
+                for pool_id in &sorted_pools {
+                    let weight = pools.get(*pool_id).map(|p| p.target_percentage).unwrap_or(0.0);
+                    cumulative += weight / total_weight * 100.0;
+                    if ip_hash < cumulative {
+                        selected = pool_id.to_string();
+                        break;
+                    }
+                    selected = pool_id.to_string();
+                }
+                selected
+            }
             _ => active_pools[0].clone(),
         }
     }

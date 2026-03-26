@@ -94,7 +94,8 @@ mod tests {
         assert!(!escaped.contains("<script>"));
         assert!(!escaped.contains("</script>"));
         assert!(escaped.contains("&lt;script&gt;"));
-        assert!(escaped.contains("&lt;/script&gt;"));
+        // '/' is escaped to &#x2F; by XSSProtection::escape_html
+        assert!(escaped.contains("&lt;&#x2F;script&gt;"));
     }
     
     #[test]

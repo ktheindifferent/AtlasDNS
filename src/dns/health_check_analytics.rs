@@ -434,14 +434,14 @@ impl HealthCheckAnalyticsHandler {
                 }
             }
             
-            // Update health score
-            state.health_score = self.calculate_health_score(state);
-            
-            // Add to recent results
+            // Add to recent results first so health score uses the latest data
             state.recent_results.push_back(result.clone());
             if state.recent_results.len() > 100 {
                 state.recent_results.pop_front();
             }
+
+            // Update health score after recent_results is current
+            state.health_score = self.calculate_health_score(state);
         }
     }
 

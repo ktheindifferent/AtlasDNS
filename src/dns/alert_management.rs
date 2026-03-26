@@ -667,16 +667,16 @@ mod tests {
     #[test]
     fn test_anomaly_detection() {
         let mut detector = AnomalyDetector::new(3.0);
-        
-        // Add normal values
-        for _ in 0..20 {
-            detector.update(50.0);
+
+        // Add values with slight variation so std_dev > 0
+        for i in 0..20 {
+            detector.update(if i % 2 == 0 { 48.0 } else { 52.0 });
         }
-        
-        // Check normal value
+
+        // Check normal value (close to mean of 50)
         assert!(!detector.is_anomaly(52.0));
-        
-        // Check anomaly
+
+        // Check anomaly (far from mean)
         assert!(detector.is_anomaly(200.0));
     }
 
