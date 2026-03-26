@@ -182,6 +182,8 @@ pub struct ServerContext {
     pub metrics_port: u16,
     /// Whether the DNS-over-TLS (DoT) server is running on port 853.
     pub dot_enabled: bool,
+    /// Whether the DNS-over-QUIC (DoQ) server is running on UDP port 853 (RFC 9250).
+    pub dns_over_quic: bool,
     /// HA cluster manager — `None` in standalone mode.
     pub cluster_manager: Option<Arc<ClusterManager>>,
     /// Heuristic DNS anomaly detector (DGA / tunneling / behavioural scoring).
@@ -313,6 +315,7 @@ impl Default for ServerContext {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            dns_over_quic: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
@@ -407,6 +410,7 @@ impl ServerContext {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            dns_over_quic: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
@@ -551,6 +555,7 @@ impl ServerContext {
         // Create a self-reference for initialization - we'll need to improve this pattern
         if let Ok(()) = manager.initialize(Arc::new(Self::default())).await {
             self.doq_manager = Some(Arc::new(manager));
+            self.dns_over_quic = true;
             log::info!("DNS-over-QUIC (DoQ) server enabled on port {}", self.doq_manager.as_ref().expect("just assigned above").get_config().port);
         } else {
             log::error!("Failed to initialize DoQ server");
@@ -703,6 +708,7 @@ pub mod tests {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            dns_over_quic: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),

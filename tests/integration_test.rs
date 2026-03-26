@@ -286,3 +286,67 @@ fn test_error_handling() {
     
     assert!(user_manager.create_user(duplicate_request).is_err());
 }
+
+// ── DNS-over-QUIC (DoQ, RFC 9250) integration tests ──────────────────────────
+
+/// Verify that DoqConfig defaults match RFC 9250 recommendations.
+#[test]
+fn test_doq_config_defaults() {
+    use atlas::dns::doq::DoqConfig;
+
+    let cfg = DoqConfig::default();
+    // RFC 9250 §5.1: DoQ MUST use UDP port 853 by default
+    assert_eq!(cfg.port, 853, "DoQ must default to UDP port 853 (RFC 9250)");
+    // Server should be opt-in
+    assert!(!cfg.enabled, "DoQ should be disabled by default");
+    assert!(cfg.enable_0rtt, "0-RTT should be enabled by default for performance");
+    assert!(cfg.enable_migration, "Connection migration should be enabled by default");
+    assert!(cfg.max_connections > 0, "max_connections must be positive");
+    assert!(cfg.max_streams > 0, "max_streams must be positive");
+}
+
+/// Verify that `dns_over_quic` config flag is wired into ServerContext.
+#[test]
+fn test_server_context_dns_over_quic_flag() {
+    let ctx = ServerContext::new().expect("ServerContext::new");
+    // Flag starts false — DoQ is opt-in
+    assert!(!ctx.dns_over_quic, "dns_over_quic should be false until explicitly enabled");
+}
+
+/// Verify that DoqServer can be created without errors (no port binding).
+#[test]
+fn test_doq_server_creation() {
+    use atlas::dns::doq::{DoqConfig, DoqServer};
+
+    let ctx = Arc::new(ServerContext::new().expect("ServerContext::new"));
+    let cfg = DoqConfig { enabled: false, ..DoqConfig::default() };
+    let server = DoqServer::new(ctx, cfg);
+    assert!(server.is_ok(), "DoqServer::new should succeed");
+}
+
+/// Verify that DoqConnectionStats defaults to zero.
+#[test]
+fn test_doq_connection_stats_default() {
+    use atlas::dns::doq::{DoqConfig, DoqServer};
+
+    let ctx = Arc::new(ServerContext::new().expect("ServerContext::new"));
+    let cfg = DoqConfig::default();
+    let server = DoqServer::new(ctx, cfg).expect("DoqServer::new");
+    let stats = server.get_stats();
+    assert_eq!(stats.total_connections, 0);
+    assert_eq!(stats.active_connections, 0);
+    assert_eq!(stats.total_streams, 0);
+    assert_eq!(stats.zero_rtt_connections, 0);
+}
+
+/// Verify that DoqConfig can be built from environment variables.
+#[test]
+fn test_doq_config_from_env() {
+    use atlas::dns::doq::DoqConfig;
+
+    // With no env vars set, from_env() should return the same as default()
+    // (DOQ_ENABLED is unset, so enabled remains false)
+    let cfg = DoqConfig::from_env();
+    assert!(!cfg.enabled, "DOQ_ENABLED unset → enabled should be false");
+    assert_eq!(cfg.port, 853);
+}
