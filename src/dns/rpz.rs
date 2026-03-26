@@ -200,7 +200,7 @@ impl RpzZone {
             client_ip_rules: HashMap::new(),
             client_cidr_rules: Vec::new(),
             nsdname_trie: TrieNode::new(),
-            qname_bloom: Bloom::new_for_fp_rate(1_000_000, 0.001),
+            qname_bloom: new_bloom_filter(),
             rule_count: 0,
             serial: 0,
         }
@@ -305,12 +305,23 @@ impl RpzZone {
         self.client_ip_rules.clear();
         self.client_cidr_rules.clear();
         self.nsdname_trie = TrieNode::new();
-        self.qname_bloom = Bloom::new_for_fp_rate(1_000_000, 0.001);
+        self.qname_bloom = new_bloom_filter();
         self.rule_count = 0;
     }
 }
 
 // ─── Domain label helpers ────────────────────────────────────────────────────
+
+/// Create a bloom filter sized appropriately for the build profile.
+#[cfg(not(test))]
+fn new_bloom_filter() -> Bloom<String> {
+    Bloom::new_for_fp_rate(1_000_000, 0.001)
+}
+
+#[cfg(test)]
+fn new_bloom_filter() -> Bloom<String> {
+    Bloom::new_for_fp_rate(1_000, 0.01)
+}
 
 fn domain_to_labels(domain: &str) -> Vec<String> {
     domain.split('.').rev().map(|s| s.to_lowercase()).collect()
