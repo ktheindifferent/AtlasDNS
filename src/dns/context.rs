@@ -40,6 +40,7 @@ use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 use crate::dns::clustering::{ClusterManager, ClusterConfig};
 use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
 use crate::dns::split_horizon::SplitHorizonRuleManager;
+use crate::dns::dnssec::ValidationMode;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -128,6 +129,8 @@ pub struct ServerContext {
     pub enable_tcp: bool,
     pub enable_api: bool,
     pub dnssec_enabled: bool,
+    /// DNSSEC chain-of-trust validation mode (Strict / Opportunistic / Off).
+    pub dnssec_validation_mode: ValidationMode,
     pub statistics: ServerStatistics,
     pub zones_dir: Arc<str>,
     pub ssl_config: SslConfig,
@@ -267,6 +270,7 @@ impl Default for ServerContext {
             enable_tcp: true,
             enable_api: true,
             dnssec_enabled: true,
+            dnssec_validation_mode: ValidationMode::Opportunistic,
             statistics: ServerStatistics {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
@@ -359,6 +363,7 @@ impl ServerContext {
             enable_tcp: true,
             enable_api: true,
             dnssec_enabled: true,
+            dnssec_validation_mode: ValidationMode::Opportunistic,
             statistics: ServerStatistics {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
@@ -677,6 +682,7 @@ pub mod tests {
             dot_manager: None,
             doq_manager: None,
             dnssec_enabled: true,
+            dnssec_validation_mode: ValidationMode::Opportunistic,
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
             storage: None,
             blocklist_updater: None,

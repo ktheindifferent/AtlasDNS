@@ -7,8 +7,9 @@ use std::vec::Vec;
 use derive_more::{Display, Error, From};
 
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode};
+use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode, ValidationStatus};
 use crate::dns::buffer::BytePacketBuffer;
+use crate::dns::dnssec::{ChainValidator, ValidationMode};
 
 #[derive(Debug, Display, From, Error)]
 pub enum ResolveError {
@@ -125,7 +126,33 @@ pub trait DnsResolver {
             }
         }
 
-        let result = self.perform(qname, qtype)?;
+        let mut result = self.perform(qname, qtype)?;
+
+        // DNSSEC chain-of-trust validation
+        {
+            let context = self.get_context();
+            if context.dnssec_enabled {
+                let mode = context.dnssec_validation_mode;
+                let validator = ChainValidator::with_root_ksk(mode);
+                match validator.validate_chain_for_query(&result, qname, qtype) {
+                    Ok(status) => {
+                        result.dnssec_status = Some(status);
+                        log::debug!("DNSSEC validation for {} {:?}: {}", qname, qtype, status);
+                    }
+                    Err(e) => {
+                        // Strict mode returns Err on BOGUS; other modes should not reach here.
+                        log::warn!("DNSSEC chain validation failed for {} {:?}: {}", qname, qtype, e);
+                        result.dnssec_status = Some(ValidationStatus::Bogus);
+                        if mode == ValidationMode::Strict {
+                            return Err(ResolveError::Io(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("DNSSEC validation failed: {}", e),
+                            )));
+                        }
+                    }
+                }
+            }
+        }
 
         // DNS rebinding protection: block responses returning private IPs for public domains
         let context = self.get_context();
@@ -857,5 +884,93 @@ mod tests {
             assert_eq!(1, list[2].record_types.len());
             assert_eq!(2, list[2].hits);
         };
+    }
+
+    // -----------------------------------------------------------------------
+    // DNSSEC integration tests
+    // -----------------------------------------------------------------------
+
+    /// When dnssec_enabled=true and the response has no RRSIG records, the
+    /// resolver sets dnssec_status to Some(Indeterminate).
+    #[test]
+    fn test_resolver_sets_dnssec_status_indeterminate_for_unsigned_response() {
+        use crate::dns::protocol::ValidationStatus;
+
+        let mut context = create_test_context(Box::new(|qname, _, _, _| {
+            let mut packet = DnsPacket::new();
+            if qname == "example.com" {
+                packet.answers.push(DnsRecord::A {
+                    domain: "example.com".to_string(),
+                    addr: "93.184.216.34".parse().unwrap(),
+                    ttl: TransientTtl(300),
+                });
+            }
+            Ok(packet)
+        }));
+
+        match Arc::get_mut(&mut context) {
+            Some(ctx) => {
+                ctx.resolve_strategy = ResolveStrategy::Forward {
+                    host: "127.0.0.1".to_string(),
+                    port: 53,
+                };
+                ctx.dnssec_enabled = true;
+            }
+            None => panic!("Failed to get mutable reference to ServerContext in test"),
+        }
+
+        let mut resolver = context.create_resolver(context.clone());
+        let result = resolver.resolve("example.com", QueryType::A, true)
+            .expect("resolution should succeed");
+
+        // Unsigned response → Indeterminate (not an error in Opportunistic mode)
+        assert_eq!(
+            result.dnssec_status,
+            Some(ValidationStatus::Indeterminate),
+            "unsigned response must yield Indeterminate DNSSEC status"
+        );
+    }
+
+    /// When dnssec_enabled=false the resolver must leave dnssec_status as None.
+    #[test]
+    fn test_resolver_skips_dnssec_when_disabled() {
+        let mut context = create_test_context(Box::new(|_, _, _, _| {
+            let mut packet = DnsPacket::new();
+            packet.answers.push(DnsRecord::A {
+                domain: "example.com".to_string(),
+                addr: "93.184.216.34".parse().unwrap(),
+                ttl: TransientTtl(300),
+            });
+            Ok(packet)
+        }));
+
+        match Arc::get_mut(&mut context) {
+            Some(ctx) => {
+                ctx.resolve_strategy = ResolveStrategy::Forward {
+                    host: "127.0.0.1".to_string(),
+                    port: 53,
+                };
+                ctx.dnssec_enabled = false;
+            }
+            None => panic!("Failed to get mutable reference to ServerContext in test"),
+        }
+
+        let mut resolver = context.create_resolver(context.clone());
+        let result = resolver.resolve("example.com", QueryType::A, true)
+            .expect("resolution should succeed");
+
+        assert_eq!(
+            result.dnssec_status,
+            None,
+            "dnssec_status must be None when DNSSEC is disabled"
+        );
+    }
+
+    /// ValidationStatus::Insecure is a named variant reachable from resolve module.
+    #[test]
+    fn test_validation_status_insecure_variant_accessible() {
+        use crate::dns::protocol::ValidationStatus;
+        let status = ValidationStatus::Insecure;
+        assert_eq!(status.to_string(), "INSECURE");
     }
 }

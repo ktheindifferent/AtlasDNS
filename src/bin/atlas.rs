@@ -352,6 +352,7 @@ fn main() {
                 }
             };
             ctx.dnssec_enabled = enabled;
+            ctx.dnssec_validation_mode = mode;
             if let Err(e) = ctx.authority.set_validation_mode(mode) {
                 log::warn!("Failed to set DNSSEC validation mode: {}", e);
             }

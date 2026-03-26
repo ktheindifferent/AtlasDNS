@@ -31,6 +31,10 @@ use sha2::{Sha256, Digest};
 
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType};
 use crate::dns::authority::Authority;
+
+// ValidationStatus is defined in `protocol` and re-exported here so that existing
+// callers using `dnssec::ValidationStatus` continue to compile unchanged.
+pub use crate::dns::protocol::ValidationStatus;
 // ServerContext import removed - unused
 
 // ---------------------------------------------------------------------------
@@ -1375,27 +1379,6 @@ pub enum ResponseValidationMode {
     Disabled,
 }
 
-/// Per-response DNSSEC validation outcome written to the query log.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ValidationStatus {
-    /// Response is signed and all signatures verified successfully.
-    Secure,
-    /// Response carries RRSIG records but at least one failed verification.
-    Bogus,
-    /// No RRSIG records present or zone is not signed.
-    Indeterminate,
-}
-
-impl std::fmt::Display for ValidationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValidationStatus::Secure        => write!(f, "SECURE"),
-            ValidationStatus::Bogus         => write!(f, "BOGUS"),
-            ValidationStatus::Indeterminate => write!(f, "INDETERMINATE"),
-        }
-    }
-}
-
 /// Validates DNSSEC signatures on incoming DNS responses.
 ///
 /// Instantiate with [`DnssecValidator::from_env`] to read the
@@ -2450,5 +2433,80 @@ mod tests {
         let tag = compute_dnskey_tag(anchor.flags, 3, anchor.algorithm, &anchor.public_key);
         assert_eq!(tag, IANA_ROOT_KSK_TAG,
             "compute_dnskey_tag must return 20326 for the IANA root KSK");
+    }
+
+    // -----------------------------------------------------------------------
+    // ValidationStatus enum tests (covers Insecure variant and protocol integration)
+    // -----------------------------------------------------------------------
+
+    /// ValidationStatus::Insecure is a distinct variant with the correct Display string.
+    #[test]
+    fn test_validation_status_insecure_display() {
+        assert_eq!(ValidationStatus::Insecure.to_string(), "INSECURE");
+    }
+
+    /// All four ValidationStatus variants produce distinct display strings.
+    #[test]
+    fn test_validation_status_all_variants_display() {
+        assert_eq!(ValidationStatus::Secure.to_string(),        "SECURE");
+        assert_eq!(ValidationStatus::Insecure.to_string(),      "INSECURE");
+        assert_eq!(ValidationStatus::Bogus.to_string(),         "BOGUS");
+        assert_eq!(ValidationStatus::Indeterminate.to_string(), "INDETERMINATE");
+    }
+
+    /// ValidationStatus is re-exported from dnssec so callers can use
+    /// `dnssec::ValidationStatus` without importing from `protocol` directly.
+    #[test]
+    fn test_validation_status_reexport_accessible() {
+        // If this compiles the re-export works correctly.
+        let _s: ValidationStatus = ValidationStatus::Secure;
+        let _i: ValidationStatus = ValidationStatus::Insecure;
+        let _b: ValidationStatus = ValidationStatus::Bogus;
+        let _d: ValidationStatus = ValidationStatus::Indeterminate;
+    }
+
+    /// DnsPacket::dnssec_status starts as None and can be set to any variant.
+    #[test]
+    fn test_dns_packet_dnssec_status_field() {
+        use crate::dns::protocol::DnsPacket;
+        let mut packet = DnsPacket::new();
+        assert_eq!(packet.dnssec_status, None, "new packet has no DNSSEC status");
+
+        packet.dnssec_status = Some(ValidationStatus::Secure);
+        assert_eq!(packet.dnssec_status, Some(ValidationStatus::Secure));
+
+        packet.dnssec_status = Some(ValidationStatus::Insecure);
+        assert_eq!(packet.dnssec_status, Some(ValidationStatus::Insecure));
+
+        packet.dnssec_status = Some(ValidationStatus::Bogus);
+        assert_eq!(packet.dnssec_status, Some(ValidationStatus::Bogus));
+
+        packet.dnssec_status = Some(ValidationStatus::Indeterminate);
+        assert_eq!(packet.dnssec_status, Some(ValidationStatus::Indeterminate));
+    }
+
+    /// validate_chain_for_query sets the correct status on a signed zone.
+    #[test]
+    fn test_validate_chain_for_query_unsigned_returns_indeterminate() {
+        use crate::dns::protocol::{DnsPacket, QueryType};
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        let packet = DnsPacket::new();
+        let result = validator.validate_chain_for_query(&packet, "example.com", QueryType::A);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ValidationStatus::Indeterminate);
+    }
+
+    /// In Strict mode, validate_chain_for_query returns Indeterminate (not an error)
+    /// for an unsigned packet because strict mode errors only on *bogus* signatures.
+    #[test]
+    fn test_validate_chain_for_query_strict_unsigned_is_indeterminate() {
+        use crate::dns::protocol::{DnsPacket, QueryType};
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Strict);
+        let packet = DnsPacket::new();
+        // Strict mode errors only on ValidationFailed (BOGUS), not Unsigned
+        let result = validator.validate_chain_for_query(&packet, "example.com", QueryType::A);
+        // Strict mode with no RRSIGs → Indeterminate (no signatures to reject)
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ValidationStatus::Indeterminate);
     }
 }

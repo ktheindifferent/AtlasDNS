@@ -1032,6 +1032,39 @@ impl ResultCode {
     }
 }
 
+/// Per-response DNSSEC validation outcome.
+///
+/// Set on [`DnsPacket::dnssec_status`] after a resolved response is validated
+/// by the chain validator.  Matches the RFC 4035 terminology.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationStatus {
+    /// Response is signed and all signatures are cryptographically verified.
+    Secure,
+    /// Zone is within an unsigned (non-DNSSEC) delegation from a signed parent.
+    Insecure,
+    /// RRSIG records are present but at least one failed verification.
+    Bogus,
+    /// No RRSIG records present and zone security status cannot be determined.
+    Indeterminate,
+}
+
+impl Default for ValidationStatus {
+    fn default() -> Self {
+        ValidationStatus::Indeterminate
+    }
+}
+
+impl std::fmt::Display for ValidationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationStatus::Secure        => write!(f, "SECURE"),
+            ValidationStatus::Insecure      => write!(f, "INSECURE"),
+            ValidationStatus::Bogus         => write!(f, "BOGUS"),
+            ValidationStatus::Indeterminate => write!(f, "INDETERMINATE"),
+        }
+    }
+}
+
 /// Representation of a DNS header
 #[derive(Clone, Debug, Default)]
 pub struct DnsHeader {
@@ -1235,6 +1268,9 @@ pub struct DnsPacket {
     pub answers: Vec<DnsRecord>,
     pub authorities: Vec<DnsRecord>,
     pub resources: Vec<DnsRecord>,
+    /// DNSSEC validation outcome set by the resolver after chain validation.
+    /// `None` means validation was not performed (e.g. dnssec_enabled = false).
+    pub dnssec_status: Option<ValidationStatus>,
 }
 
 impl DnsPacket {
@@ -1245,6 +1281,7 @@ impl DnsPacket {
             answers: Vec::new(),
             authorities: Vec::new(),
             resources: Vec::new(),
+            dnssec_status: None,
         }
     }
 
