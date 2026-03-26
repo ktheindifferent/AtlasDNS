@@ -39,3 +39,6 @@ pub mod storage;
 
 /// Threat intelligence feed manager (public re-export of dns::security::threat_intel)
 pub mod threat_intel;
+
+/// Top-level configuration types (re-exports from sub-modules)
+pub mod config;

@@ -37,6 +37,8 @@ use crate::dns::captive_portal::CaptivePortal;
 use crate::dns::device_tracker::DeviceTracker;
 use crate::dns::query_log::QueryLog;
 use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
+use crate::dns::clustering::{ClusterManager, ClusterConfig};
+use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -173,6 +175,10 @@ pub struct ServerContext {
     pub metrics_port: u16,
     /// Whether the DNS-over-TLS (DoT) server is running on port 853.
     pub dot_enabled: bool,
+    /// HA cluster manager — `None` in standalone mode.
+    pub cluster_manager: Option<Arc<ClusterManager>>,
+    /// Heuristic DNS anomaly detector (DGA / tunneling / behavioural scoring).
+    pub anomaly_detector: Arc<DnsAnomalyDetector>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -296,6 +302,8 @@ impl Default for ServerContext {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            cluster_manager: None,
+            anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
         }
     }
 }
@@ -385,6 +393,8 @@ impl ServerContext {
             metrics_enabled: true,
             metrics_port: 9153,
             dot_enabled: false,
+            cluster_manager: None,
+            anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
         })
     }
 
@@ -497,6 +507,20 @@ impl ServerContext {
         } else {
             log::error!("Failed to initialize DoT server");
         }
+    }
+
+    /// Enable HA clustering with the given configuration.
+    /// When `config.enabled` is false this is a no-op.
+    pub fn enable_clustering(&mut self, config: ClusterConfig) {
+        if !config.enabled {
+            log::info!("[cluster] clustering disabled (standalone mode)");
+            return;
+        }
+        log::info!(
+            "[cluster] enabling HA clustering: node_id={}, peers={:?}, quorum={}",
+            config.node_id, config.peer_addresses, config.quorum
+        );
+        self.cluster_manager = Some(Arc::new(ClusterManager::new(config)));
     }
 
     /// Enable DNS-over-TLS (DoT) server with default configuration

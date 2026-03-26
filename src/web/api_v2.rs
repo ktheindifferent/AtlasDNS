@@ -1133,38 +1133,92 @@ impl ApiV2Handler {
 
     /// GET /api/v2/cluster/status
     fn cluster_status(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        let data = json!({
-            "success": true,
-            "data": {
-                "status": "standalone",
-                "role": "Standalone",
-                "is_draining": false,
-                "peers": [],
-            }
-        });
-        handle_json_response(&data, StatusCode(200))
+        if let Some(cm) = &self.context.cluster_manager {
+            let status = cm.get_status();
+            let data = json!({
+                "success": true,
+                "data": {
+                    "node_id": status.node_id,
+                    "role": format!("{:?}", status.role),
+                    "term": status.term,
+                    "leader_id": status.leader_id,
+                    "healthy_peers": status.healthy_peers,
+                    "is_draining": status.is_draining,
+                    "uptime_secs": status.uptime_secs,
+                    "last_heartbeat_sent": status.last_heartbeat_sent,
+                    "blocklist_version": status.blocklist_version,
+                    "peers": status.peers.iter().map(|p| json!({
+                        "node_id": p.node_id,
+                        "address": p.address,
+                        "role": format!("{:?}", p.role),
+                        "healthy": p.healthy,
+                        "last_heartbeat": p.last_heartbeat,
+                        "sync_lag_secs": p.sync_lag_secs,
+                    })).collect::<Vec<_>>(),
+                }
+            });
+            handle_json_response(&data, StatusCode(200))
+        } else {
+            let data = json!({
+                "success": true,
+                "data": {
+                    "node_id": "",
+                    "role": "Standalone",
+                    "term": 0,
+                    "leader_id": "",
+                    "healthy_peers": 0,
+                    "is_draining": false,
+                    "uptime_secs": 0,
+                    "last_heartbeat_sent": 0,
+                    "blocklist_version": 0,
+                    "peers": [],
+                }
+            });
+            handle_json_response(&data, StatusCode(200))
+        }
     }
 
-    /// POST /api/v2/cluster/heartbeat
-    fn cluster_heartbeat(&self, _request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+    /// POST /api/v2/cluster/heartbeat — receive gossip/heartbeat from a peer
+    fn cluster_heartbeat(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            if let Ok(body) = self.parse_json_body::<serde_json::Value>(request) {
+                let node_id = body.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
+                let timestamp = body.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
+                let draining = body.get("draining").and_then(|v| v.as_bool()).unwrap_or(false);
+                cm.receive_heartbeat(node_id, "", timestamp, draining);
+            }
+        }
         let data = json!({ "success": true, "data": { "status": "ok" } });
         handle_json_response(&data, StatusCode(200))
     }
 
-    /// POST /api/v2/cluster/sync
-    fn cluster_sync(&self, _request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        let data = json!({ "success": true, "data": { "status": "synced" } });
+    /// POST /api/v2/cluster/sync — receive blocklist sync payload from leader
+    fn cluster_sync(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            if let Ok(payload) = self.parse_json_body::<crate::dns::clustering::BlocklistSyncPayload>(request) {
+                let accepted = cm.apply_blocklist_sync(&payload);
+                let data = json!({ "success": true, "data": { "accepted": accepted } });
+                return handle_json_response(&data, StatusCode(200));
+            }
+        }
+        let data = json!({ "success": true, "data": { "accepted": false } });
         handle_json_response(&data, StatusCode(200))
     }
 
-    /// POST /api/v2/cluster/drain
+    /// POST /api/v2/cluster/drain — begin graceful drain
     fn cluster_drain(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            cm.start_drain();
+        }
         let data = json!({ "success": true, "data": { "draining": true } });
         handle_json_response(&data, StatusCode(200))
     }
 
-    /// POST /api/v2/cluster/undrain
+    /// POST /api/v2/cluster/undrain — resume after drain
     fn cluster_undrain(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        if let Some(cm) = &self.context.cluster_manager {
+            cm.stop_drain();
+        }
         let data = json!({ "success": true, "data": { "draining": false } });
         handle_json_response(&data, StatusCode(200))
     }

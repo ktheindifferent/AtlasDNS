@@ -237,5 +237,8 @@ pub mod clustering;
 /// Certificate Transparency log monitor for owned-domain phishing detection
 pub mod ct_monitor;
 
+/// ML-free heuristic DNS anomaly detection (DGA, tunneling, behavioural scoring)
+pub mod anomaly;
+
 #[cfg(test)]
 mod cache_test;

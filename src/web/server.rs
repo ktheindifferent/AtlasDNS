@@ -441,6 +441,8 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "security", "metrics"]) => self.get_security_metrics(request),
             (Method::Get, ["api", "security", "alerts"]) => self.get_security_alerts(request),
             (Method::Get, ["api", "security", "events"]) => self.get_security_events(request),
+            // Anomaly detection API
+            (Method::Get, ["api", "anomalies"]) => self.get_anomalies(request),
             // Threat intelligence API
             (Method::Get, ["api", "threat-intel", "status"]) => self.threat_intel_status(request),
             (Method::Get, ["api", "threat-intel", "hits"]) => self.threat_intel_hits(request),
@@ -3026,6 +3028,32 @@ impl<'a> WebServer<'a> {
         }
     }
     
+    fn get_anomalies(&self, request: &Request) -> Result<ResponseBox> {
+        let limit = request.url()
+            .split('?').nth(1)
+            .and_then(|q| {
+                q.split('&')
+                    .find(|p| p.starts_with("limit="))
+                    .and_then(|p| p.trim_start_matches("limit=").parse::<usize>().ok())
+            })
+            .unwrap_or(50);
+
+        let detector = &self.context.anomaly_detector;
+        let events = detector.get_recent_anomalies(limit);
+        let client_stats = detector.get_client_stats();
+        let total = detector.total_anomaly_count();
+
+        let data = serde_json::json!({
+            "total_anomalies": total,
+            "events": events,
+            "client_stats": client_stats,
+        });
+        let json_string = serde_json::to_string(&data)?;
+        Ok(Response::from_string(json_string)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
     fn threat_intel_status(&self, request: &Request) -> Result<ResponseBox> {
         let data = match &self.context.threat_intel {
             Some(ti) => ti.get_stats(),

@@ -419,6 +419,58 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         }
     }
     
+    // ── Anomaly detection ────────────────────────────────────────────────────
+    // Analyse the query for DGA, tunneling, and behavioural signals.
+    // This runs after security checks so we only score queries we will resolve.
+    if let Some(question) = request.questions.first() {
+        let (anomaly_score, anomaly_reasons) = context.anomaly_detector.analyze_query(
+            &question.name,
+            &question.qtype,
+            client_ip,
+        );
+
+        if anomaly_score >= crate::dns::anomaly::THRESHOLD_CRITICAL {
+            log::error!(
+                "ANOMALY CRITICAL (score={:.2}) {} {:?} from {:?}: {}",
+                anomaly_score,
+                question.name,
+                question.qtype,
+                client_ip,
+                anomaly_reasons.join("; ")
+            );
+            context.anomaly_detector.record_anomaly(
+                &question.name,
+                &format!("{:?}", question.qtype),
+                &client_ip.map(|ip| ip.to_string()).unwrap_or_default(),
+                anomaly_score,
+                anomaly_reasons.clone(),
+            );
+            // Optional blocking: if enabled, return REFUSED for critical scores.
+            if context.anomaly_detector.config.block_on_critical {
+                let mut blocked = build_response_packet(&context, request);
+                blocked.header.rescode = ResultCode::REFUSED;
+                return blocked;
+            }
+        } else if anomaly_score >= crate::dns::anomaly::THRESHOLD_WARN {
+            log::warn!(
+                "ANOMALY WARNING (score={:.2}) {} {:?} from {:?}: {}",
+                anomaly_score,
+                question.name,
+                question.qtype,
+                client_ip,
+                anomaly_reasons.join("; ")
+            );
+            context.anomaly_detector.record_anomaly(
+                &question.name,
+                &format!("{:?}", question.qtype),
+                &client_ip.map(|ip| ip.to_string()).unwrap_or_default(),
+                anomaly_score,
+                anomaly_reasons,
+            );
+        }
+    }
+    // ── End anomaly detection ────────────────────────────────────────────────
+
     let mut packet = build_response_packet(&context, request);
     let mut cache_hit = false;
 
@@ -556,7 +608,13 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         };
         context.logger.log_dns_query(&ctx, query_log);
     }
-    
+
+    // Feed NXDOMAIN result back to anomaly detector for per-client rate tracking.
+    if let Some(ip) = client_ip {
+        let is_nx = packet.header.rescode == ResultCode::NXDOMAIN;
+        context.anomaly_detector.record_response(ip, is_nx);
+    }
+
     // Record metrics
     context.metrics.record_dns_query(&protocol, &query_type, &domain);
     context.metrics.record_dns_response(
