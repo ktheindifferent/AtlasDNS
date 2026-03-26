@@ -266,11 +266,18 @@ impl RpzZone {
     }
 
     /// Lookup a QNAME trigger.
+    /// Checks bloom filter first for fast negative, then falls through to trie.
+    /// Bloom filter only covers exact domain entries — wildcard matches always
+    /// require a trie traversal, so we also check the trie on bloom miss.
     fn lookup_qname(&self, domain: &str) -> Option<&RpzRule> {
-        if !self.qname_bloom.check(&domain.to_string()) {
-            return None;
-        }
         let labels = domain_to_labels(domain);
+        // Fast path: bloom hit means possible exact match
+        if self.qname_bloom.check(&domain.to_string()) {
+            if let Some(rule) = self.qname_trie.lookup(&labels) {
+                return Some(rule);
+            }
+        }
+        // Slow path: wildcard rules won't be in bloom, must check trie
         self.qname_trie.lookup(&labels)
     }
 
@@ -320,7 +327,7 @@ fn new_bloom_filter() -> Bloom<String> {
 
 #[cfg(test)]
 fn new_bloom_filter() -> Bloom<String> {
-    Bloom::new_for_fp_rate(1_000, 0.01)
+    Bloom::new(100, 100)
 }
 
 fn domain_to_labels(domain: &str) -> Vec<String> {
@@ -483,29 +490,34 @@ impl RpzEngine {
 
     /// Add a new RPZ zone. If a zone with the same name exists, it is replaced.
     pub fn add_zone(&self, zone: RpzZone) {
-        let mut zones = self.zones.write();
-        let priority = zone.priority;
-        // Remove any existing zone with same name
-        for bucket in zones.values_mut() {
-            bucket.retain(|z| z.name != zone.name);
+        {
+            let mut zones = self.zones.write();
+            let priority = zone.priority;
+            // Remove any existing zone with same name
+            for bucket in zones.values_mut() {
+                bucket.retain(|z| z.name != zone.name);
+            }
+            // Remove empty buckets
+            zones.retain(|_, v| !v.is_empty());
+            // Insert at correct priority
+            zones.entry(priority).or_insert_with(Vec::new).push(zone);
         }
-        // Remove empty buckets
-        zones.retain(|_, v| !v.is_empty());
-        // Insert at correct priority
-        zones.entry(priority).or_insert_with(Vec::new).push(zone);
         self.update_stats_count();
     }
 
     /// Remove a zone by name. Returns true if found.
     pub fn remove_zone(&self, name: &str) -> bool {
-        let mut zones = self.zones.write();
-        let mut found = false;
-        for bucket in zones.values_mut() {
-            let before = bucket.len();
-            bucket.retain(|z| z.name != name);
-            if bucket.len() < before { found = true; }
-        }
-        zones.retain(|_, v| !v.is_empty());
+        let found = {
+            let mut zones = self.zones.write();
+            let mut found = false;
+            for bucket in zones.values_mut() {
+                let before = bucket.len();
+                bucket.retain(|z| z.name != name);
+                if bucket.len() < before { found = true; }
+            }
+            zones.retain(|_, v| !v.is_empty());
+            found
+        };
         if found { self.update_stats_count(); }
         found
     }
@@ -548,38 +560,43 @@ impl RpzEngine {
 
     /// Add a rule to a named zone. Returns false if zone not found.
     pub fn add_rule_to_zone(&self, zone_name: &str, rule: RpzRule) -> bool {
-        let mut zones = self.zones.write();
-        for bucket in zones.values_mut() {
-            for zone in bucket.iter_mut() {
-                if zone.name == zone_name {
-                    zone.add_rule(rule);
-                    drop(zones);
-                    self.update_stats_count();
-                    return true;
+        let found = {
+            let mut zones = self.zones.write();
+            let mut found = false;
+            'outer: for bucket in zones.values_mut() {
+                for zone in bucket.iter_mut() {
+                    if zone.name == zone_name {
+                        zone.add_rule(rule);
+                        found = true;
+                        break 'outer;
+                    }
                 }
             }
-        }
-        false
+            found
+        };
+        if found { self.update_stats_count(); }
+        found
     }
 
     /// Remove a rule from a named zone. Returns false if zone/rule not found.
     pub fn remove_rule_from_zone(
         &self, zone_name: &str, trigger_value: &str, trigger_type: RpzTriggerType,
     ) -> bool {
-        let mut zones = self.zones.write();
-        for bucket in zones.values_mut() {
-            for zone in bucket.iter_mut() {
-                if zone.name == zone_name {
-                    let removed = zone.remove_rule(trigger_value, trigger_type);
-                    if removed {
-                        drop(zones);
-                        self.update_stats_count();
+        let removed = {
+            let mut zones = self.zones.write();
+            let mut removed = false;
+            'outer: for bucket in zones.values_mut() {
+                for zone in bucket.iter_mut() {
+                    if zone.name == zone_name {
+                        removed = zone.remove_rule(trigger_value, trigger_type);
+                        break 'outer;
                     }
-                    return removed;
                 }
             }
-        }
-        false
+            removed
+        };
+        if removed { self.update_stats_count(); }
+        removed
     }
 
     fn update_stats_count(&self) {
