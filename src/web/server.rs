@@ -472,6 +472,14 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "loadbalancing", "stats"]) => self.get_loadbalancing_stats(request),
             (Method::Post, ["api", "loadbalancing", "pools"]) => self.create_loadbalancing_pool(request),
             
+            // Allowlist management API
+            (Method::Get, ["api", "allowlist"]) => self.get_allowlist(request),
+            (Method::Post, ["api", "allowlist"]) => self.add_to_allowlist(request),
+            (Method::Delete, ["api", "allowlist", domain]) => self.remove_from_allowlist(request, domain),
+            // Blocklist stats API
+            (Method::Get, ["api", "blocklist-stats"]) => self.get_blocklist_stats(request),
+            // Protocol status API
+            (Method::Get, ["api", "protocol-status"]) => self.get_protocol_status(request),
             (Method::Get, ["healthz"]) => self.healthz(request),
             (Method::Get, ["health"]) => self.healthz(request),
             (Method::Get, []) => self.home(request),
@@ -2343,15 +2351,24 @@ impl<'a> WebServer<'a> {
 
     fn get_query_log_api(&self, _request: &Request) -> Result<ResponseBox> {
         let recent = self.context.query_log_storage.get_recent(100);
-        let entries: Vec<_> = recent.into_iter().map(|q| serde_json::json!({
-            "timestamp": q.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
-            "domain": q.domain,
-            "query_type": q.query_type,
-            "response_code": q.response_code,
-            "blocked": q.response_code == "REFUSED" || q.response_code == "NXDOMAIN",
-            "cache_hit": q.cache_hit,
-            "response_time_ms": 0
-        })).collect();
+        let entries: Vec<_> = recent.into_iter().map(|q| {
+            let result = if q.cache_hit {
+                "CACHED"
+            } else if q.response_code == "REFUSED" || q.response_code == "NXDOMAIN" {
+                "BLOCKED"
+            } else {
+                "ALLOWED"
+            };
+            serde_json::json!({
+                "timestamp": q.timestamp.format("%H:%M:%S").to_string(),
+                "domain": q.domain,
+                "query_type": q.query_type,
+                "client_ip": q.client_ip.as_deref().unwrap_or("unknown"),
+                "result": result,
+                "response_code": q.response_code,
+                "response_time_ms": q.latency_ms.unwrap_or(0),
+            })
+        }).collect();
         let data = serde_json::json!({ "success": true, "data": entries });
         Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
             .with_status_code(200)
@@ -3050,6 +3067,114 @@ impl<'a> WebServer<'a> {
         });
         let json_string = serde_json::to_string(&data)?;
         Ok(Response::from_string(json_string)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn get_allowlist(&self, _request: &Request) -> Result<ResponseBox> {
+        let domains = self.context.security_manager.list_allowlist_domains();
+        let data = serde_json::json!({ "success": true, "domains": domains });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn add_to_allowlist(&self, request: &mut Request) -> Result<ResponseBox> {
+        let body: serde_json::Value = serde_json::from_reader(request.as_reader())
+            .map_err(|_| WebError::InvalidInput("Invalid JSON body".into()))?;
+        let domain = body["domain"].as_str()
+            .ok_or_else(|| WebError::InvalidInput("Missing 'domain' field".into()))?;
+        match self.context.security_manager.add_domain_to_allowlist(domain) {
+            Ok(_) => {
+                let data = serde_json::json!({ "success": true, "domain": domain });
+                Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+                    .with_status_code(201)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            }
+            Err(e) => {
+                let data = serde_json::json!({ "success": false, "error": e.to_string() });
+                Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+                    .with_status_code(500)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed())
+            }
+        }
+    }
+
+    fn remove_from_allowlist(&self, _request: &Request, domain: &str) -> Result<ResponseBox> {
+        let domain = domain.split('?').next().unwrap_or(domain);
+        let removed = self.context.security_manager.remove_domain_from_allowlist(domain);
+        let data = serde_json::json!({ "success": true, "removed": removed, "domain": domain });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn get_blocklist_stats(&self, _request: &Request) -> Result<ResponseBox> {
+        let today_start = chrono::Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now);
+
+        let recent = self.context.query_log_storage.get_recent(10000);
+        let mut blocked_today = 0usize;
+        let mut blocked_domain_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut blocked_client_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        for q in &recent {
+            let is_blocked = q.response_code == "REFUSED" || q.response_code == "NXDOMAIN";
+            if is_blocked {
+                if q.timestamp >= today_start {
+                    blocked_today += 1;
+                }
+                *blocked_domain_counts.entry(q.domain.clone()).or_insert(0) += 1;
+                if let Some(ip) = &q.client_ip {
+                    *blocked_client_counts.entry(ip.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+
+        let mut top_blocked_domains: Vec<_> = blocked_domain_counts.into_iter().collect();
+        top_blocked_domains.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_blocked_domains: Vec<_> = top_blocked_domains.iter().take(10)
+            .map(|(d, c)| serde_json::json!({ "domain": d, "count": c }))
+            .collect();
+
+        let mut top_blocked_clients: Vec<_> = blocked_client_counts.into_iter().collect();
+        top_blocked_clients.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_blocked_clients: Vec<_> = top_blocked_clients.iter().take(10)
+            .map(|(ip, c)| serde_json::json!({ "client_ip": ip, "count": c }))
+            .collect();
+
+        let data = serde_json::json!({
+            "success": true,
+            "blocked_today": blocked_today,
+            "top_blocked_domains": top_blocked_domains,
+            "top_blocked_clients": top_blocked_clients,
+        });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn get_protocol_status(&self, _request: &Request) -> Result<ResponseBox> {
+        let data = serde_json::json!({
+            "success": true,
+            "protocols": {
+                "dns_udp": self.context.enable_udp,
+                "dns_tcp": self.context.enable_tcp,
+                "doh": self.context.doh_server_enabled,
+                "dot": self.context.dot_enabled,
+                "doq": self.context.doq_manager.is_some(),
+            }
+        });
+        Ok(Response::from_string(serde_json::to_string(&data).unwrap_or_default())
+            .with_status_code(200)
             .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }

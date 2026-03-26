@@ -411,22 +411,11 @@
                     Top Queried Domains
                 </h5>
             </div>
-            <div class="card-body p-0">
-                {{#if top_domains}}
-                    <ul class="list-group list-group-flush">
-                        {{#each top_domains}}
-                        <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
-                            <span class="text-truncate me-2" style="max-width:200px;" title="{{domain}}">{{domain}}</span>
-                            <span class="badge bg-primary rounded-pill">{{count}}</span>
-                        </li>
-                        {{/each}}
-                    </ul>
-                {{else}}
-                    <div class="text-center text-muted py-4">
-                        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                        No queries logged yet
-                    </div>
-                {{/if}}
+            <div class="card-body p-0" id="topDomainsList">
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-hourglass-split fs-1 d-block mb-2"></i>
+                    Loading…
+                </div>
             </div>
         </div>
     </div>
@@ -434,14 +423,15 @@
     <!-- Recent Query Log -->
     <div class="col-12 col-lg-8">
         <div class="card">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
                     <i class="bi bi-list-check me-2"></i>
-                    Recent Query Log (last 50)
+                    Live Query Log
                 </h5>
+                <span id="queryLogLive" class="badge bg-success" style="font-size:.7rem;">&#9679; LIVE</span>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive" style="max-height:340px;overflow-y:auto;">
+                <div class="table-responsive" style="max-height:340px;overflow-y:auto;" id="queryLogScroll">
                     <table class="table table-sm table-hover mb-0">
                         <thead class="table-dark sticky-top">
                             <tr>
@@ -449,39 +439,12 @@
                                 <th>Client IP</th>
                                 <th>Domain</th>
                                 <th>Type</th>
-                                <th>Response</th>
-                                <th>Latency</th>
+                                <th>Result</th>
+                                <th>ms</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {{#if recent_queries}}
-                                {{#each recent_queries}}
-                                <tr>
-                                    <td class="text-nowrap">{{timestamp}}</td>
-                                    <td class="text-nowrap font-monospace small">{{client_ip}}</td>
-                                    <td class="text-truncate" style="max-width:180px;" title="{{domain}}">{{domain}}</td>
-                                    <td><span class="badge bg-secondary">{{query_type}}</span></td>
-                                    <td>
-                                        {{#if (eq response "NOERROR")}}
-                                            <span class="badge bg-success">{{response}}</span>
-                                        {{else if (eq response "NXDOMAIN")}}
-                                            <span class="badge bg-warning text-dark">{{response}}</span>
-                                        {{else if (eq response "REFUSED")}}
-                                            <span class="badge bg-danger">{{response}}</span>
-                                        {{else}}
-                                            <span class="badge bg-secondary">{{response}}</span>
-                                        {{/if}}
-                                    </td>
-                                    <td class="text-nowrap">{{latency_ms}}ms</td>
-                                </tr>
-                                {{/each}}
-                            {{else}}
-                                <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">
-                                        No recent queries
-                                    </td>
-                                </tr>
-                            {{/if}}
+                        <tbody id="queryLogTbody">
+                            <tr><td colspan="6" class="text-center text-muted py-3"><i class="bi bi-hourglass-split me-1"></i>Loading…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -579,18 +542,205 @@
         </div>
     </div>
 </div>
+
+<!-- Protocol Status Cards -->
+<div class="row g-3 mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-router me-2"></i>
+                    Protocol Status
+                </h5>
+                <small class="text-muted" id="protocolLastUpdated"></small>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="protocolCards">
+                    <div class="col-6 col-md-4 col-lg-2" id="proto-dns-udp">
+                        <div class="text-center p-3 rounded" style="background:rgba(255,255,255,.05)">
+                            <div class="fs-2 mb-1"><i class="bi bi-circle-fill text-secondary"></i></div>
+                            <div class="fw-semibold small">DNS UDP</div>
+                            <div class="text-muted" style="font-size:.75rem;">:53</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-lg-2" id="proto-dns-tcp">
+                        <div class="text-center p-3 rounded" style="background:rgba(255,255,255,.05)">
+                            <div class="fs-2 mb-1"><i class="bi bi-circle-fill text-secondary"></i></div>
+                            <div class="fw-semibold small">DNS TCP</div>
+                            <div class="text-muted" style="font-size:.75rem;">:53</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-lg-2" id="proto-doh">
+                        <div class="text-center p-3 rounded" style="background:rgba(255,255,255,.05)">
+                            <div class="fs-2 mb-1"><i class="bi bi-circle-fill text-secondary"></i></div>
+                            <div class="fw-semibold small">DoH</div>
+                            <div class="text-muted" style="font-size:.75rem;">/dns-query</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-lg-2" id="proto-dot">
+                        <div class="text-center p-3 rounded" style="background:rgba(255,255,255,.05)">
+                            <div class="fs-2 mb-1"><i class="bi bi-circle-fill text-secondary"></i></div>
+                            <div class="fw-semibold small">DoT</div>
+                            <div class="text-muted" style="font-size:.75rem;">:853 TCP</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-4 col-lg-2" id="proto-doq">
+                        <div class="text-center p-3 rounded" style="background:rgba(255,255,255,.05)">
+                            <div class="fs-2 mb-1"><i class="bi bi-circle-fill text-secondary"></i></div>
+                            <div class="fw-semibold small">DoQ</div>
+                            <div class="text-muted" style="font-size:.75rem;">:853 UDP</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Blocklist Stats + Allowlist Management -->
+<div class="row g-3 mt-3">
+    <!-- Blocklist Stats Panel -->
+    <div class="col-12 col-lg-7">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-shield-x me-2 text-danger"></i>
+                    Blocklist Stats
+                    <span id="blockedTodayBadge" class="badge bg-danger ms-2">0 today</span>
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="row g-0 h-100">
+                    <div class="col-6 border-end">
+                        <div class="px-3 pt-2 pb-1 border-bottom">
+                            <small class="text-muted fw-semibold text-uppercase" style="font-size:.7rem;">Top Blocked Domains</small>
+                        </div>
+                        <div id="topBlockedDomains" style="max-height:280px;overflow-y:auto;">
+                            <div class="text-center text-muted py-3 small">No data yet</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="px-3 pt-2 pb-1 border-bottom">
+                            <small class="text-muted fw-semibold text-uppercase" style="font-size:.7rem;">Top Blocked Clients</small>
+                        </div>
+                        <div id="topBlockedClients" style="max-height:280px;overflow-y:auto;">
+                            <div class="text-center text-muted py-3 small">No data yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Allowlist Management -->
+    <div class="col-12 col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-shield-check me-2 text-success"></i>
+                    Allowlist Management
+                </h5>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <form id="allowlistAddForm" class="d-flex gap-2 mb-3" onsubmit="return addAllowlistDomain(event)">
+                    <input type="text" id="allowlistInput" class="form-control form-control-sm"
+                           placeholder="domain.com or *.domain.com" required
+                           pattern="^[\w\-\.\*]+$" title="Valid domain or wildcard (*.example.com)">
+                    <button type="submit" class="btn btn-sm btn-success text-nowrap">
+                        <i class="bi bi-plus-circle me-1"></i>Add
+                    </button>
+                </form>
+                <div id="allowlistFeedback" class="mb-2" style="min-height:1.5rem;"></div>
+                <div style="flex:1;overflow-y:auto;max-height:240px;">
+                    <ul class="list-group list-group-flush" id="allowlistDomains">
+                        <li class="list-group-item text-muted text-center small py-2">Loading…</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {{/inline}}
 
 {{#*inline "header"}}
+<style>
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .proto-card { transition: background .3s, border-color .3s; }
+    .proto-online  { background: rgba(25,135,84,.15)  !important; border: 1px solid rgba(25,135,84,.4); }
+    .proto-offline { background: rgba(220,53,69,.12)  !important; border: 1px solid rgba(220,53,69,.3); }
+    #queryLogScroll { scroll-behavior: smooth; }
+    .result-ALLOWED { color: #198754; font-weight:600; }
+    .result-BLOCKED { color: #dc3545; font-weight:600; }
+    .result-CACHED  { color: #0dcaf0; font-weight:600; }
+</style>
 <script>
-    function severityClass(score) {
-        if (score >= 0.9) return 'danger';
-        if (score >= 0.7) return 'warning';
-        return 'secondary';
-    }
+/* ── helpers ── */
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function severityClass(score) {
+    if (score >= 0.9) return 'danger';
+    if (score >= 0.7) return 'warning';
+    return 'secondary';
+}
 
-    function loadAnomalies() {
-        fetch('/api/anomalies?limit=30')
+/* ── 1. Live Query Log  (2 s) ── */
+function loadQueryLog() {
+    fetch('/api/query-log')
+        .then(r => r.json())
+        .then(data => {
+            const tbody = document.getElementById('queryLogTbody');
+            const topDiv = document.getElementById('topDomainsList');
+            if (!tbody) return;
+            const entries = (data.data || []);
+            /* top domains derived from log */
+            const domainCounts = {};
+            entries.forEach(e => { domainCounts[e.domain] = (domainCounts[e.domain] || 0) + 1; });
+            const sorted = Object.entries(domainCounts).sort((a,b) => b[1]-a[1]).slice(0,10);
+            if (topDiv) {
+                if (sorted.length === 0) {
+                    topDiv.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-inbox fs-1 d-block mb-2"></i>No queries logged yet</div>';
+                } else {
+                    topDiv.innerHTML = '<ul class="list-group list-group-flush">' +
+                        sorted.map(([d,c]) =>
+                            `<li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+                                <span class="text-truncate me-2 small font-monospace" style="max-width:180px" title="${esc(d)}">${esc(d)}</span>
+                                <span class="badge bg-primary rounded-pill">${c}</span>
+                            </li>`
+                        ).join('') + '</ul>';
+                }
+            }
+            /* query log table */
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-inbox me-1"></i>No recent queries</td></tr>';
+                return;
+            }
+            tbody.innerHTML = entries.slice(0, 50).map(e => {
+                const resCls = 'result-' + (e.result || 'ALLOWED');
+                const typeColor = e.query_type === 'A' ? 'primary' : e.query_type === 'AAAA' ? 'info' :
+                                  e.query_type === 'MX' ? 'warning' : 'secondary';
+                const shortDomain = e.domain.length > 42 ? e.domain.substring(0,39)+'…' : e.domain;
+                return `<tr>
+                    <td class="text-nowrap small">${esc(e.timestamp)}</td>
+                    <td class="font-monospace small text-nowrap">${esc(e.client_ip || '—')}</td>
+                    <td title="${esc(e.domain)}" class="small font-monospace">${esc(shortDomain)}</td>
+                    <td><span class="badge bg-${typeColor}">${esc(e.query_type)}</span></td>
+                    <td class="${resCls} small">${esc(e.result || '—')}</td>
+                    <td class="text-nowrap small text-muted">${e.response_time_ms || 0}ms</td>
+                </tr>`;
+            }).join('');
+        })
+        .catch(() => {
+            const tbody = document.getElementById('queryLogTbody');
+            const live = document.getElementById('queryLogLive');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Unable to reach server</td></tr>';
+            if (live) { live.textContent = '⚠ ERR'; live.className = 'badge bg-danger'; }
+        });
+}
+
+/* ── 2. Anomaly Detection  (2 s) ── */
+function loadAnomalies() {
+    fetch('/api/anomalies?limit=30')
             .then(r => r.json())
             .then(data => {
                 const badge = document.getElementById('anomalyBadge');
@@ -630,99 +780,191 @@
                 const tbody = document.getElementById('anomalyTableBody');
                 if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Unable to load anomaly data</td></tr>';
             });
-    }
+}
 
-    document.addEventListener('DOMContentLoaded', function() {
-        loadAnomalies();
-        setInterval(loadAnomalies, 15000);
-    });
-</script>
-<script>
-    // Define global functions that need to be accessible from HTML onclick handlers
-    function refreshDashboardData() {
-        // Simulate fetching new data
-        const statValues = document.querySelectorAll('.stat-value');
-        statValues.forEach(stat => {
-            stat.style.opacity = '0.5';
-            setTimeout(() => {
-                stat.style.opacity = '1';
-                // Add a subtle pulse animation
-                stat.style.animation = 'pulse 0.5s ease';
-            }, 500);
-        });
-        
-        // Update last refresh time
-        const now = new Date();
-        const timeString = now.toLocaleTimeString();
-        updateLastRefreshTime(timeString);
-    }
-    
-    function updateLastRefreshTime(time) {
-        const refreshIndicator = document.getElementById('lastRefresh');
-        if (refreshIndicator) {
-            refreshIndicator.textContent = `Last updated: ${time}`;
-        }
-    }
+/* ── 3. Protocol Status Cards (10 s) ── */
+const PROTOCOL_LABELS = {
+    dns_udp: ['DNS UDP', ':53'],
+    dns_tcp: ['DNS TCP', ':53'],
+    doh:     ['DoH',     '/dns-query'],
+    dot:     ['DoT',     ':853 TCP'],
+    doq:     ['DoQ',     ':853 UDP'],
+};
+function loadProtocolStatus() {
+    fetch('/api/protocol-status')
+        .then(r => r.json())
+        .then(data => {
+            const protos = data.protocols || {};
+            const ts = new Date().toLocaleTimeString();
+            const el = document.getElementById('protocolLastUpdated');
+            if (el) el.textContent = 'Updated ' + ts;
+            Object.entries(PROTOCOL_LABELS).forEach(([key, [label, port]]) => {
+                const id = 'proto-' + key.replace(/_/g, '-');
+                const cell = document.getElementById(id);
+                if (!cell) return;
+                const online = !!protos[key];
+                const iconColor = online ? 'text-success' : 'text-danger';
+                const cardClass = online ? 'proto-online' : 'proto-offline';
+                const statusText = online ? 'Online' : 'Offline';
+                const inner = cell.querySelector('div');
+                if (!inner) return;
+                inner.className = `text-center p-3 rounded proto-card ${cardClass}`;
+                inner.innerHTML = `
+                    <div class="fs-2 mb-1"><i class="bi bi-circle-fill ${iconColor}"></i></div>
+                    <div class="fw-semibold small">${esc(label)}</div>
+                    <div class="text-muted" style="font-size:.75rem;">${esc(port)}</div>
+                    <div class="mt-1" style="font-size:.7rem;font-weight:600;color:${online ? '#198754' : '#dc3545'}">${statusText}</div>
+                `;
+            });
+        })
+        .catch(() => {});
+}
 
-    // Real-time dashboard updates
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize dashboard with loading states
-        initializeDashboard();
-        
-        // Refresh dashboard data every 30 seconds
-        setInterval(refreshDashboardData, 30000);
-        
-        // Add quick action keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            
-            if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
-                refreshDashboardData();
-                showToast('Refreshing dashboard...', 'info', 2000);
+/* ── 4. Blocklist Stats (5 s) ── */
+function loadBlocklistStats() {
+    fetch('/api/blocklist-stats')
+        .then(r => r.json())
+        .then(data => {
+            const badge = document.getElementById('blockedTodayBadge');
+            if (badge) badge.textContent = (data.blocked_today || 0) + ' today';
+            const domainsEl = document.getElementById('topBlockedDomains');
+            if (domainsEl) {
+                const items = data.top_blocked_domains || [];
+                if (items.length === 0) {
+                    domainsEl.innerHTML = '<div class="text-center text-muted py-3 small">No blocks recorded</div>';
+                } else {
+                    const max = items[0].count || 1;
+                    domainsEl.innerHTML = items.map(item =>
+                        `<div class="px-3 py-2 border-bottom" style="font-size:.8rem;">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="font-monospace text-truncate me-2" style="max-width:130px" title="${esc(item.domain)}">${esc(item.domain)}</span>
+                                <span class="text-danger fw-bold">${item.count}</span>
+                            </div>
+                            <div class="progress" style="height:3px;">
+                                <div class="progress-bar bg-danger" style="width:${Math.round(item.count/max*100)}%"></div>
+                            </div>
+                        </div>`
+                    ).join('');
+                }
             }
-        });
+            const clientsEl = document.getElementById('topBlockedClients');
+            if (clientsEl) {
+                const items = data.top_blocked_clients || [];
+                if (items.length === 0) {
+                    clientsEl.innerHTML = '<div class="text-center text-muted py-3 small">No blocks recorded</div>';
+                } else {
+                    const max = items[0].count || 1;
+                    clientsEl.innerHTML = items.map(item =>
+                        `<div class="px-3 py-2 border-bottom" style="font-size:.8rem;">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="font-monospace text-truncate me-2" style="max-width:110px">${esc(item.client_ip)}</span>
+                                <span class="text-warning fw-bold">${item.count}</span>
+                            </div>
+                            <div class="progress" style="height:3px;">
+                                <div class="progress-bar bg-warning" style="width:${Math.round(item.count/max*100)}%"></div>
+                            </div>
+                        </div>`
+                    ).join('');
+                }
+            }
+        })
+        .catch(() => {});
+}
+
+/* ── 5. Allowlist Management ── */
+function loadAllowlist() {
+    fetch('/api/allowlist')
+        .then(r => r.json())
+        .then(data => {
+            const ul = document.getElementById('allowlistDomains');
+            if (!ul) return;
+            const domains = data.domains || [];
+            if (domains.length === 0) {
+                ul.innerHTML = '<li class="list-group-item text-muted text-center small py-2">No domains in allowlist</li>';
+            } else {
+                ul.innerHTML = domains.map(d =>
+                    `<li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3" style="font-size:.85rem;">
+                        <span class="font-monospace text-truncate me-2" style="max-width:200px" title="${esc(d)}">${esc(d)}</span>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-1" style="font-size:.75rem;"
+                                onclick="removeAllowlistDomain('${esc(d)}')">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </li>`
+                ).join('');
+            }
+        })
+        .catch(() => {});
+}
+
+function addAllowlistDomain(evt) {
+    evt.preventDefault();
+    const input = document.getElementById('allowlistInput');
+    const fb = document.getElementById('allowlistFeedback');
+    const domain = input.value.trim();
+    if (!domain) return false;
+    fetch('/api/allowlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (fb) fb.innerHTML = `<small class="text-success"><i class="bi bi-check-circle me-1"></i>${esc(domain)} added</small>`;
+            input.value = '';
+            loadAllowlist();
+        } else {
+            if (fb) fb.innerHTML = `<small class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${esc(data.error || 'Failed')}</small>`;
+        }
+        setTimeout(() => { if (fb) fb.innerHTML = ''; }, 3000);
+    })
+    .catch(() => {
+        if (fb) fb.innerHTML = '<small class="text-danger">Request failed</small>';
     });
-    
-    function initializeDashboard() {
-        // Add loading animations to stat cards
-        document.querySelectorAll('.stat-card').forEach(card => {
-            card.style.animation = 'fadeIn 0.5s ease';
-        });
-        
-        // Initialize tooltips
-        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-        
-        // Add hover effects to zone rows
-        document.querySelectorAll('tbody tr').forEach(row => {
-            row.addEventListener('mouseenter', function() {
-                this.style.transform = 'translateX(2px)';
-                this.style.transition = 'transform 0.2s ease';
-            });
-            row.addEventListener('mouseleave', function() {
-                this.style.transform = 'translateX(0)';
-            });
-        });
-    }
-    
-    // Add pulse animation
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
+    return false;
+}
+
+function removeAllowlistDomain(domain) {
+    fetch('/api/allowlist/' + encodeURIComponent(domain), { method: 'DELETE' })
+        .then(r => r.json())
+        .then(data => { if (data.success) loadAllowlist(); })
+        .catch(() => {});
+}
+
+/* ── Global refresh ── */
+function refreshDashboardData() {
+    loadQueryLog();
+    loadAnomalies();
+    loadBlocklistStats();
+    loadProtocolStatus();
+    loadAllowlist();
+}
+
+/* ── Boot ── */
+document.addEventListener('DOMContentLoaded', function() {
+    loadQueryLog();
+    loadAnomalies();
+    loadBlocklistStats();
+    loadProtocolStatus();
+    loadAllowlist();
+
+    setInterval(loadQueryLog,      2000);
+    setInterval(loadAnomalies,     2000);
+    setInterval(loadBlocklistStats,5000);
+    setInterval(loadProtocolStatus,10000);
+
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(el => new bootstrap.Tooltip(el));
+
+    document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            refreshDashboardData();
+            if (typeof showToast === 'function') showToast('Refreshed', 'info', 1500);
         }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    `;
-    document.head.appendChild(style);
+    });
+});
 </script>
 {{/inline}}
 
