@@ -1923,6 +1923,7 @@ async fn handle_threat_intel_commands(
     Ok(())
 }
 
+
 fn generate_completions(shell: Shell) {
     // This would generate shell completions for the specified shell
     println!("Generating completions for {:?}", shell);
