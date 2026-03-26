@@ -12,9 +12,11 @@ use atlas::dns::dnssec::ValidationMode;
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::dns::acme::{AcmeConfig, AcmeProvider};
 use atlas::dns::dot::{DotConfig, DotServer};
+use atlas::dns::doq::{DoqConfig, DoqServer};
 use atlas::dns::prometheus_server::PrometheusServer;
 use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
+use atlas::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -182,6 +184,29 @@ fn main() {
         "Path to TLS private key for DoT (default: /opt/atlas/certs/key.pem)",
         "PATH",
     );
+    opts.optflag(
+        "",
+        "doq",
+        "Enable DNS-over-QUIC (DoQ) server on UDP port 853 (RFC 9250)",
+    );
+    opts.optopt(
+        "",
+        "doq-port",
+        "UDP port for the DoQ server (default 853)",
+        "PORT",
+    );
+    opts.optopt(
+        "",
+        "doq-cert",
+        "Path to TLS certificate for DoQ (default: auto-generate self-signed)",
+        "PATH",
+    );
+    opts.optopt(
+        "",
+        "doq-key",
+        "Path to TLS private key for DoQ (default: auto-generate self-signed)",
+        "PATH",
+    );
     opts.optopt(
         "",
         "metrics-port",
@@ -198,6 +223,23 @@ fn main() {
         "dnssec-validation",
         "DNSSEC validation mode: strict, opportunistic, or off (default: opportunistic)",
         "MODE",
+    );
+    opts.optflag(
+        "",
+        "threat-intel",
+        "Enable threat intelligence feed blocking (abuse.ch, Spamhaus DROP/EDROP)",
+    );
+    opts.optopt(
+        "",
+        "threat-intel-refresh",
+        "Threat intelligence feed refresh interval in seconds (default: 3600)",
+        "SECS",
+    );
+    opts.optopt(
+        "",
+        "threat-intel-feeds",
+        "Comma-separated list of additional threat feed URLs to load",
+        "URLS",
     );
 
     let opt_matches = match opts.parse(&args[1..]) {
@@ -383,6 +425,58 @@ fn main() {
         if index_rootservers {
             let _ = ctx.cache.store(&get_rootservers());
         }
+
+        // Initialize threat intelligence if enabled
+        if opt_matches.opt_present("threat-intel") {
+            let refresh_secs = opt_matches.opt_str("threat-intel-refresh")
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(3600);
+
+            let ti_config = ThreatIntelConfig {
+                enabled: true,
+                update_interval: std::time::Duration::from_secs(refresh_secs),
+                ..ThreatIntelConfig::default()
+            };
+
+            let ti = Arc::new(ThreatIntelManager::new(ti_config));
+            ctx.threat_intel = Some(ti.clone());
+
+            // Initial feed fetch (blocking, before server starts)
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(rt) = rt {
+                rt.block_on(async {
+                    let results = ti.refresh_all().await;
+                    for (id, res) in &results {
+                        match res {
+                            Ok(n) => log::info!("[THREAT-INTEL] Feed '{}' loaded {} entries", id, n),
+                            Err(e) => log::warn!("[THREAT-INTEL] Feed '{}' failed: {}", id, e),
+                        }
+                    }
+                });
+            }
+
+            log::info!(
+                "[THREAT-INTEL] Enabled: {} domains + {} IP blocks loaded; refresh every {}s",
+                ti.total_domains(), ti.total_ip_blocks(), refresh_secs
+            );
+
+            // Spawn background auto-refresh thread
+            let ti_bg = ti.clone();
+            thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("tokio runtime for threat-intel auto-update");
+                rt.block_on(async move {
+                    // start_auto_update spawns a tokio task; keep the runtime alive
+                    ti_bg.start_auto_update();
+                    // Park this thread forever so the runtime stays alive for the spawned task
+                    std::future::pending::<()>().await;
+                });
+            });
+        }
     }
 
     log::info!("Listening on port {}", context.dns_port);
@@ -451,6 +545,46 @@ fn main() {
                 log::warn!("Failed to start DNS-over-TLS server: {:?}", e);
             }
         }
+    }
+
+    // Start DNS-over-QUIC server on UDP port 853 if enabled (RFC 9250)
+    if opt_matches.opt_present("doq") {
+        let doq_port = opt_matches.opt_str("doq-port")
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(853);
+        let doq_config = DoqConfig {
+            enabled: true,
+            port: doq_port,
+            cert_path: opt_matches.opt_str("doq-cert")
+                .or_else(|| std::env::var("DOQ_CERT_PATH").ok()),
+            key_path: opt_matches.opt_str("doq-key")
+                .or_else(|| std::env::var("DOQ_KEY_PATH").ok()),
+            ..DoqConfig::default()
+        };
+        let ctx = context.clone();
+        thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("tokio runtime for DoQ server");
+            rt.block_on(async move {
+                let mut server = match DoqServer::new(ctx, doq_config) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::error!("Failed to create DoQ server: {:?}", e);
+                        return;
+                    }
+                };
+                if let Err(e) = server.initialize().await {
+                    log::error!("Failed to initialize DoQ server: {:?}", e);
+                    return;
+                }
+                if let Err(e) = server.start().await {
+                    log::error!("DoQ server error: {:?}", e);
+                }
+            });
+        });
+        log::info!("DNS-over-QUIC (DoQ) server started on UDP port {}", doq_port);
     }
 
     // Start dedicated Prometheus metrics server (port 9153 by default)

@@ -13,13 +13,14 @@
 //! * **Connection Migration** - Seamless IP address changes
 
 use std::sync::Arc;
+use std::io::BufReader;
 use std::net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 use std::convert::TryFrom;
 use parking_lot::RwLock;
 use quinn::{Endpoint, ServerConfig, Connection, RecvStream, SendStream};
 use rustls::{Certificate, PrivateKey, ServerConfig as TlsServerConfig};
-use rcgen::{Certificate as RcgenCert, CertificateParams, DistinguishedName};
+use rcgen::generate_simple_self_signed;
 
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsPacket, ResultCode};
@@ -49,6 +50,12 @@ pub struct DoqConfig {
     pub keep_alive_interval_secs: u64,
     /// QUIC version preference
     pub quic_version: QuicVersion,
+    /// Path to a PEM-encoded certificate chain.
+    /// `None` → check `DOQ_CERT_PATH` env var, then auto-generate self-signed.
+    pub cert_path: Option<String>,
+    /// Path to a PEM-encoded private key.
+    /// `None` → check `DOQ_KEY_PATH` env var, then auto-generate self-signed.
+    pub key_path: Option<String>,
 }
 
 /// QUIC version preference
@@ -72,6 +79,8 @@ impl Default for DoqConfig {
             enable_migration: true,
             keep_alive_interval_secs: 60,
             quic_version: QuicVersion::V1,
+            cert_path: None,
+            key_path: None,
         }
     }
 }
@@ -91,6 +100,12 @@ impl DoqConfig {
             if let Ok(port) = v.parse::<u16>() {
                 cfg.port = port;
             }
+        }
+        if let Ok(v) = std::env::var("DOQ_CERT_PATH") {
+            cfg.cert_path = Some(v);
+        }
+        if let Ok(v) = std::env::var("DOQ_KEY_PATH") {
+            cfg.key_path = Some(v);
         }
 
         if cfg.enabled {
@@ -140,27 +155,101 @@ impl DoqServer {
         })
     }
     
+    /// Resolve TLS material: explicit paths → env vars → self-signed.
+    fn resolve_tls_material(config: &DoqConfig) -> Result<(Vec<Certificate>, PrivateKey), DnsError> {
+        let cert_path = config.cert_path.clone()
+            .or_else(|| std::env::var("DOQ_CERT_PATH").ok());
+        let key_path = config.key_path.clone()
+            .or_else(|| std::env::var("DOQ_KEY_PATH").ok());
+
+        match (cert_path, key_path) {
+            (Some(cp), Some(kp)) => {
+                let cert_pem = std::fs::read(&cp).map_err(|e| {
+                    DnsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("DoQ: cannot read cert {cp}: {e}"),
+                    ))
+                })?;
+                let key_pem = std::fs::read(&kp).map_err(|e| {
+                    DnsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("DoQ: cannot read key {kp}: {e}"),
+                    ))
+                })?;
+                let certs = Self::parse_pem_certs(&cert_pem)?;
+                let key = Self::parse_pem_key(&key_pem)?;
+                log::info!("DoQ: loaded TLS material from {cp} / {kp}");
+                Ok((certs, key))
+            }
+            _ => {
+                log::info!("DoQ: no cert paths configured — generating self-signed certificate");
+                Self::generate_self_signed_material()
+            }
+        }
+    }
+
+    fn generate_self_signed_material() -> Result<(Vec<Certificate>, PrivateKey), DnsError> {
+        let cert = generate_simple_self_signed(vec![
+            "localhost".to_string(),
+            "atlas-dns".to_string(),
+        ])
+        .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        let cert_der = cert.serialize_der()
+            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        let key_der = cert.serialize_private_key_der();
+        Ok((vec![Certificate(cert_der)], PrivateKey(key_der)))
+    }
+
+    fn parse_pem_certs(pem: &[u8]) -> Result<Vec<Certificate>, DnsError> {
+        let mut reader = BufReader::new(pem);
+        let raw = rustls_pemfile::certs(&mut reader)
+            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?;
+        if raw.is_empty() {
+            return Err(DnsError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "DoQ: no certificates found in PEM file",
+            )));
+        }
+        Ok(raw.into_iter().map(Certificate).collect())
+    }
+
+    fn parse_pem_key(pem: &[u8]) -> Result<PrivateKey, DnsError> {
+        let mut reader = BufReader::new(pem);
+        if let Some(key) = rustls_pemfile::pkcs8_private_keys(&mut reader)
+            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?
+            .into_iter()
+            .next()
+        {
+            return Ok(PrivateKey(key));
+        }
+        let mut reader = BufReader::new(pem);
+        if let Some(key) = rustls_pemfile::rsa_private_keys(&mut reader)
+            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())))?
+            .into_iter()
+            .next()
+        {
+            return Ok(PrivateKey(key));
+        }
+        Err(DnsError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "DoQ: no private key found in PEM file",
+        )))
+    }
+
     /// Initialize the DoQ server
     pub async fn initialize(&mut self) -> Result<(), DnsError> {
         if !self.config.enabled {
             return Ok(());
         }
 
-        // Generate self-signed certificate for testing
-        // In production, use proper certificates
-        let cert = self.generate_self_signed_cert()?;
-        let key = cert.serialize_private_key_der();
-        let cert_der = cert.serialize_der().map_err(|e| 
-            DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+        // Resolve TLS material: explicit paths → env vars → self-signed
+        let (certs, key) = Self::resolve_tls_material(&self.config)?;
 
         // Create TLS server config
         let mut tls_config = TlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(
-                vec![Certificate(cert_der)],
-                PrivateKey(key)
-            )
+            .with_single_cert(certs, key)
             .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         // Enable ALPN for DoQ
@@ -424,17 +513,6 @@ impl DoqServer {
         response_packet.write(&mut response_buffer, 512)?;
         
         Ok(response_buffer.buf[..response_buffer.pos].to_vec())
-    }
-    
-    /// Generate a self-signed certificate for testing
-    fn generate_self_signed_cert(&self) -> Result<RcgenCert, DnsError> {
-        let mut params = CertificateParams::new(vec!["localhost".to_string()]);
-        params.distinguished_name = DistinguishedName::new();
-        params.distinguished_name.push(rcgen::DnType::CommonName, "Atlas DNS DoQ Server");
-        params.distinguished_name.push(rcgen::DnType::OrganizationName, "Atlas DNS");
-        
-        RcgenCert::from_params(params)
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))
     }
     
     /// Get connection statistics
