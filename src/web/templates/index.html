@@ -248,11 +248,39 @@
             <div class="card-body">
                 <div class="mb-4">
                     <div class="d-flex justify-content-between mb-2">
-                        <span>DNS Server</span>
+                        <span>DNS Server (UDP/TCP)</span>
                         <span class="badge bg-success">Online</span>
                     </div>
                     <div class="progress" style="height: 6px;">
                         <div class="progress-bar bg-success" style="width: 100%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>DNS-over-TLS <small class="text-muted">:853</small></span>
+                        {{#if dot_enabled}}
+                            <span class="badge bg-success">Online</span>
+                        {{else}}
+                            <span class="badge bg-secondary">Disabled</span>
+                        {{/if}}
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar {{#if dot_enabled}}bg-success{{else}}bg-secondary{{/if}}" style="width: {{#if dot_enabled}}100%{{else}}0%{{/if}}"></div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>DNS-over-HTTPS <small class="text-muted">/dns-query</small></span>
+                        {{#if doh_enabled}}
+                            <span class="badge bg-success">Online</span>
+                        {{else}}
+                            <span class="badge bg-secondary">Disabled</span>
+                        {{/if}}
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar {{#if doh_enabled}}bg-success{{else}}bg-secondary{{/if}}" style="width: {{#if doh_enabled}}100%{{else}}0%{{/if}}"></div>
                     </div>
                 </div>
                 

@@ -171,7 +171,9 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         "architecture": sys_info.system.architecture,
         "version": env!("CARGO_PKG_VERSION"),
         "server_name": "Atlas DNS",
-        
+        "dot_enabled": context.dot_enabled,
+        "doh_enabled": context.doh_server_enabled,
+
         // Process Information
         "total_processes": sys_info.processes.total_processes,
         "running_processes": sys_info.processes.running_processes,

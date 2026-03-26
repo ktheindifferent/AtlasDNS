@@ -424,28 +424,31 @@ fn main() {
 
     // Start DNS-over-TLS server on port 853 if enabled
     if opt_matches.opt_present("dot") {
-        let cert_path = opt_matches.opt_str("dot-cert")
-            .unwrap_or_else(|| "/opt/atlas/certs/cert.pem".to_string());
-        let key_path = opt_matches.opt_str("dot-key")
-            .unwrap_or_else(|| "/opt/atlas/certs/key.pem".to_string());
+        // Resolution order: --dot-cert/--dot-key CLI flags → TLS_CERT_PATH/TLS_KEY_PATH env
+        // vars → auto-generate self-signed (handled inside DotServer::new).
         let dot_config = DotConfig {
             enabled: true,
-            cert_path,
-            key_path,
+            cert_path: opt_matches.opt_str("dot-cert")
+                .or_else(|| std::env::var("TLS_CERT_PATH").ok()),
+            key_path: opt_matches.opt_str("dot-key")
+                .or_else(|| std::env::var("TLS_KEY_PATH").ok()),
             ..DotConfig::default()
         };
         let ctx = context.clone();
         match DotServer::new(ctx.clone(), dot_config) {
             Ok(dot_server) => {
+                if let Some(ctx_mut) = Arc::get_mut(&mut context) {
+                    ctx_mut.dot_enabled = true;
+                }
                 thread::spawn(move || {
                     if let Err(e) = dot_server.run() {
                         log::error!("DNS-over-TLS server error: {:?}", e);
                     }
                 });
-                log::info!("DNS-over-TLS server started on port 853");
+                log::info!("DNS-over-TLS (rustls) server started on port 853");
             }
             Err(e) => {
-                log::warn!("Failed to start DNS-over-TLS server (check cert/key paths): {:?}", e);
+                log::warn!("Failed to start DNS-over-TLS server: {:?}", e);
             }
         }
     }

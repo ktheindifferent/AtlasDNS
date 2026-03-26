@@ -92,6 +92,53 @@ If you have existing SSL certificates:
 
 You can also configure SSL via a JSON configuration file. See `config/ssl-example.json` for an example.
 
+## DNS-over-TLS (DoT)
+
+Atlas supports encrypted DNS queries over TLS on **port 853** (RFC 7858), implemented with [rustls](https://github.com/rustls/rustls) — no OpenSSL dependency.
+
+### Quick start
+
+```bash
+# Enable DoT with auto-generated self-signed cert (development)
+sudo ./atlas --dot
+
+# Enable DoT with your own certificate
+sudo ./atlas --dot --dot-cert /etc/atlas/certs/cert.pem --dot-key /etc/atlas/certs/key.pem
+
+# Enable DoT via environment variables (useful in containers / CapRover)
+TLS_CERT_PATH=/etc/atlas/certs/cert.pem \
+TLS_KEY_PATH=/etc/atlas/certs/key.pem \
+sudo ./atlas --dot
+```
+
+### Certificate resolution order
+
+| Priority | Source |
+|----------|--------|
+| 1 | `--dot-cert` / `--dot-key` CLI flags |
+| 2 | `TLS_CERT_PATH` / `TLS_KEY_PATH` environment variables |
+| 3 | Auto-generated self-signed certificate (dev only; logged as a warning) |
+
+### Test with kdig / systemd-resolved
+
+```bash
+# Verify DoT with kdig (part of knot-dnsutils)
+kdig -d @127.0.0.1 +tls-ca +tls-host=localhost example.com
+
+# Or with openssl s_client
+openssl s_client -connect 127.0.0.1:853 -showcerts </dev/null
+```
+
+### CapRover / Docker port mapping
+
+Add port `853:853/tcp` to your Atlas DNS app in CapRover, and set the
+`TLS_CERT_PATH` / `TLS_KEY_PATH` environment variables in the App Configs tab.
+
+### Dashboard
+
+When DoT is running the web dashboard at **http://your-server:5380** shows
+"DNS-over-TLS :853 · Online" in the System Status panel.
+
 ## 📦 Installation
 
 ### Prerequisites
