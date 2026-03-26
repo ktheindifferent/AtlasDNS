@@ -67,6 +67,9 @@ flate2 = "1.0"
 bloomfilter = "1"
 zip = "0.6"
 
+# DNSSEC resolver with built-in chain-of-trust validation
+hickory-resolver = { version = "0.24", features = ["dnssec-openssl"] }
+
 # Real-time metrics dependencies
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 maxminddb = "0.23"

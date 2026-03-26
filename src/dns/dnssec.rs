@@ -2174,4 +2174,186 @@ mod tests {
         // Tag should match the well-known value for the IANA KSK.
         assert_eq!(tag, IANA_ROOT_KSK_TAG);
     }
+
+    // -----------------------------------------------------------------------
+    // Chain validation: secure / bogus / insecure (unsigned)
+    // -----------------------------------------------------------------------
+
+    /// A packet with no RRSIG records must be classified as Unsigned (insecure).
+    #[test]
+    fn test_chain_validation_unsigned_zone() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        let mut packet = DnsPacket::new();
+        packet.answers.push(DnsRecord::A {
+            domain: "example.com".to_string(),
+            addr: "192.0.2.1".parse().unwrap(),
+            ttl: TransientTtl(300),
+        });
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        assert_eq!(
+            validator.validate_packet_rrsigs(&packet),
+            ChainValidationResult::Unsigned,
+            "unsigned zone must yield ChainValidationResult::Unsigned (insecure)"
+        );
+    }
+
+    /// A packet whose RRSIG signature bytes are random garbage must be classified
+    /// as ValidationFailed (bogus).
+    #[test]
+    fn test_chain_validation_bogus_signature() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        use openssl::rsa::Rsa;
+        use openssl::pkey::PKey;
+
+        // Generate a real RSA key so we can compute a valid key_tag.
+        let rsa = Rsa::generate(1024).unwrap();
+        let pkey = PKey::from_rsa(rsa.clone()).unwrap();
+        let _ = pkey; // suppress warning
+
+        // Build RFC 3110 public key: [exp_len byte] [exponent] [modulus]
+        let e = rsa.e().to_vec();
+        let n = rsa.n().to_vec();
+        let mut rfc3110_pubkey: Vec<u8> = vec![e.len() as u8];
+        rfc3110_pubkey.extend_from_slice(&e);
+        rfc3110_pubkey.extend_from_slice(&n);
+
+        let flags: u16 = 256; // ZSK
+        let protocol: u8 = 3;
+        let algorithm: u8 = 8; // RSA/SHA-256
+        let key_tag = compute_dnskey_tag(flags, protocol, algorithm, &rfc3110_pubkey);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32;
+
+        let a_record = DnsRecord::A {
+            domain: "example.com".to_string(),
+            addr: "192.0.2.1".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+        let dnskey_record = DnsRecord::Dnskey {
+            domain: "example.com".to_string(),
+            flags,
+            protocol,
+            algorithm,
+            public_key: rfc3110_pubkey,
+            ttl: TransientTtl(3600),
+        };
+        // Deliberately wrong (bogus) signature bytes.
+        let rrsig_record = DnsRecord::Rrsig {
+            domain: "example.com".to_string(),
+            type_covered: 1, // A
+            algorithm,
+            labels: 2,
+            original_ttl: 300,
+            expiration: now + 86400,
+            inception: now,
+            key_tag,
+            signer_name: "example.com".to_string(),
+            signature: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            ttl: TransientTtl(3600),
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_record);
+        packet.answers.push(dnskey_record);
+        packet.answers.push(rrsig_record);
+
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        assert_eq!(
+            validator.validate_packet_rrsigs(&packet),
+            ChainValidationResult::ValidationFailed,
+            "bogus signature must yield ChainValidationResult::ValidationFailed"
+        );
+    }
+
+    /// A packet with a cryptographically valid RRSIG over an A record (using a
+    /// freshly generated RSA-1024 ZSK) must be classified as Authenticated (secure).
+    #[test]
+    fn test_chain_validation_valid_signed_zone() {
+        use crate::dns::protocol::{DnsPacket, DnsRecord, TransientTtl};
+        use openssl::rsa::Rsa;
+        use openssl::pkey::PKey;
+        use openssl::sign::Signer as OsslSigner;
+        use openssl::hash::MessageDigest;
+
+        // 1. Generate RSA-1024 key pair.
+        let rsa = Rsa::generate(1024).unwrap();
+        let e = rsa.e().to_vec();
+        let n = rsa.n().to_vec();
+
+        // 2. Encode public key in RFC 3110 DNS wire format.
+        let mut rfc3110_pubkey: Vec<u8> = vec![e.len() as u8];
+        rfc3110_pubkey.extend_from_slice(&e);
+        rfc3110_pubkey.extend_from_slice(&n);
+
+        let flags: u16 = 256; // ZSK
+        let protocol: u8 = 3;
+        let algorithm: u8 = 8; // RSA/SHA-256
+        let key_tag = compute_dnskey_tag(flags, protocol, algorithm, &rfc3110_pubkey);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32;
+
+        // 3. Build the A record to be signed.
+        let a_record = DnsRecord::A {
+            domain: "example.com".to_string(),
+            addr: "192.0.2.1".parse().unwrap(),
+            ttl: TransientTtl(300),
+        };
+
+        // 4. Compute the RFC 4034 §6.2 signed-data blob.
+        let signed_data = build_rrsig_signed_data(
+            1,           // type_covered: A
+            algorithm,
+            2,           // labels: example.com has 2 labels
+            300,         // original_ttl
+            now + 86400, // expiration
+            now,         // inception
+            key_tag,
+            "example.com",
+            &[&a_record],
+        );
+
+        // 5. Sign with the RSA private key using SHA-256.
+        let pkey = PKey::from_rsa(rsa).unwrap();
+        let mut signer = OsslSigner::new(MessageDigest::sha256(), &pkey).unwrap();
+        signer.update(&signed_data).unwrap();
+        let signature = signer.sign_to_vec().unwrap();
+
+        // 6. Assemble the packet: A + DNSKEY + RRSIG.
+        let dnskey_record = DnsRecord::Dnskey {
+            domain: "example.com".to_string(),
+            flags,
+            protocol,
+            algorithm,
+            public_key: rfc3110_pubkey,
+            ttl: TransientTtl(3600),
+        };
+        let rrsig_record = DnsRecord::Rrsig {
+            domain: "example.com".to_string(),
+            type_covered: 1, // A
+            algorithm,
+            labels: 2,
+            original_ttl: 300,
+            expiration: now + 86400,
+            inception: now,
+            key_tag,
+            signer_name: "example.com".to_string(),
+            signature,
+            ttl: TransientTtl(3600),
+        };
+
+        let mut packet = DnsPacket::new();
+        packet.answers.push(a_record);
+        packet.answers.push(dnskey_record);
+        packet.answers.push(rrsig_record);
+
+        // 7. Validate: should be Authenticated (secure).
+        let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+        assert_eq!(
+            validator.validate_packet_rrsigs(&packet),
+            ChainValidationResult::Authenticated,
+            "valid signed zone must yield ChainValidationResult::Authenticated (secure)"
+        );
+    }
 }

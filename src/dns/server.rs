@@ -492,7 +492,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 Ok(ChainValidationResult::Authenticated) => {
                     packet.header.authed_data = true; // AD bit: authenticated data
                     log::debug!("DNSSEC: AD bit set");
-                    Some("validated".to_string())
+                    Some("secure".to_string())
                 }
                 Ok(ChainValidationResult::ValidationFailed) => {
                     // Check the configured validation mode
@@ -506,11 +506,11 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                     } else {
                         log::debug!("DNSSEC opportunistic: BOGUS response passed through");
                     }
-                    Some("invalid".to_string())
+                    Some("bogus".to_string())
                 }
                 Ok(ChainValidationResult::Unsigned) => {
                     // Unsigned – pass through; AD bit remains clear
-                    Some("unsigned".to_string())
+                    Some("insecure".to_string())
                 }
                 Err(e) => {
                     log::warn!("DNSSEC validation error: {}", e);
