@@ -36,3 +36,6 @@ pub mod metrics;
 
 /// SQLite-backed persistent storage for zones and user accounts
 pub mod storage;
+
+/// Threat intelligence feed manager (public re-export of dns::security::threat_intel)
+pub mod threat_intel;

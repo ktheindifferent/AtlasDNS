@@ -19,7 +19,7 @@ pub use rate_limiter::{EnhancedRateLimiter, RateLimitConfig, RateLimitAlgorithm}
 pub use ddos_protection::{DDoSProtection, DDoSConfig, ThreatLevel, AttackType};
 pub use manager::{SecurityManager, SecurityConfig, SecurityEventRecord};
 pub use threat_intel::{
-    ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry,
+    ThreatIntelManager, ThreatIntelConfig, ThreatIntelHit, ThreatEntry, IpBlockEntry,
     ThreatCategory as ThreatIntelCategory,
     DomainReputation, ReputationLevel, FeedDescriptor,
 };

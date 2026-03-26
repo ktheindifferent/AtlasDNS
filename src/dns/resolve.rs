@@ -69,6 +69,20 @@ pub trait DnsResolver {
 
         let context = self.get_context();
 
+        // Threat intelligence: block queries to known-malicious domains
+        if let Some(ref ti) = context.threat_intel {
+            if let Some(entry) = ti.check_domain(qname) {
+                ti.record_hit(qname, "dns-query", &entry);
+                log::warn!(
+                    "[THREAT-INTEL] Blocked DNS query: domain={} category={} source={}",
+                    qname, entry.category, entry.source
+                );
+                let mut packet = DnsPacket::new();
+                packet.header.rescode = ResultCode::NXDOMAIN;
+                return Ok(packet);
+            }
+        }
+
         if let Some(qr) = context.authority.query(qname, qtype) {
             log::info!("context.authority.query");
             return Ok(qr);

@@ -105,11 +105,29 @@ enum Commands {
     
     /// Interactive shell
     Shell,
-    
+
     /// Generate shell completions
     Completions {
         #[arg(value_enum)]
         shell: Shell,
+    },
+
+    /// Threat intelligence feed management
+    ThreatIntel {
+        #[command(subcommand)]
+        action: ThreatIntelCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ThreatIntelCommands {
+    /// Show loaded feeds, entry counts, and last refresh timestamps
+    Status,
+    /// Show recent threat intel hits (blocked queries)
+    Hits {
+        /// Maximum number of hits to display (default: 20)
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
     },
 }
 
@@ -840,6 +858,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Transfer { action } => handle_transfer_commands(action, &client, &formatter).await?,
         Commands::Shell => handle_interactive_shell(&client, &formatter).await?,
         Commands::Completions { shell } => generate_completions(shell),
+        Commands::ThreatIntel { action } => handle_threat_intel_commands(action, &client, &formatter).await?,
     }
     
     Ok(())
@@ -1878,6 +1897,29 @@ async fn handle_interactive_shell(
     }
     
     formatter.print_info("Goodbye!");
+    Ok(())
+}
+
+async fn handle_threat_intel_commands(
+    action: ThreatIntelCommands,
+    client: &AtlasClient,
+    formatter: &OutputFormatter,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        ThreatIntelCommands::Status => {
+            let pb = show_progress("Fetching threat intel status...");
+            let data = client.get("/api/v2/threat-intel/status").await?;
+            pb.finish_and_clear();
+            formatter.print(&data);
+        }
+        ThreatIntelCommands::Hits { limit } => {
+            let pb = show_progress("Fetching threat intel hits...");
+            let path = format!("/api/v2/threat-intel/hits?limit={}", limit);
+            let data = client.get(&path).await?;
+            pb.finish_and_clear();
+            formatter.print(&data);
+        }
+    }
     Ok(())
 }
 

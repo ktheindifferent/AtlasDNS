@@ -1,25 +1,30 @@
 //! Threat Intelligence Feed Integration
 //!
 //! Integrates with free, public threat intelligence feeds to maintain a live
-//! database of known-malicious and suspicious domains:
+//! database of known-malicious and suspicious domains and IP blocks:
 //!
 //! | Feed | Source | Category |
 //! |------|--------|----------|
 //! | URLhaus hostfile | abuse.ch | Malware download / C2 |
 //! | ThreatFox IOC hostfile | abuse.ch | Multi-category IOCs |
+//! | Spamhaus DROP | spamhaus.org | Botnet C2 / spam IP blocks |
+//! | Spamhaus EDROP | spamhaus.org | Extended IP block list |
 //! | OpenPhish | openphish.com | Phishing |
 //! | Phishing Army | phishing.army | Phishing |
 //! | Disconnect.me malvertising | disconnect.me | Malvertising/tracking |
 //!
 //! Features:
 //! - Per-domain reputation scores (0–100) and tags (malicious / suspicious / clean)
+//! - IP-level blocking via Spamhaus DROP/EDROP CIDR lists (`check_ip()`)
 //! - Incremental feed refresh on a configurable schedule
 //! - Recent-hits log with optional webhook alerts
 //! - `check_domain()` checks exact match AND parent domains
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use ipnetwork::IpNetwork;
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
@@ -188,12 +193,31 @@ impl Default for ThreatIntelConfig {
 }
 
 // ---------------------------------------------------------------------------
+// IpBlockEntry (internal storage for CIDR-based feeds)
+// ---------------------------------------------------------------------------
+
+/// A CIDR block from a threat intelligence feed (e.g. Spamhaus DROP/EDROP).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpBlockEntry {
+    /// The CIDR network, stored as a string for serde compatibility.
+    pub cidr: String,
+    /// Feed identifier (e.g. "spamhaus_drop", "spamhaus_edrop").
+    pub source: String,
+    pub category: ThreatCategory,
+    pub first_seen: DateTime<Utc>,
+    /// Optional free-text description from the feed (e.g. SBL reference).
+    pub description: String,
+}
+
+// ---------------------------------------------------------------------------
 // Internal per-feed state
 // ---------------------------------------------------------------------------
 
 #[derive(Default)]
 struct FeedState {
     domains: HashMap<String, ThreatEntry>,
+    /// CIDR blocks from IP-based feeds.
+    ip_blocks: Vec<(IpNetwork, IpBlockEntry)>,
     last_updated: Option<Instant>,
     last_updated_ts: Option<u64>,
     domains_loaded: usize,
@@ -208,6 +232,8 @@ pub struct ThreatIntelManager {
     config: ThreatIntelConfig,
     /// domain → ThreatEntry (merged from all feeds).
     domains: Arc<RwLock<HashMap<String, ThreatEntry>>>,
+    /// CIDR IP blocks from IP-based feeds (e.g. Spamhaus DROP/EDROP).
+    ip_blocks: Arc<RwLock<Vec<(IpNetwork, IpBlockEntry)>>>,
     /// Per-feed state (keyed by feed id).
     feed_states: Arc<RwLock<HashMap<String, FeedState>>>,
     /// Recent hits log (capped at 10 000).
@@ -228,6 +254,7 @@ impl ThreatIntelManager {
         Self {
             config,
             domains: Arc::new(RwLock::new(HashMap::new())),
+            ip_blocks: Arc::new(RwLock::new(Vec::new())),
             feed_states: Arc::new(RwLock::new(feed_states)),
             hits: Arc::new(RwLock::new(Vec::new())),
         }
@@ -257,6 +284,22 @@ impl ThreatIntelManager {
                 last_updated: None,
             },
             FeedDescriptor {
+                id: "spamhaus_drop".to_string(),
+                name: "Spamhaus DROP – Don't Route Or Peer (IP CIDR blocks)".to_string(),
+                url: "https://www.spamhaus.org/drop/drop.txt".to_string(),
+                default_category: ThreatCategory::Spam,
+                domains_loaded: 0,
+                last_updated: None,
+            },
+            FeedDescriptor {
+                id: "spamhaus_edrop".to_string(),
+                name: "Spamhaus EDROP – Extended DROP list (IP CIDR blocks)".to_string(),
+                url: "https://www.spamhaus.org/drop/edrop.txt".to_string(),
+                default_category: ThreatCategory::Spam,
+                domains_loaded: 0,
+                last_updated: None,
+            },
+            FeedDescriptor {
                 id: "openphish".to_string(),
                 name: "OpenPhish – active phishing URLs".to_string(),
                 url: "https://openphish.com/feed.txt".to_string(),
@@ -281,6 +324,11 @@ impl ThreatIntelManager {
                 last_updated: None,
             },
         ]
+    }
+
+    /// Returns true if the given feed ID carries CIDR IP blocks rather than domain names.
+    fn is_ip_feed(feed_id: &str) -> bool {
+        matches!(feed_id, "spamhaus_drop" | "spamhaus_edrop")
     }
 
     /// Return feed descriptors enriched with live stats from `feed_states`.
@@ -404,6 +452,25 @@ impl ThreatIntelManager {
         None
     }
 
+    /// Return the matching `IpBlockEntry` if the IP falls within any blocked CIDR.
+    pub fn check_ip(&self, ip: IpAddr) -> Option<IpBlockEntry> {
+        if !self.config.enabled {
+            return None;
+        }
+        let blocks = self.ip_blocks.read();
+        for (network, entry) in blocks.iter() {
+            if network.contains(ip) {
+                return Some(entry.clone());
+            }
+        }
+        None
+    }
+
+    /// Total number of CIDR IP blocks currently loaded.
+    pub fn total_ip_blocks(&self) -> usize {
+        self.ip_blocks.read().len()
+    }
+
     // -----------------------------------------------------------------------
     // Hit logging
     // -----------------------------------------------------------------------
@@ -500,38 +567,67 @@ impl ThreatIntelManager {
         log::info!("[THREAT-INTEL] Fetching feed '{}' from {}", feed.id, feed.url);
 
         let text = Self::fetch_url(&feed.url).await?;
-        let new_entries = self.parse_feed_text(&feed, &text);
-        let count = new_entries.len();
 
-        // Merge into unified domain map
-        {
-            let mut domains = self.domains.write();
-            // Remove old entries from this feed
-            domains.retain(|_, e| e.source != feed.id);
-            // Add new entries
-            for (domain, entry) in &new_entries {
-                if domains.len() >= self.config.max_domains {
-                    break;
-                }
-                domains.insert(domain.clone(), entry.clone());
-            }
-        }
-
-        // Update per-feed state
         let now_ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        {
-            let mut states = self.feed_states.write();
-            let state = states.entry(feed.id.clone()).or_default();
-            state.domains = new_entries;
-            state.last_updated = Some(Instant::now());
-            state.last_updated_ts = Some(now_ts);
-            state.domains_loaded = count;
-        }
 
-        log::info!("[THREAT-INTEL] Feed '{}' refreshed: {} domains", feed.id, count);
+        let count = if Self::is_ip_feed(&feed.id) {
+            // Parse CIDR blocks (Spamhaus DROP / EDROP format)
+            let new_blocks = self.parse_cidr_feed(&feed, &text);
+            let count = new_blocks.len();
+
+            // Merge into unified IP block list
+            {
+                let mut ip_blocks = self.ip_blocks.write();
+                ip_blocks.retain(|(_, e)| e.source != feed.id);
+                ip_blocks.extend(new_blocks.clone());
+            }
+
+            // Update per-feed state
+            {
+                let mut states = self.feed_states.write();
+                let state = states.entry(feed.id.clone()).or_default();
+                state.ip_blocks = new_blocks;
+                state.last_updated = Some(Instant::now());
+                state.last_updated_ts = Some(now_ts);
+                state.domains_loaded = count;
+            }
+
+            log::info!("[THREAT-INTEL] Feed '{}' refreshed: {} CIDR blocks", feed.id, count);
+            count
+        } else {
+            // Parse domain list
+            let new_entries = self.parse_feed_text(&feed, &text);
+            let count = new_entries.len();
+
+            // Merge into unified domain map
+            {
+                let mut domains = self.domains.write();
+                domains.retain(|_, e| e.source != feed.id);
+                for (domain, entry) in &new_entries {
+                    if domains.len() >= self.config.max_domains {
+                        break;
+                    }
+                    domains.insert(domain.clone(), entry.clone());
+                }
+            }
+
+            // Update per-feed state
+            {
+                let mut states = self.feed_states.write();
+                let state = states.entry(feed.id.clone()).or_default();
+                state.domains = new_entries;
+                state.last_updated = Some(Instant::now());
+                state.last_updated_ts = Some(now_ts);
+                state.domains_loaded = count;
+            }
+
+            log::info!("[THREAT-INTEL] Feed '{}' refreshed: {} domains", feed.id, count);
+            count
+        };
+
         Ok(count)
     }
 
@@ -600,6 +696,60 @@ impl ThreatIntelManager {
         }
 
         map
+    }
+
+    // -----------------------------------------------------------------------
+    // CIDR feed parsing (Spamhaus DROP / EDROP format)
+    // -----------------------------------------------------------------------
+
+    /// Parse a Spamhaus-style CIDR feed.
+    ///
+    /// Format (each line):
+    /// ```text
+    /// ; comment
+    /// 1.10.16.0/20 ; SBL123456
+    /// ```
+    fn parse_cidr_feed(
+        &self,
+        feed: &FeedDescriptor,
+        text: &str,
+    ) -> Vec<(IpNetwork, IpBlockEntry)> {
+        let mut blocks = Vec::new();
+        let now = Utc::now();
+
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
+                continue;
+            }
+
+            // Strip inline comment
+            let parts: Vec<&str> = line.splitn(2, ';').collect();
+            let cidr_str = parts[0].trim();
+            let description = parts.get(1).map(|s| s.trim()).unwrap_or("").to_string();
+
+            match cidr_str.parse::<IpNetwork>() {
+                Ok(network) => {
+                    let entry = IpBlockEntry {
+                        cidr: cidr_str.to_string(),
+                        source: feed.id.clone(),
+                        category: feed.default_category.clone(),
+                        first_seen: now,
+                        description,
+                    };
+                    blocks.push((network, entry));
+                }
+                Err(_) => {
+                    log::debug!("[THREAT-INTEL] Skipping invalid CIDR '{}' in feed '{}'", cidr_str, feed.id);
+                }
+            }
+
+            if blocks.len() >= self.config.max_domains {
+                break;
+            }
+        }
+
+        blocks
     }
 
     // -----------------------------------------------------------------------
@@ -683,6 +833,7 @@ impl ThreatIntelManager {
         serde_json::json!({
             "enabled": self.config.enabled,
             "total_domains": self.total_domains(),
+            "total_ip_blocks": self.total_ip_blocks(),
             "total_hits": self.total_hits(),
             "update_interval_secs": self.config.update_interval.as_secs(),
             "feeds": feed_stats,
