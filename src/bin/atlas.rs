@@ -11,6 +11,7 @@ use atlas::dns::context::{ResolveStrategy, ServerContext};
 use atlas::dns::dnssec::ValidationMode;
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::dns::acme::{AcmeConfig, AcmeProvider};
+use atlas::dns::dot::{DotConfig, DotServer};
 use atlas::dns::prometheus_server::PrometheusServer;
 use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
@@ -158,6 +159,23 @@ fn main() {
         "",
         "doh-server",
         "Enable DNS-over-HTTPS server at /dns-query",
+    );
+    opts.optflag(
+        "",
+        "dot",
+        "Enable DNS-over-TLS server on port 853",
+    );
+    opts.optopt(
+        "",
+        "dot-cert",
+        "Path to TLS certificate for DoT (default: /opt/atlas/certs/cert.pem)",
+        "PATH",
+    );
+    opts.optopt(
+        "",
+        "dot-key",
+        "Path to TLS private key for DoT (default: /opt/atlas/certs/key.pem)",
+        "PATH",
     );
     opts.optopt(
         "",
@@ -396,6 +414,34 @@ fn main() {
         });
         dns_handles.push(handle);
         log::info!("TCP DNS server started successfully on port {}", context.dns_port);
+    }
+
+    // Start DNS-over-TLS server on port 853 if enabled
+    if opt_matches.opt_present("dot") {
+        let cert_path = opt_matches.opt_str("dot-cert")
+            .unwrap_or_else(|| "/opt/atlas/certs/cert.pem".to_string());
+        let key_path = opt_matches.opt_str("dot-key")
+            .unwrap_or_else(|| "/opt/atlas/certs/key.pem".to_string());
+        let dot_config = DotConfig {
+            enabled: true,
+            cert_path,
+            key_path,
+            ..DotConfig::default()
+        };
+        let ctx = context.clone();
+        match DotServer::new(ctx.clone(), dot_config) {
+            Ok(dot_server) => {
+                thread::spawn(move || {
+                    if let Err(e) = dot_server.run() {
+                        log::error!("DNS-over-TLS server error: {:?}", e);
+                    }
+                });
+                log::info!("DNS-over-TLS server started on port 853");
+            }
+            Err(e) => {
+                log::warn!("Failed to start DNS-over-TLS server (check cert/key paths): {:?}", e);
+            }
+        }
     }
 
     // Start dedicated Prometheus metrics server (port 9153 by default)

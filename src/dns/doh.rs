@@ -482,6 +482,8 @@ impl DohServer {
             upstream_server: None,
             dnssec_status: None,
             timestamp: chrono::Utc::now(),
+            client_ip: None,
+            latency_ms: None,
         };
         self.context.logger.log_dns_query(&ctx, query_log);
 

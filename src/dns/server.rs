@@ -206,6 +206,8 @@ fn process_valid_query(
     context: Arc<ServerContext>,
     request: &DnsPacket,
     packet: &mut DnsPacket,
+    client_ip: Option<String>,
+    latency_ms: u64,
 ) {
     let mut results = Vec::new();
     let question = &request.questions[0];
@@ -223,9 +225,9 @@ fn process_valid_query(
 
     packet.header.rescode = rescode;
     populate_packet_from_results(packet, results.clone());
-    
+
     // Log the DNS query for storage and display
-    store_dns_query_log(&context, question, rescode, &results);
+    store_dns_query_log(&context, question, rescode, &results, client_ip, latency_ms);
 }
 
 /// Resolve a DNS question and handle CNAME resolution
@@ -367,6 +369,8 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 upstream_server: None,
                 dnssec_status: None,
                 timestamp: chrono::Utc::now(),
+                client_ip: client_ip.map(|ip| ip.to_string()),
+                latency_ms: Some(start_time.elapsed().as_millis() as u64),
             };
             context.logger.log_dns_query(&ctx, query_log);
             
@@ -429,6 +433,8 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             upstream_server: None,
             dnssec_status: None,
             timestamp: chrono::Utc::now(),
+            client_ip: client_ip.map(|ip| ip.to_string()),
+            latency_ms: Some(start_time.elapsed().as_millis() as u64),
         };
         context.logger.log_dns_query(&ctx, query_log);
     } else {
@@ -451,7 +457,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         }
         
         if !cache_hit {
-            process_valid_query(context.clone(), request, &mut packet);
+            process_valid_query(context.clone(), request, &mut packet,
+                client_ip.map(|ip| ip.to_string()),
+                start_time.elapsed().as_millis() as u64);
         }
         
         // Perform DNSSEC validation (AD/CD bit handling per RFC 4035 §3.2)
@@ -524,6 +532,8 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             upstream_server,
             dnssec_status,
             timestamp: chrono::Utc::now(),
+            client_ip: client_ip.map(|ip| ip.to_string()),
+            latency_ms: Some(start_time.elapsed().as_millis() as u64),
         };
         context.logger.log_dns_query(&ctx, query_log);
     }
@@ -1567,29 +1577,27 @@ fn store_dns_query_log(
     context: &ServerContext,
     question: &DnsQuestion,
     rescode: ResultCode,
-    results: &[DnsPacket]
+    results: &[DnsPacket],
+    client_ip: Option<String>,
+    latency_ms: u64,
 ) {
     use crate::dns::logging::DnsQueryLog;
-    
+
     // Determine if response came from cache
     let cache_hit = match context.cache.lookup(&question.name, question.qtype) {
         Some(_) => true,
         None => false,
     };
-    
+
     // Count answers
     let answer_count = results.iter()
         .map(|packet| packet.answers.len())
         .sum::<usize>() as u16;
-    
+
     // Determine if upstream server was used
     let upstream_server = match &context.resolve_strategy {
         crate::dns::context::ResolveStrategy::Forward { host, port } => {
-            if cache_hit {
-                None // Cache hit, no upstream used
-            } else {
-                Some(format!("{}:{}", host, port))
-            }
+            if cache_hit { None } else { Some(format!("{}:{}", host, port)) }
         }
         crate::dns::context::ResolveStrategy::DohForward { doh_url, .. } => {
             if cache_hit { None } else { Some(doh_url.clone()) }
@@ -1601,15 +1609,17 @@ fn store_dns_query_log(
     let query_log = DnsQueryLog {
         domain: question.name.clone(),
         query_type: format!("{:?}", question.qtype),
-        protocol: "UDP/TCP".to_string(), // Could be enhanced to track specific protocol
+        protocol: "UDP/TCP".to_string(),
         response_code: format!("{:?}", rescode),
         answer_count,
         cache_hit,
         upstream_server,
-        dnssec_status: None,   // Could be enhanced to track DNSSEC validation
+        dnssec_status: None,
         timestamp: chrono::Utc::now(),
+        client_ip,
+        latency_ms: Some(latency_ms),
     };
-    
+
     // Store in query log storage
     context.query_log_storage.store_query(query_log);
 }

@@ -116,6 +116,12 @@ pub struct DnsQueryLog {
     pub dnssec_status: Option<String>,
     /// Timestamp when query was received
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Client IP address
+    #[serde(default)]
+    pub client_ip: Option<String>,
+    /// Query latency in milliseconds
+    #[serde(default)]
+    pub latency_ms: Option<u64>,
 }
 
 /// HTTP request logging details
@@ -513,6 +519,8 @@ macro_rules! log_dns_query {
             upstream_server: None,
             dnssec_status: None,
             timestamp: chrono::Utc::now(),
+            client_ip: None,
+            latency_ms: None,
         };
         $logger.log_dns_query($ctx, query_log);
     }};
@@ -702,6 +710,8 @@ mod tests {
             upstream_server: Some("8.8.8.8".to_string()),
             dnssec_status: Some("SECURE".to_string()),
             timestamp: chrono::Utc::now(),
+            client_ip: None,
+            latency_ms: None,
         };
         
         assert_eq!(query_log.domain, "example.com");
