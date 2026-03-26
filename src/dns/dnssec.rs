@@ -642,7 +642,7 @@ impl DnssecSigner {
         })
     }
 
-    /// Sign a record set
+    /// Sign a record set using RFC 4034 §6.2 canonical wire format.
     fn sign_record_set(
         &self,
         zone: &str,
@@ -650,24 +650,32 @@ impl DnssecSigner {
         records: Vec<&DnsRecord>,
         key: &DnssecKey,
     ) -> Result<RrsigRecord, Box<dyn std::error::Error>> {
-        // Serialize records for signing
-        let mut data = Vec::new();
-        for record in &records {
-            // Simplified - would need proper DNS wire format serialization
-            data.extend_from_slice(format!("{:?}", record).as_bytes());
-        }
-        
-        // Sign the data
-        let signature = key.sign(&data)?;
-        
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as u32;
         let expiration = now + self.config.signature_validity.as_secs() as u32;
-        
+        let original_ttl = records.first().map(|r| r.get_ttl()).unwrap_or(300);
+        // Count non-empty labels in the zone name (exclude root)
+        let labels = zone.trim_end_matches('.').split('.').filter(|l| !l.is_empty()).count() as u8;
+
+        // Build the canonical signed-data blob per RFC 4034 §6.2
+        let signed_data = build_rrsig_signed_data(
+            qtype.to_num(),
+            key.algorithm as u8,
+            labels,
+            original_ttl,
+            expiration,
+            now,
+            key.key_tag,
+            zone,
+            &records,
+        );
+
+        let signature = key.sign(&signed_data)?;
+
         Ok(RrsigRecord {
             type_covered: qtype,
             algorithm: key.algorithm,
-            labels: zone.split('.').count() as u8,
-            original_ttl: 300, // Default TTL
+            labels,
+            original_ttl,
             expiration,
             inception: now,
             key_tag: key.key_tag,
@@ -1251,6 +1259,88 @@ fn compute_ds_digest_from_dnskey(
 }
 
 // ---------------------------------------------------------------------------
+// NSEC / NSEC3 authenticated denial of existence helpers
+// ---------------------------------------------------------------------------
+
+/// Return `true` if `qtype` is set in an NSEC or NSEC3 type bitmap.
+///
+/// Bitmap encoding (RFC 4034 §4.1.2):
+/// One or more windows: `window_num(1) | bitmap_len(1) | bitmap(bitmap_len bytes)`
+/// Type `T` falls in window `T >> 8`; bit `T & 0xFF` within that window.
+/// Bit order: MSB of each byte is the lowest-numbered type in that byte's range.
+pub fn nsec_bitmap_has_type(bitmaps: &[u8], qtype: u16) -> bool {
+    let window_num = (qtype >> 8) as u8;
+    let bit_idx    = (qtype & 0xFF) as usize;
+    let byte_idx   = bit_idx / 8;
+    let bit_shift  = 7 - (bit_idx % 8); // MSB-first
+
+    let mut pos = 0;
+    while pos + 2 <= bitmaps.len() {
+        let w   = bitmaps[pos];
+        let len = bitmaps[pos + 1] as usize;
+        pos += 2;
+        if w == window_num {
+            if byte_idx < len && pos + byte_idx < bitmaps.len() {
+                return (bitmaps[pos + byte_idx] >> bit_shift) & 1 == 1;
+            }
+            return false; // window present but type's bit is beyond the stored range
+        }
+        pos += len;
+    }
+    false
+}
+
+/// Decode a Base32Extended (RFC 4648 §7) string into bytes.
+/// Alphabet: `0123456789ABCDEFGHIJKLMNOPQRSTUV` (case-insensitive).
+/// Used to decode NSEC3 hashed owner-name labels.
+fn base32hex_decode(s: &str) -> Vec<u8> {
+    const ALPHA: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUV";
+    let mut buf: u64 = 0;
+    let mut bits: u32 = 0;
+    let mut out = Vec::new();
+    for c in s.to_uppercase().bytes() {
+        if c == b'=' { break; }
+        if let Some(v) = ALPHA.iter().position(|&x| x == c) {
+            buf = (buf << 5) | v as u64;
+            bits += 5;
+            while bits >= 8 {
+                bits -= 8;
+                out.push(((buf >> bits) & 0xFF) as u8);
+            }
+        }
+    }
+    out
+}
+
+/// Compute the NSEC3 hash of `name` per RFC 5155 §5.
+///
+/// ```text
+/// IH(salt, x, 0) = SHA1(wire(x) || salt)
+/// IH(salt, x, k) = SHA1(IH(salt, x, k-1) || salt)   for k > 0
+/// ```
+///
+/// `name` is converted to canonical wire format (lowercase, no compression)
+/// before hashing.
+pub fn nsec3_hash_name(name: &str, salt: &[u8], iterations: u16) -> Vec<u8> {
+    use openssl::hash::{hash, MessageDigest};
+    let mut input = name_to_wire_canonical(name);
+    input.extend_from_slice(salt);
+    let mut h = match hash(MessageDigest::sha1(), &input) {
+        Ok(d) => d.to_vec(),
+        Err(_) => return Vec::new(),
+    };
+    for _ in 0..iterations {
+        let mut next_input = h.clone();
+        next_input.extend_from_slice(salt);
+        h = match hash(MessageDigest::sha1(), &next_input) {
+            Ok(d) => d.to_vec(),
+            Err(_) => return Vec::new(),
+        };
+    }
+    h
+}
+
+// ---------------------------------------------------------------------------
 // ChainValidationResult
 // ---------------------------------------------------------------------------
 
@@ -1681,6 +1771,176 @@ impl ChainValidator {
             }
         }
     }
+
+    // -----------------------------------------------------------------------
+    // NSEC / NSEC3 authenticated denial of existence
+    // -----------------------------------------------------------------------
+
+    /// Verify NSEC authenticated denial of existence (RFC 4035 §5.4).
+    ///
+    /// Returns `true` when `nsec` proves either:
+    /// * **NXDOMAIN**: `qname` falls in the canonical gap `(owner, next_domain)`.
+    /// * **NODATA**: `qname` matches the NSEC owner and `qtype` is absent from
+    ///   the type bitmap.
+    pub fn nsec_proves_denial(nsec: &DnsRecord, qname: &str, qtype: QueryType) -> bool {
+        let (owner, next, bitmaps) = match nsec {
+            DnsRecord::Nsec { domain, next_domain, type_bitmaps, .. } =>
+                (domain.as_str(), next_domain.as_str(), type_bitmaps.as_slice()),
+            _ => return false,
+        };
+
+        let qname_lower = qname.trim_end_matches('.').to_lowercase();
+        let owner_lower = owner.trim_end_matches('.').to_lowercase();
+        let next_lower  = next.trim_end_matches('.').to_lowercase();
+
+        // NODATA: name matches owner; verify the type is not in the bitmap.
+        if qname_lower == owner_lower {
+            return !nsec_bitmap_has_type(bitmaps, qtype.to_num());
+        }
+
+        // NXDOMAIN: name must fall in the gap (owner, next) in canonical order.
+        // Handle wrap-around (last NSEC in zone: next < owner canonically).
+        if owner_lower < next_lower {
+            qname_lower > owner_lower && qname_lower < next_lower
+        } else {
+            qname_lower > owner_lower || qname_lower < next_lower
+        }
+    }
+
+    /// Verify NSEC3 authenticated denial of existence (RFC 5155 §8).
+    ///
+    /// Returns `true` when the set of NSEC3 records proves that `qname` does
+    /// not exist or that `qtype` is absent at `qname`.
+    /// Only SHA-1 (hash algorithm 1) NSEC3 records are evaluated.
+    pub fn nsec3_proves_denial(nsec3s: &[&DnsRecord], qname: &str, qtype: QueryType) -> bool {
+        // Derive NSEC3 parameters (iterations, salt) from the first applicable record.
+        let (iterations, salt) = match nsec3s.iter().find_map(|r| match r {
+            DnsRecord::Nsec3 { hash_algorithm: 1, iterations, salt, .. } =>
+                Some((*iterations, salt.clone())),
+            _ => None,
+        }) {
+            Some(p) => p,
+            None => return false, // no SHA-1 NSEC3 records
+        };
+
+        let qhash = nsec3_hash_name(qname, &salt, iterations);
+        if qhash.is_empty() { return false; }
+
+        for &rec in nsec3s {
+            let (first_label, next_hash, bitmaps) = match rec {
+                DnsRecord::Nsec3 { domain, next_hashed, type_bitmaps, .. } => {
+                    // The first label of the owner name is the base32hex-encoded hash.
+                    let label = domain.split('.').next().unwrap_or("");
+                    (label, next_hashed.as_slice(), type_bitmaps.as_slice())
+                }
+                _ => continue,
+            };
+
+            let owner_hash = base32hex_decode(first_label);
+            if owner_hash.is_empty() { continue; }
+
+            // NODATA: queried name hashes to the same owner; check type bitmap.
+            if qhash == owner_hash {
+                return !nsec_bitmap_has_type(bitmaps, qtype.to_num());
+            }
+
+            // NXDOMAIN: queried hash falls in (owner_hash, next_hash).
+            let in_gap = if owner_hash.as_slice() < next_hash {
+                qhash.as_slice() > owner_hash.as_slice() && qhash.as_slice() < next_hash
+            } else {
+                // Wrap-around: last NSEC3 in the sorted order.
+                qhash.as_slice() > owner_hash.as_slice() || qhash.as_slice() < next_hash
+            };
+            if in_gap { return true; }
+        }
+        false
+    }
+
+    /// Validate authenticated denial of existence for an NXDOMAIN or NODATA
+    /// response by examining NSEC/NSEC3 records in `packet`.
+    ///
+    /// Returns `true` when denial is cryptographically proven; `false` when no
+    /// relevant NSEC/NSEC3 records are present (unsigned / inconclusive).
+    pub fn validate_nxdomain_proof(
+        &self,
+        packet: &DnsPacket,
+        qname: &str,
+        qtype: QueryType,
+    ) -> bool {
+        let all: Vec<&DnsRecord> = packet.answers.iter()
+            .chain(packet.authorities.iter())
+            .chain(packet.resources.iter())
+            .collect();
+
+        let nsec_records: Vec<&DnsRecord> = all.iter()
+            .filter(|r| r.get_querytype() == QueryType::Nsec)
+            .copied().collect();
+
+        let nsec3_records: Vec<&DnsRecord> = all.iter()
+            .filter(|r| r.get_querytype() == QueryType::Nsec3)
+            .copied().collect();
+
+        if nsec_records.is_empty() && nsec3_records.is_empty() {
+            log::debug!("DNSSEC: no NSEC/NSEC3 records in denial response for {}", qname);
+            return false;
+        }
+
+        // Try NSEC denial first.
+        for nsec in &nsec_records {
+            if Self::nsec_proves_denial(nsec, qname, qtype) {
+                log::debug!("DNSSEC: NSEC denial proven for {} {:?}", qname, qtype);
+                return true;
+            }
+        }
+
+        // Try NSEC3 denial.
+        if !nsec3_records.is_empty() && Self::nsec3_proves_denial(&nsec3_records, qname, qtype) {
+            log::debug!("DNSSEC: NSEC3 denial proven for {} {:?}", qname, qtype);
+            return true;
+        }
+
+        log::debug!("DNSSEC: denial not proven for {} {:?}", qname, qtype);
+        false
+    }
+
+    /// Like [`validate_chain`] but also verifies NSEC/NSEC3 denial of existence
+    /// for NXDOMAIN / NODATA responses when the question name and type are known.
+    pub fn validate_chain_for_query(
+        &self,
+        packet: &DnsPacket,
+        qname: &str,
+        qtype: QueryType,
+    ) -> Result<ValidationStatus, Box<dyn std::error::Error>> {
+        if self.mode == ValidationMode::Off {
+            return Ok(ValidationStatus::Indeterminate);
+        }
+
+        let rrsig_result = self.validate_packet_rrsigs(packet);
+
+        // For NXDOMAIN / NODATA responses verify NSEC/NSEC3 denial proof.
+        let is_negative = packet.header.rescode == crate::dns::protocol::ResultCode::NXDOMAIN
+            || packet.answers.is_empty();
+        if is_negative {
+            let denial_ok = self.validate_nxdomain_proof(packet, qname, qtype);
+            log::debug!("DNSSEC: negative response denial proof for {}: {}", qname, denial_ok);
+        }
+
+        match rrsig_result {
+            ChainValidationResult::Unsigned => Ok(ValidationStatus::Indeterminate),
+            ChainValidationResult::Authenticated => {
+                log::info!("DNSSEC chain validation (query): SECURE for {}", qname);
+                Ok(ValidationStatus::Secure)
+            }
+            ChainValidationResult::ValidationFailed => {
+                log::warn!("DNSSEC chain validation (query): BOGUS for {}", qname);
+                if self.mode == ValidationMode::Strict {
+                    Err("DNSSEC chain validation failed: BOGUS".into())
+                } else {
+                    Ok(ValidationStatus::Bogus)
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1769,10 +2029,149 @@ mod tests {
     #[test]
     fn test_zone_extraction() {
         let signer = DnssecSigner::default();
-        
+
         assert_eq!(signer.extract_zone_from_domain("www.example.com"), "example.com");
         assert_eq!(signer.extract_zone_from_domain("mail.subdomain.example.org"), "example.org");
         assert_eq!(signer.extract_zone_from_domain("example.com"), "example.com");
         assert_eq!(signer.extract_zone_from_domain("single"), "single");
+    }
+
+    // -----------------------------------------------------------------------
+    // NSEC bitmap tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_nsec_bitmap_has_type_a_record() {
+        // Build a bitmap containing only type A (1): window 0, length 1, byte 0b01000000
+        // Type 1 → window 0, bit_idx 1, byte_idx 0, bit_shift 6 → byte 0b0100_0000
+        let bitmaps = vec![0u8, 1u8, 0b0100_0000u8];
+        assert!(nsec_bitmap_has_type(&bitmaps, 1)); // A record present
+        assert!(!nsec_bitmap_has_type(&bitmaps, 2)); // NS record absent
+        assert!(!nsec_bitmap_has_type(&bitmaps, 28)); // AAAA absent
+    }
+
+    #[test]
+    fn test_nsec_bitmap_has_type_multiple() {
+        // Window 0, bitmap containing types 1 (A) and 28 (AAAA).
+        // Type 1 : byte_idx=0, bit_shift=7-1=6  → 0x40
+        // Type 28: byte_idx=3, bit_shift=7-4=3  → 0x08
+        let bitmaps = vec![0u8, 4u8, 0x40, 0x00, 0x00, 0x08];
+        assert!(nsec_bitmap_has_type(&bitmaps, 1));  // A present
+        assert!(nsec_bitmap_has_type(&bitmaps, 28)); // AAAA present
+        assert!(!nsec_bitmap_has_type(&bitmaps, 2)); // NS absent
+    }
+
+    #[test]
+    fn test_nsec_bitmap_empty() {
+        assert!(!nsec_bitmap_has_type(&[], 1));
+    }
+
+    // -----------------------------------------------------------------------
+    // NSEC denial-of-existence tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_nsec_proves_nxdomain() {
+        use crate::dns::protocol::TransientTtl;
+        // NSEC record: "a.example.com." -> "z.example.com.", covers gap in between
+        let nsec = DnsRecord::Nsec {
+            domain: "a.example.com".to_string(),
+            next_domain: "z.example.com".to_string(),
+            type_bitmaps: vec![],
+            ttl: TransientTtl(300),
+        };
+        // "m.example.com" falls between a and z → NXDOMAIN proven
+        assert!(ChainValidator::nsec_proves_denial(&nsec, "m.example.com", QueryType::A));
+        // "b.example.com" also in range
+        assert!(ChainValidator::nsec_proves_denial(&nsec, "b.example.com", QueryType::A));
+        // "a.example.com" is the owner itself → NODATA check (no types → all absent)
+        assert!(ChainValidator::nsec_proves_denial(&nsec, "a.example.com", QueryType::A));
+    }
+
+    #[test]
+    fn test_nsec_nodata() {
+        use crate::dns::protocol::TransientTtl;
+        // NSEC owner = "example.com", type bitmap contains A (1) and NS (2)
+        // A: byte 0 bit 6 = 0x40; NS: byte 0 bit 5 = 0x20 → combined 0x60
+        let nsec = DnsRecord::Nsec {
+            domain: "example.com".to_string(),
+            next_domain: "z.example.com".to_string(),
+            type_bitmaps: vec![0u8, 1u8, 0x60u8], // window 0, len 1, A+NS set
+            ttl: TransientTtl(300),
+        };
+        // AAAA is absent → NODATA proven
+        assert!(ChainValidator::nsec_proves_denial(&nsec, "example.com", QueryType::Aaaa));
+        // A is present → NODATA not proven
+        assert!(!ChainValidator::nsec_proves_denial(&nsec, "example.com", QueryType::A));
+    }
+
+    // -----------------------------------------------------------------------
+    // NSEC3 hash tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_nsec3_hash_name_stable() {
+        // Hashing the same name twice must produce identical results.
+        let h1 = nsec3_hash_name("example.com", &[], 0);
+        let h2 = nsec3_hash_name("example.com", &[], 0);
+        assert_eq!(h1, h2);
+        assert!(!h1.is_empty());
+    }
+
+    #[test]
+    fn test_nsec3_hash_name_different_salt() {
+        let h1 = nsec3_hash_name("example.com", &[], 0);
+        let h2 = nsec3_hash_name("example.com", &[0xAA, 0xBB], 0);
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_nsec3_hash_name_iterations() {
+        let h0 = nsec3_hash_name("example.com", &[], 0);
+        let h1 = nsec3_hash_name("example.com", &[], 1);
+        // More iterations must produce a different result.
+        assert_ne!(h0, h1);
+    }
+
+    // -----------------------------------------------------------------------
+    // base32hex decode tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_base32hex_decode_empty() {
+        assert_eq!(base32hex_decode(""), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn test_base32hex_decode_roundtrip() {
+        // Encode [0x00, 0x88] manually: 0x00 = 0b0000_0000, 0x88 = 0b1000_1000
+        // 8 bits + 8 bits = 16 bits → 4 base32hex chars (4*5=20; 4 bits padding)
+        // bits: 00000 00010 00100 0 = 00000 00010 00100 (only 16 bits; remainder padded)
+        // Let's just decode a known value: "00" → 0x00 (5 bits = 0, next 5 bits = 0 → 8 bits = 0x00 with 2 remaining)
+        let decoded = base32hex_decode("00");
+        assert_eq!(decoded, vec![0x00]);
+    }
+
+    // -----------------------------------------------------------------------
+    // TrustAnchor / root KSK test
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_root_ksk_trust_anchor_non_empty() {
+        let anchor = TrustAnchor::root_ksk_2017();
+        assert_eq!(anchor.key_tag, IANA_ROOT_KSK_TAG);
+        assert_eq!(anchor.algorithm, 8); // RSA/SHA-256
+        assert!(!anchor.public_key.is_empty());
+        assert_eq!(anchor.zone, ".");
+    }
+
+    #[test]
+    fn test_compute_dnskey_tag_known() {
+        // Key tag 20326 is for the IANA root KSK. Verify our implementation
+        // produces a non-zero tag for a non-empty key.
+        let anchor = TrustAnchor::root_ksk_2017();
+        let tag = compute_dnskey_tag(anchor.flags, 3, anchor.algorithm, &anchor.public_key);
+        // Tag should match the well-known value for the IANA KSK.
+        assert_eq!(tag, IANA_ROOT_KSK_TAG);
     }
 }

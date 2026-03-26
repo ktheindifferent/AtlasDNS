@@ -655,6 +655,8 @@ pub mod tests {
             query_log: None,
             threat_intel: None,
             doh_server_enabled: false,
+            metrics_enabled: true,
+            metrics_port: 9153,
         })
     }
 

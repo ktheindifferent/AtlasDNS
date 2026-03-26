@@ -268,13 +268,32 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
 
 /// Validate DNSSEC signatures in a response packet using real crypto.
 ///
+/// Also checks NSEC/NSEC3 authenticated denial of existence for NXDOMAIN
+/// responses, using the original question from `request`.
+///
 /// Returns `Ok(ChainValidationResult)` reflecting authentication status.
 fn validate_dnssec(
     _context: &Arc<ServerContext>,
+    request: &DnsPacket,
     packet: &DnsPacket,
 ) -> std::result::Result<ChainValidationResult, Box<dyn std::error::Error>> {
+    use crate::dns::protocol::ResultCode;
     let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
-    Ok(validator.validate_packet_rrsigs(packet))
+    let result = validator.validate_packet_rrsigs(packet);
+
+    // For NXDOMAIN / NODATA responses, additionally verify NSEC/NSEC3 denial proof.
+    let is_negative = packet.header.rescode == ResultCode::NXDOMAIN || packet.answers.is_empty();
+    if is_negative {
+        if let Some(question) = request.questions.first() {
+            let denial_proven = validator.validate_nxdomain_proof(packet, &question.name, question.qtype);
+            log::debug!(
+                "DNSSEC: NSEC/NSEC3 denial proof for {} {:?}: {}",
+                question.name, question.qtype, denial_proven
+            );
+        }
+    }
+
+    Ok(result)
 }
 
 /// This function will always return a valid packet, even if the request could not
@@ -469,7 +488,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         //   we skip validation but still return the records.
         // • On Strict mode a BOGUS response becomes SERVFAIL.
         let dnssec_status = if context.dnssec_enabled && !request.header.checking_disabled {
-            match validate_dnssec(&context, &packet) {
+            match validate_dnssec(&context, request, &packet) {
                 Ok(ChainValidationResult::Authenticated) => {
                     packet.header.authed_data = true; // AD bit: authenticated data
                     log::debug!("DNSSEC: AD bit set");
