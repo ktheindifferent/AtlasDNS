@@ -59,7 +59,7 @@ use std::sync::{Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::dns::buffer::{PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
-use crate::dns::dnssec::{DnssecSigner, DnssecValidationStatus, SigningConfig, SignedZone};
+use crate::dns::dnssec::{DnssecSigner, DnssecValidationStatus, SigningConfig, SignedZone, ValidationMode};
 use crate::storage::PersistentStorage;
 
 /// Errors that can be returned by [`Authority`] and [`Zones`] operations.
@@ -974,6 +974,21 @@ impl Authority {
             "validation_failures": stats.validation_failures,
             "avg_signing_time_ms": stats.avg_signing_time_ms,
         }))
+    }
+
+    /// Set the DNSSEC validation mode at runtime.
+    pub fn set_validation_mode(&self, mode: ValidationMode) -> Result<()> {
+        let mut signer = self.dnssec_signer.write().map_err(|_| AuthorityError::PoisonedLock)?;
+        signer.set_validation_mode(mode);
+        Ok(())
+    }
+
+    /// Return the current DNSSEC validation mode.
+    pub fn get_validation_mode(&self) -> ValidationMode {
+        self.dnssec_signer
+            .read()
+            .map(|s| s.validation_mode())
+            .unwrap_or(ValidationMode::Off)
     }
 
     /// Return the full DNSSEC validation status (mode, trust anchor, counters).

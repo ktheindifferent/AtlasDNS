@@ -252,7 +252,7 @@ impl Default for ServerContext {
             enable_udp: true,
             enable_tcp: true,
             enable_api: true,
-            dnssec_enabled: false,
+            dnssec_enabled: true,
             statistics: ServerStatistics {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
@@ -339,7 +339,7 @@ impl ServerContext {
             enable_udp: true,
             enable_tcp: true,
             enable_api: true,
-            dnssec_enabled: false,
+            dnssec_enabled: true,
             statistics: ServerStatistics {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0),
@@ -638,7 +638,7 @@ pub mod tests {
             cache_poison_protection: None,
             dot_manager: None,
             doq_manager: None,
-            dnssec_enabled: false,
+            dnssec_enabled: true,
             shutdown_coordinator: Arc::new(ShutdownCoordinator::new(ShutdownConfig::default())),
             storage: None,
             blocklist_updater: None,

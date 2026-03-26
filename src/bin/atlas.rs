@@ -8,6 +8,7 @@ extern crate sentry;
 
 use atlas::dns::protocol::{DnsRecord, TransientTtl};
 use atlas::dns::context::{ResolveStrategy, ServerContext};
+use atlas::dns::dnssec::ValidationMode;
 use atlas::dns::server::{DnsServer, DnsTcpServer, DnsUdpServer};
 use atlas::dns::acme::{AcmeConfig, AcmeProvider};
 use atlas::dns::prometheus_server::PrometheusServer;
@@ -169,6 +170,12 @@ fn main() {
         "no-metrics",
         "Disable the standalone Prometheus metrics HTTP server",
     );
+    opts.optopt(
+        "",
+        "dnssec-validation",
+        "DNSSEC validation mode: strict, opportunistic, or off (default: opportunistic)",
+        "MODE",
+    );
 
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -256,6 +263,27 @@ fn main() {
                 Ok(p) => ctx.metrics_port = p,
                 Err(_) => log::warn!("Invalid --metrics-port value '{}', using default {}", port_str, ctx.metrics_port),
             }
+        }
+
+        // Configure DNSSEC validation mode (default: opportunistic, enabled)
+        {
+            let (mode, enabled) = match opt_matches.opt_str("dnssec-validation")
+                .as_deref()
+                .unwrap_or("opportunistic")
+            {
+                "strict"        => (ValidationMode::Strict,        true),
+                "opportunistic" => (ValidationMode::Opportunistic, true),
+                "off"           => (ValidationMode::Off,           false),
+                other => {
+                    log::warn!("Unknown --dnssec-validation value '{}'; using opportunistic", other);
+                    (ValidationMode::Opportunistic, true)
+                }
+            };
+            ctx.dnssec_enabled = enabled;
+            if let Err(e) = ctx.authority.set_validation_mode(mode) {
+                log::warn!("Failed to set DNSSEC validation mode: {}", e);
+            }
+            log::info!("DNSSEC validation: {:?} (enabled={})", mode, enabled);
         }
 
         match opt_matches.opt_str("j") {

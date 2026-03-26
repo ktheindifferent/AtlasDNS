@@ -21,7 +21,7 @@ use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, ResultC
 use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 use crate::dns::security::SecurityAction;
-use crate::dns::dnssec::DnssecSigner;
+use crate::dns::dnssec::{ChainValidator, ChainValidationResult, ValidationMode};
 use crate::dns::metrics::{THREAD_POOL_THREADS, THREAD_POOL_QUEUE_SIZE, THREAD_POOL_TASKS};
 
 /// Errors that can occur while running the DNS server.
@@ -264,25 +264,15 @@ fn populate_packet_from_results(packet: &mut DnsPacket, results: Vec<DnsPacket>)
     }
 }
 
-/// Validate DNSSEC signatures in a response packet
-fn validate_dnssec(_context: &Arc<ServerContext>, packet: &DnsPacket) -> std::result::Result<bool, Box<dyn std::error::Error>> {
-    // Check if the response contains DNSSEC records
-    let has_dnssec = packet.answers.iter().any(|r| matches!(r, 
-        DnsRecord::Rrsig { .. } | 
-        DnsRecord::Dnskey { .. } |
-        DnsRecord::Ds { .. }
-    ));
-    
-    if !has_dnssec {
-        return Ok(false); // No DNSSEC records to validate
-    }
-    
-    // Create a DNSSEC signer for validation (reuse signing config)
-    let signing_config = crate::dns::dnssec::SigningConfig::default();
-    let signer = DnssecSigner::new(signing_config);
-    
-    // Validate the packet signatures
-    signer.validate(packet)
+/// Validate DNSSEC signatures in a response packet using real crypto.
+///
+/// Returns `Ok(ChainValidationResult)` reflecting authentication status.
+fn validate_dnssec(
+    _context: &Arc<ServerContext>,
+    packet: &DnsPacket,
+) -> std::result::Result<ChainValidationResult, Box<dyn std::error::Error>> {
+    let validator = ChainValidator::with_root_ksk(ValidationMode::Opportunistic);
+    Ok(validator.validate_packet_rrsigs(packet))
 }
 
 /// This function will always return a valid packet, even if the request could not
@@ -464,19 +454,46 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             process_valid_query(context.clone(), request, &mut packet);
         }
         
-        // Perform DNSSEC validation if requested
-        let dnssec_status = if request.header.z && context.dnssec_enabled {
+        // Perform DNSSEC validation (AD/CD bit handling per RFC 4035 §3.2)
+        //
+        // • dnssec_enabled controls whether we validate at all.
+        // • checking_disabled (CD bit) signals the client wants raw data;
+        //   we skip validation but still return the records.
+        // • On Strict mode a BOGUS response becomes SERVFAIL.
+        let dnssec_status = if context.dnssec_enabled && !request.header.checking_disabled {
             match validate_dnssec(&context, &packet) {
-                Ok(valid) => {
-                    if valid {
-                        packet.header.authed_data = true; // Set Authenticated Data flag
-                        Some("validated".to_string())
-                    } else {
-                        Some("invalid".to_string())
-                    }
+                Ok(ChainValidationResult::Authenticated) => {
+                    packet.header.authed_data = true; // AD bit: authenticated data
+                    log::debug!("DNSSEC: AD bit set");
+                    Some("validated".to_string())
                 }
-                Err(_) => Some("unvalidated".to_string())
+                Ok(ChainValidationResult::ValidationFailed) => {
+                    // Check the configured validation mode
+                    let mode = context.authority.get_dnssec_validation_status().validation_mode;
+                    if mode == "strict" {
+                        log::warn!("DNSSEC strict: returning SERVFAIL for BOGUS response");
+                        packet.header.rescode = ResultCode::SERVFAIL;
+                        packet.answers.clear();
+                        packet.authorities.clear();
+                        packet.resources.clear();
+                    } else {
+                        log::debug!("DNSSEC opportunistic: BOGUS response passed through");
+                    }
+                    Some("invalid".to_string())
+                }
+                Ok(ChainValidationResult::Unsigned) => {
+                    // Unsigned – pass through; AD bit remains clear
+                    Some("unsigned".to_string())
+                }
+                Err(e) => {
+                    log::warn!("DNSSEC validation error: {}", e);
+                    Some("error".to_string())
+                }
             }
+        } else if context.dnssec_enabled && request.header.checking_disabled {
+            // CD bit set: skip validation, honour client's request
+            log::debug!("DNSSEC: CD bit set, skipping validation");
+            Some("checking_disabled".to_string())
         } else {
             None
         };
