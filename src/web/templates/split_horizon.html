@@ -1,0 +1,208 @@
+{{#*inline "title"}}Split-Horizon DNS{{/inline}}
+{{#*inline "current_page"}}split-horizon{{/inline}}
+
+{{#*inline "content"}}
+<!-- Split-Horizon DNS -->
+<div class="page-header mb-4">
+    <div class="row align-items-center">
+        <div class="col">
+            <h1 class="page-title">Split-Horizon DNS</h1>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item active">Split-Horizon DNS</li>
+                </ol>
+            </nav>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRuleModal">
+                <i class="bi bi-plus-circle"></i> Add Rule
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <h6 class="text-muted mb-2">Active Rules</h6>
+                        <div class="h3 mb-0">{{rule_count}}</div>
+                    </div>
+                    <div class="ms-3">
+                        <i class="bi bi-diagram-3 text-primary" style="font-size:2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-2">How it works</h6>
+                <p class="mb-0 small">Rules are matched top-to-bottom. The <strong>first</strong> rule whose
+                domain pattern and client CIDR both match returns a synthetic answer — bypassing the normal
+                resolver. Use <code>0.0.0.0/0</code> as the CIDR to match any client.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rules Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">Rules</h5>
+        <input type="text" id="ruleSearch" class="form-control form-control-sm w-auto"
+               placeholder="Filter rules..." onkeyup="filterRules()">
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="rulesTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Domain Pattern</th>
+                        <th>Client CIDR</th>
+                        <th>Type</th>
+                        <th>Response Value</th>
+                        <th>TTL</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rulesBody">
+                {{#each rules}}
+                <tr>
+                    <td><code>{{this.domain_pattern}}</code></td>
+                    <td><code>{{this.client_cidr}}</code></td>
+                    <td><span class="badge bg-info">{{this.record_type}}</span></td>
+                    <td><code>{{this.response_value}}</code></td>
+                    <td>{{this.ttl}}s</td>
+                    <td>
+                        {{#if this.enabled}}
+                        <span class="badge bg-success">Enabled</span>
+                        {{else}}
+                        <span class="badge bg-secondary">Disabled</span>
+                        {{/if}}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteRule('{{this.id}}')">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {{/each}}
+                {{#unless rules}}
+                <tr><td colspan="7" class="text-center text-muted py-4">No rules configured yet.</td></tr>
+                {{/unless}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Rule Modal -->
+<div class="modal fade" id="addRuleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Split-Horizon Rule</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addRuleForm">
+                    <div class="mb-3">
+                        <label class="form-label">Domain Pattern</label>
+                        <input type="text" class="form-control" id="domainPattern"
+                               placeholder="e.g. home.example.com or *.example.com" required>
+                        <div class="form-text">Use <code>*.</code> prefix for wildcards.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Client CIDR</label>
+                        <input type="text" class="form-control" id="clientCidr"
+                               placeholder="e.g. 192.168.0.0/24 or 0.0.0.0/0" required>
+                        <div class="form-text">Use <code>0.0.0.0/0</code> to match any client.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Record Type</label>
+                        <select class="form-select" id="recordType">
+                            <option value="A" selected>A (IPv4)</option>
+                            <option value="AAAA">AAAA (IPv6)</option>
+                            <option value="CNAME">CNAME</option>
+                            <option value="TXT">TXT</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Response Value</label>
+                        <input type="text" class="form-control" id="responseValue"
+                               placeholder="e.g. 192.168.1.50" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">TTL (seconds)</label>
+                        <input type="number" class="form-control" id="ttl" value="60" min="0">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="ruleEnabled" checked>
+                        <label class="form-check-label" for="ruleEnabled">Enabled</label>
+                    </div>
+                </form>
+                <div id="addRuleError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addRule()">Add Rule</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterRules() {
+    const q = document.getElementById('ruleSearch').value.toLowerCase();
+    document.querySelectorAll('#rulesTable tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+}
+
+async function addRule() {
+    const rule = {
+        id: '',
+        domain_pattern: document.getElementById('domainPattern').value.trim(),
+        client_cidr:    document.getElementById('clientCidr').value.trim(),
+        record_type:    document.getElementById('recordType').value,
+        response_value: document.getElementById('responseValue').value.trim(),
+        ttl:            parseInt(document.getElementById('ttl').value, 10) || 60,
+        enabled:        document.getElementById('ruleEnabled').checked,
+    };
+    const errEl = document.getElementById('addRuleError');
+    errEl.classList.add('d-none');
+    try {
+        const resp = await fetch('/api/split-horizon/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(rule),
+        });
+        if (!resp.ok) { throw new Error(await resp.text()); }
+        window.location.reload();
+    } catch (e) {
+        errEl.textContent = 'Error: ' + e.message;
+        errEl.classList.remove('d-none');
+    }
+}
+
+async function deleteRule(id) {
+    if (!confirm('Delete this rule?')) return;
+    try {
+        const resp = await fetch('/api/split-horizon/rules/' + id, {method: 'DELETE'});
+        if (!resp.ok) { throw new Error(await resp.text()); }
+        window.location.reload();
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+</script>
+{{/inline}}
+
+{{> layout}}

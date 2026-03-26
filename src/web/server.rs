@@ -239,6 +239,7 @@ impl<'a> WebServer<'a> {
         register_template("settings", include_str!("templates/settings.html"));
         register_template("blocklists", include_str!("templates/blocklists.html"));
         register_template("home", include_str!("templates/home.html"));
+        register_template("split_horizon", include_str!("templates/split_horizon.html"));
 
         server
     }
@@ -462,6 +463,12 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["settings"]) => self.settings_page(request),
             (Method::Post, ["api", "settings", "upstream"]) => self.update_upstream_servers(request),
             (Method::Post, ["api", "settings", "config"]) => self.update_server_config(request),
+
+            // Split-horizon DNS routes
+            (Method::Get, ["split-horizon"]) => self.split_horizon_page(request),
+            (Method::Get, ["api", "split-horizon", "rules"]) => self.split_horizon_list(request),
+            (Method::Post, ["api", "split-horizon", "rules"]) => self.split_horizon_add(request),
+            (Method::Delete, ["api", "split-horizon", "rules", rule_id]) => self.split_horizon_delete(request, rule_id),
             
             // GeoDNS API endpoints
             (Method::Get, ["api", "geodns", "stats"]) => self.get_geodns_stats(request),
@@ -3536,6 +3543,56 @@ impl<'a> WebServer<'a> {
         } else {
             Ok(Response::empty(302)
                 .with_header(Self::safe_location_header("/load-balancing"))
+                .boxed())
+        }
+    }
+
+    // ── Split-Horizon DNS handlers ────────────────────────────────────────────
+
+    fn split_horizon_page(&self, request: &Request) -> Result<ResponseBox> {
+        let rules = self.context.split_horizon_manager.list_rules();
+        let data = serde_json::json!({
+            "title": "Split-Horizon DNS",
+            "rule_count": rules.len(),
+            "rules": rules,
+        });
+        self.response_from_media_type(request, "split_horizon", data)
+    }
+
+    fn split_horizon_list(&self, _request: &Request) -> Result<ResponseBox> {
+        let rules = self.context.split_horizon_manager.list_rules();
+        Ok(Response::from_string(serde_json::to_string(&rules)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn split_horizon_add(&self, request: &mut tiny_http::Request) -> Result<ResponseBox> {
+        use std::io::Read;
+        let mut body = String::new();
+        request.as_reader().read_to_string(&mut body)
+            .map_err(|e| crate::web::WebError::InternalError(e.to_string()))?;
+        let rule: crate::dns::split_horizon::SplitHorizonRule =
+            serde_json::from_str(&body)
+                .map_err(|e| crate::web::WebError::InternalError(e.to_string()))?;
+        self.context.split_horizon_manager.add_rule(rule)
+            .map_err(|e| crate::web::WebError::InternalError(e.to_string()))?;
+        Ok(Response::from_string("{\"success\":true}")
+            .with_status_code(201)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn split_horizon_delete(&self, _request: &Request, id: &str) -> Result<ResponseBox> {
+        let removed = self.context.split_horizon_manager.remove_rule(id)
+            .map_err(|e| crate::web::WebError::InternalError(e.to_string()))?;
+        if removed {
+            Ok(Response::from_string("{\"success\":true}")
+                .with_header(Self::safe_header("Content-Type: application/json"))
+                .boxed())
+        } else {
+            Ok(Response::from_string("{\"error\":\"rule not found\"}")
+                .with_status_code(404)
+                .with_header(Self::safe_header("Content-Type: application/json"))
                 .boxed())
         }
     }

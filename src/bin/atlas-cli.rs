@@ -117,6 +117,12 @@ enum Commands {
         #[command(subcommand)]
         action: ThreatIntelCommands,
     },
+
+    /// Manage split-horizon DNS rules
+    SplitHorizon {
+        #[command(subcommand)]
+        action: SplitHorizonCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -128,6 +134,45 @@ enum ThreatIntelCommands {
         /// Maximum number of hits to display (default: 20)
         #[arg(short, long, default_value = "20")]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum SplitHorizonCommands {
+    /// List all split-horizon rules
+    List,
+
+    /// Add a new split-horizon rule
+    Add {
+        /// Domain pattern (e.g. home.example.com or *.example.com)
+        #[arg(short = 'd', long)]
+        domain: String,
+
+        /// Client CIDR (e.g. 192.168.0.0/24 or 0.0.0.0/0 for any)
+        #[arg(short = 'c', long)]
+        cidr: String,
+
+        /// Record type: A, AAAA, CNAME, TXT
+        #[arg(short = 't', long, default_value = "A")]
+        record_type: String,
+
+        /// Response value (IP address, hostname, or text)
+        #[arg(short = 'v', long)]
+        value: String,
+
+        /// TTL in seconds
+        #[arg(long, default_value = "60")]
+        ttl: u32,
+
+        /// Disable the rule immediately
+        #[arg(long)]
+        disabled: bool,
+    },
+
+    /// Remove a split-horizon rule by ID
+    Remove {
+        /// Rule ID to remove
+        id: String,
     },
 }
 
@@ -859,6 +904,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Shell => handle_interactive_shell(&client, &formatter).await?,
         Commands::Completions { shell } => generate_completions(shell),
         Commands::ThreatIntel { action } => handle_threat_intel_commands(action, &client, &formatter).await?,
+        Commands::SplitHorizon { action } => handle_split_horizon_commands(action, &client, &formatter).await?,
     }
     
     Ok(())
@@ -1923,6 +1969,48 @@ async fn handle_threat_intel_commands(
     Ok(())
 }
 
+
+async fn handle_split_horizon_commands(
+    action: SplitHorizonCommands,
+    client: &AtlasClient,
+    formatter: &OutputFormatter,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        SplitHorizonCommands::List => {
+            let pb = show_progress("Fetching split-horizon rules...");
+            let data = client.get("/api/split-horizon/rules").await?;
+            pb.finish_and_clear();
+            formatter.print(&data);
+        }
+        SplitHorizonCommands::Add { domain, cidr, record_type, value, ttl, disabled } => {
+            let pb = show_progress("Adding split-horizon rule...");
+            let body = json!({
+                "id": "",
+                "domain_pattern": domain,
+                "client_cidr": cidr,
+                "record_type": record_type,
+                "response_value": value,
+                "ttl": ttl,
+                "enabled": !disabled,
+            });
+            let result = client.post("/api/split-horizon/rules", body).await?;
+            pb.finish_and_clear();
+            formatter.print_success(&format!("Rule for {} → {} added", domain, value));
+            formatter.print(&result);
+        }
+        SplitHorizonCommands::Remove { id } => {
+            let pb = show_progress(&format!("Removing rule {}...", id));
+            let result = client.delete(&format!("/api/split-horizon/rules/{}", id)).await?;
+            pb.finish_and_clear();
+            if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                formatter.print_success(&format!("Rule {} removed", id));
+            } else {
+                formatter.print_error(&format!("Failed to remove rule {}", id));
+            }
+        }
+    }
+    Ok(())
+}
 
 fn generate_completions(shell: Shell) {
     // This would generate shell completions for the specified shell

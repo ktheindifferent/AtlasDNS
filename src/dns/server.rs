@@ -475,6 +475,28 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
     }
     // ── End anomaly detection ────────────────────────────────────────────────
 
+    // ── Split-horizon: synthesise a response for matching rules ─────────────
+    if let (Some(client_ip), Some(question)) = (client_ip, request.questions.first()) {
+        if let Some(sh_response) = context.split_horizon_manager.lookup(
+            &question.name,
+            client_ip,
+            question.qtype,
+        ) {
+            let mut packet = build_response_packet(&context, request);
+            packet.answers = sh_response.answers;
+            packet.header.rescode = ResultCode::NOERROR;
+            context.statistics.udp_query_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            context.metrics.record_dns_query(&protocol, &query_type, &domain);
+            context.metrics.record_dns_response("NOERROR", &protocol, &query_type);
+            if let Some(ref ql) = context.query_log {
+                ql.log_query(&client_ip.to_string(), &domain, &query_type, None, false,
+                    start_time.elapsed().as_millis() as i64);
+            }
+            return packet;
+        }
+    }
+    // ── End split-horizon ────────────────────────────────────────────────────
+
     let mut packet = build_response_packet(&context, request);
     let mut cache_hit = false;
 

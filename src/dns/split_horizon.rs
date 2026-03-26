@@ -16,11 +16,12 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 
-use crate::dns::protocol::{DnsRecord, DnsQuestion, TransientTtl};
+use crate::dns::protocol::{DnsPacket, DnsRecord, DnsQuestion, QueryType, TransientTtl};
 use crate::dns::errors::DnsError;
 
 /// Split-horizon configuration
@@ -641,6 +642,197 @@ impl LocalRecordStore {
             })
             .collect()
     }
+}
+
+// ---------------------------------------------------------------------------
+// SplitHorizonRule — simple per-rule split-horizon config loaded from TOML
+// ---------------------------------------------------------------------------
+
+/// A single split-horizon rule mapping (domain_pattern + client_cidr) → response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplitHorizonRule {
+    /// Unique rule identifier (UUID).
+    pub id: String,
+    /// Domain pattern to match, e.g. `home.example.com` or `*.example.com`.
+    pub domain_pattern: String,
+    /// Client source CIDR, e.g. `192.168.0.0/24`.  Use `0.0.0.0/0` for any.
+    pub client_cidr: String,
+    /// DNS record type for the synthesised answer: `"A"`, `"AAAA"`, `"CNAME"`, `"TXT"`.
+    pub record_type: String,
+    /// The value to return (IP address, hostname, or text).
+    pub response_value: String,
+    /// TTL for the synthesised answer (seconds).
+    #[serde(default = "default_ttl")]
+    pub ttl: u32,
+    /// Whether this rule is active.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_ttl() -> u32 { 60 }
+fn default_true() -> bool { true }
+
+/// On-disk TOML representation.
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct SplitHorizonToml {
+    #[serde(default)]
+    rules: Vec<SplitHorizonRule>,
+}
+
+impl SplitHorizonRule {
+    /// Returns `true` if `query` matches this rule's domain pattern.
+    fn matches_domain(&self, query: &str) -> bool {
+        let pattern = self.domain_pattern.trim_end_matches('.');
+        let query = query.trim_end_matches('.');
+        if let Some(suffix) = pattern.strip_prefix("*.") {
+            // wildcard: *.example.com matches foo.example.com but not example.com
+            query.ends_with(&format!(".{}", suffix))
+        } else {
+            pattern.eq_ignore_ascii_case(query)
+        }
+    }
+
+    /// Returns `true` if `client_ip` falls within this rule's CIDR.
+    fn matches_client(&self, client_ip: IpAddr) -> bool {
+        let cidr = self.client_cidr.trim();
+        if cidr == "0.0.0.0/0" || cidr == "::/0" || cidr.eq_ignore_ascii_case("any") {
+            return true;
+        }
+        match cidr.parse::<ipnetwork::IpNetwork>() {
+            Ok(net) => net.contains(client_ip),
+            Err(_) => false,
+        }
+    }
+
+    /// Returns `true` if both domain and client match.
+    pub fn matches(&self, query: &str, client_ip: IpAddr) -> bool {
+        self.enabled && self.matches_domain(query) && self.matches_client(client_ip)
+    }
+
+    /// Build a synthetic DNS answer record for this rule applied to `qname`.
+    pub fn to_dns_record(&self, qname: &str) -> Option<DnsRecord> {
+        let ttl = TransientTtl(self.ttl);
+        match self.record_type.to_uppercase().as_str() {
+            "A" => {
+                let addr: Ipv4Addr = self.response_value.parse().ok()?;
+                Some(DnsRecord::A { domain: qname.to_string(), addr, ttl })
+            }
+            "AAAA" => {
+                let addr: Ipv6Addr = self.response_value.parse().ok()?;
+                Some(DnsRecord::Aaaa { domain: qname.to_string(), addr, ttl })
+            }
+            "CNAME" => Some(DnsRecord::Cname {
+                domain: qname.to_string(),
+                host: self.response_value.clone(),
+                ttl,
+            }),
+            "TXT" => Some(DnsRecord::Txt {
+                domain: qname.to_string(),
+                data: self.response_value.clone(),
+                ttl,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Thread-safe rule store that loads from / saves to `~/.atlasdns/split_horizon.toml`.
+pub struct SplitHorizonRuleManager {
+    rules: Arc<RwLock<Vec<SplitHorizonRule>>>,
+    config_path: PathBuf,
+}
+
+impl Default for SplitHorizonRuleManager {
+    fn default() -> Self { Self::new() }
+}
+
+impl SplitHorizonRuleManager {
+    /// Create a new manager using the default config path (`~/.atlasdns/split_horizon.toml`).
+    pub fn new() -> Self {
+        let config_path = dirs_config_path();
+        let manager = Self {
+            rules: Arc::new(RwLock::new(Vec::new())),
+            config_path,
+        };
+        // Best-effort load; ignore errors if file does not exist yet.
+        let _ = manager.load();
+        manager
+    }
+
+    /// Load rules from the TOML config file.
+    pub fn load(&self) -> std::io::Result<()> {
+        if !self.config_path.exists() {
+            return Ok(());
+        }
+        let contents = std::fs::read_to_string(&self.config_path)?;
+        let parsed: SplitHorizonToml = toml::from_str(&contents)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        *self.rules.write() = parsed.rules;
+        log::info!("split_horizon: loaded {} rule(s) from {:?}", self.rules.read().len(), self.config_path);
+        Ok(())
+    }
+
+    /// Persist the current rules to the TOML config file.
+    pub fn save(&self) -> std::io::Result<()> {
+        if let Some(parent) = self.config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let data = SplitHorizonToml { rules: self.rules.read().clone() };
+        let contents = toml::to_string_pretty(&data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        std::fs::write(&self.config_path, contents)
+    }
+
+    /// Return a snapshot of all rules.
+    pub fn list_rules(&self) -> Vec<SplitHorizonRule> {
+        self.rules.read().clone()
+    }
+
+    /// Add a new rule (assigns a UUID if `id` is empty) and persist.
+    pub fn add_rule(&self, mut rule: SplitHorizonRule) -> std::io::Result<()> {
+        if rule.id.is_empty() {
+            rule.id = uuid::Uuid::new_v4().to_string();
+        }
+        self.rules.write().push(rule);
+        self.save()
+    }
+
+    /// Remove a rule by id.  Returns `true` if found and removed.
+    pub fn remove_rule(&self, id: &str) -> std::io::Result<bool> {
+        let mut rules = self.rules.write();
+        let before = rules.len();
+        rules.retain(|r| r.id != id);
+        let removed = rules.len() < before;
+        drop(rules);
+        if removed { self.save()?; }
+        Ok(removed)
+    }
+
+    /// Find the first matching rule for `(qname, client_ip, qtype)` and return a
+    /// synthetic `DnsPacket`, or `None` if no rule matches.
+    pub fn lookup(&self, qname: &str, client_ip: IpAddr, _qtype: QueryType) -> Option<DnsPacket> {
+        let rules = self.rules.read();
+        for rule in rules.iter() {
+            if rule.matches(qname, client_ip) {
+                if let Some(record) = rule.to_dns_record(qname) {
+                    let mut packet = DnsPacket::new();
+                    packet.header.rescode = crate::dns::protocol::ResultCode::NOERROR;
+                    packet.answers.push(record);
+                    log::debug!(
+                        "split_horizon: rule {} matched {} from {} → {}",
+                        rule.id, qname, client_ip, rule.response_value
+                    );
+                    return Some(packet);
+                }
+            }
+        }
+        None
+    }
+}
+
+fn dirs_config_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    PathBuf::from(home).join(".atlasdns").join("split_horizon.toml")
 }
 
 #[cfg(test)]

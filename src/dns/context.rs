@@ -39,6 +39,7 @@ use crate::dns::query_log::QueryLog;
 use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 use crate::dns::clustering::{ClusterManager, ClusterConfig};
 use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
+use crate::dns::split_horizon::SplitHorizonRuleManager;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -179,6 +180,8 @@ pub struct ServerContext {
     pub cluster_manager: Option<Arc<ClusterManager>>,
     /// Heuristic DNS anomaly detector (DGA / tunneling / behavioural scoring).
     pub anomaly_detector: Arc<DnsAnomalyDetector>,
+    /// Split-horizon DNS rule manager — returns different answers per source IP.
+    pub split_horizon_manager: Arc<SplitHorizonRuleManager>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -304,6 +307,7 @@ impl Default for ServerContext {
             dot_enabled: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
+            split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
         }
     }
 }
@@ -395,6 +399,7 @@ impl ServerContext {
             dot_enabled: false,
             cluster_manager: None,
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
+            split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
         })
     }
 
