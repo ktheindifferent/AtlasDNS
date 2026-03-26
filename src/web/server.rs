@@ -441,6 +441,9 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "security", "metrics"]) => self.get_security_metrics(request),
             (Method::Get, ["api", "security", "alerts"]) => self.get_security_alerts(request),
             (Method::Get, ["api", "security", "events"]) => self.get_security_events(request),
+            // Threat intelligence API
+            (Method::Get, ["api", "threat-intel", "status"]) => self.threat_intel_status(request),
+            (Method::Get, ["api", "threat-intel", "hits"]) => self.threat_intel_hits(request),
             (Method::Get, ["ddos-protection"]) => self.ddos_protection_page(request),
             (Method::Get, ["protocols", "doh"]) => self.doh_page(request),
             (Method::Get, ["protocols", "dot"]) => self.dot_page(request),
@@ -3023,6 +3026,45 @@ impl<'a> WebServer<'a> {
         }
     }
     
+    fn threat_intel_status(&self, request: &Request) -> Result<ResponseBox> {
+        let data = match &self.context.threat_intel {
+            Some(ti) => ti.get_stats(),
+            None => serde_json::json!({
+                "enabled": false,
+                "total_domains": 0,
+                "total_ip_blocks": 0,
+                "total_hits": 0,
+                "update_interval_secs": 0,
+                "feeds": [],
+            }),
+        };
+        let json_string = serde_json::to_string(&data)?;
+        Ok(Response::from_string(json_string)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    fn threat_intel_hits(&self, request: &Request) -> Result<ResponseBox> {
+        // Parse ?limit= query param
+        let limit = request.url()
+            .split('?').nth(1)
+            .and_then(|q| {
+                q.split('&')
+                    .find(|p| p.starts_with("limit="))
+                    .and_then(|p| p.trim_start_matches("limit=").parse::<usize>().ok())
+            })
+            .unwrap_or(20);
+
+        let hits = match &self.context.threat_intel {
+            Some(ti) => ti.get_recent_hits(limit),
+            None => vec![],
+        };
+        let json_string = serde_json::to_string(&hits)?;
+        Ok(Response::from_string(json_string)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
     fn settings_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get current server configuration
         let data = serde_json::json!({
