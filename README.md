@@ -180,10 +180,54 @@ Access the web interface at:
 
 - **Automatic Privilege Escalation**: Handles privilege requirements for port 53
 - **Rate Limiting**: Protects against DNS amplification attacks
-- **DNSSEC Support**: Planned for future release
+- **DNSSEC Validation**: Full RFC 4034/4035/5155 chain-of-trust validation (see below)
 - **Secure Session Management**: Token-based authentication with IP validation
 - **TLS 1.2/1.3**: Modern encryption for web interface
 - **Password Hashing**: SHA256 for user credentials
+
+## 🔐 DNSSEC
+
+Atlas implements a full DNSSEC validation chain compliant with RFC 4034, RFC 4035, and RFC 5155.
+
+### Validation Modes
+
+| Mode | Description |
+|------|-------------|
+| `strict` | Reject responses with invalid or missing signatures (BOGUS → SERVFAIL) |
+| `opportunistic` | Validate when signatures are present; allow unsigned responses through (default) |
+| `off` | Skip DNSSEC validation entirely |
+
+Enable via CLI flag:
+
+```bash
+./atlas --dnssec-validation strict
+./atlas --dnssec-validation opportunistic
+./atlas --dnssec-validation off
+```
+
+### Features
+
+- **Trust anchor management** — IANA Root KSK-2017 (key tag 20326) built-in; additional anchors configurable
+- **Supported algorithms** — RSA/SHA-256 (8), RSA/SHA-512 (10), ECDSA P-256/SHA-256 (13), ECDSA P-384/SHA-384 (14), Ed25519 (15)
+- **Record types** — DNSKEY, RRSIG, DS, NSEC, NSEC3, NSEC3PARAM fully parsed and validated
+- **Chain of trust** — Validates delegation chain from root KSK → ZSK → DS → child DNSKEY
+- **Authenticated denial** — NSEC and NSEC3 (RFC 5155) proof-of-nonexistence verification
+- **AD flag** — Authenticated Data bit set on responses that pass full chain validation
+- **SERVFAIL on BOGUS** — In strict mode, cryptographically invalid responses return SERVFAIL
+- **Checking Disabled (CD)** — Respects the CD bit; skips validation when client sets it
+- **Zone signing** — Automatic KSK/ZSK generation, RRSIG creation, DS record generation, key rollover
+
+### Zone Signing
+
+Atlas can sign your authoritative zones automatically:
+
+```bash
+# Zones are signed automatically when DNSSEC is enabled
+# DS records are generated for delegation to parent zones
+# Key rollover is handled transparently
+```
+
+Signing uses ECDSA P-256/SHA-256 by default with NSEC3 authenticated denial (10 iterations).
 
 ## 🐳 Docker Support
 
