@@ -145,20 +145,67 @@ pub struct DnsJsonRecord {
     pub data: String,
 }
 
+/// Simple per-IP rate limiter for the DoH endpoint, independent of the UDP rate limiter.
+///
+/// Each IP gets a sliding window: if more than `max_rps` requests arrive within
+/// `window_secs` the request is rejected with HTTP 429.
+pub struct DohRateLimiter {
+    /// (request count, window-start instant) per IP string
+    window: parking_lot::Mutex<std::collections::HashMap<String, (u64, std::time::Instant)>>,
+    /// Maximum requests allowed per window
+    max_rps: u64,
+    /// Window length in seconds
+    window_secs: u64,
+}
+
+impl DohRateLimiter {
+    pub fn new(max_rps: u64, window_secs: u64) -> Self {
+        Self {
+            window: parking_lot::Mutex::new(std::collections::HashMap::new()),
+            max_rps,
+            window_secs,
+        }
+    }
+
+    /// Returns `true` if the request should be allowed.
+    pub fn check(&self, client_ip: &str) -> bool {
+        let now = std::time::Instant::now();
+        let mut map = self.window.lock();
+        let entry = map.entry(client_ip.to_string()).or_insert((0, now));
+        let elapsed = now.duration_since(entry.1).as_secs();
+        if elapsed >= self.window_secs {
+            *entry = (1, now);
+            true
+        } else {
+            entry.0 += 1;
+            entry.0 <= self.max_rps
+        }
+    }
+}
+
+impl Default for DohRateLimiter {
+    fn default() -> Self {
+        // 300 req/min per IP by default
+        Self::new(300, 60)
+    }
+}
+
 /// DoH Server implementation
 pub struct DohServer {
     context: Arc<ServerContext>,
     config: DohConfig,
     metrics: Arc<RwLock<DohMetrics>>,
+    rate_limiter: Arc<DohRateLimiter>,
 }
 
 impl DohServer {
     /// Create a new DoH server
     pub fn new(context: Arc<ServerContext>, config: DohConfig) -> Self {
-        Self { 
-            context, 
+        Self {
+            context,
             config,
             metrics: Arc::new(RwLock::new(DohMetrics::default())),
+            rate_limiter: Arc::new(DohRateLimiter::default()),
         }
     }
 
@@ -182,9 +229,24 @@ impl DohServer {
         &self,
         request: &mut Request,
     ) -> Result<Response<Box<dyn std::io::Read + Send + 'static>>> {
+        // Per-IP rate limiting (separate from the UDP rate limiter)
+        let client_addr = request.remote_addr().ip().to_string();
+
+        if !self.rate_limiter.check(&client_addr) {
+            log::debug!("DoH rate limit exceeded for {}", client_addr);
+            {
+                let mut metrics = self.metrics.write();
+                metrics.failed_requests += 1;
+            }
+            return Ok(Response::from_string("Too Many Requests")
+                .with_status_code(429)
+                .with_header(Header::from_bytes(&b"Retry-After"[..], b"60").expect("valid header literal"))
+                .boxed());
+        }
+
         // Create correlation context
         let ctx = CorrelationContext::new("doh_server", "handle_request");
-        
+
         // Check HTTP method
         match request.method() {
             Method::Get => self.handle_get_request(request, ctx).await,

@@ -59,7 +59,7 @@ use std::sync::{Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::dns::buffer::{PacketBuffer, StreamPacketBuffer, VectorPacketBuffer};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
-use crate::dns::dnssec::{DnssecSigner, SigningConfig, SignedZone};
+use crate::dns::dnssec::{DnssecSigner, DnssecValidationStatus, SigningConfig, SignedZone};
 use crate::storage::PersistentStorage;
 
 /// Errors that can be returned by [`Authority`] and [`Zones`] operations.
@@ -958,13 +958,13 @@ impl Authority {
     pub fn get_dnssec_stats(&self) -> Result<serde_json::Value> {
         let signer = self.dnssec_signer.read().map_err(|_| AuthorityError::PoisonedLock)?;
         let stats = signer.get_statistics();
-        
+
         let zones = self.zones.read().map_err(|_| AuthorityError::PoisonedLock)?;
         let total_zones = zones.zones.len();
         let signed_zones = zones.zones.values()
             .filter(|z| z.dnssec_enabled)
             .count();
-        
+
         Ok(serde_json::json!({
             "total_zones": total_zones,
             "signed_zones": signed_zones,
@@ -974,6 +974,24 @@ impl Authority {
             "validation_failures": stats.validation_failures,
             "avg_signing_time_ms": stats.avg_signing_time_ms,
         }))
+    }
+
+    /// Return the full DNSSEC validation status (mode, trust anchor, counters).
+    pub fn get_dnssec_validation_status(&self) -> DnssecValidationStatus {
+        self.dnssec_signer
+            .read()
+            .map(|s| s.get_validation_status())
+            .unwrap_or_else(|_| DnssecValidationStatus {
+                validation_mode: "unknown".to_string(),
+                trust_anchor_key_tag: crate::dns::dnssec::IANA_ROOT_KSK_TAG,
+                stats: crate::dns::dnssec::ValidationStatsSnapshot {
+                    queries_seen: 0,
+                    validated_ok: 0,
+                    validated_fail: 0,
+                    unsigned_responses: 0,
+                },
+                signing_stats: crate::dns::dnssec::SigningStatistics::default(),
+            })
     }
 }
 

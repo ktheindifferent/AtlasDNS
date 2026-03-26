@@ -20,6 +20,7 @@ pub mod token_rotation;
 pub mod secure_password;
 pub mod websocket;
 pub mod blocklists;
+pub mod pihole_api;
 
 #[derive(Debug)]
 pub enum WebError {

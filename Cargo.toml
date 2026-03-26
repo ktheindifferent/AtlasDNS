@@ -58,6 +58,8 @@ ipnetwork = "0.20"
 hmac = "0.12"
 hex = "0.4"
 flate2 = "1.0"
+bloomfilter = "1"
+zip = "0.6"
 
 # Real-time metrics dependencies
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
@@ -86,3 +88,7 @@ path = "src/bin/atlas.rs"
 [[bin]]
 name = "atlas-cli"
 path = "src/bin/atlas-cli.rs"
+
+[[bin]]
+name = "atlas-admin"
+path = "src/bin/atlas-admin.rs"

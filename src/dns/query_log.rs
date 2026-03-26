@@ -58,6 +58,8 @@ pub struct QueryLogEntry {
     pub resolved_ip: Option<String>,
     pub blocked: bool,
     pub response_ms: i64,
+    /// DNSSEC validation outcome: SECURE | BOGUS | INDETERMINATE | null
+    pub dnssec_status: Option<String>,
 }
 
 /// Aggregate statistics for one client IP.
@@ -137,6 +139,7 @@ impl QueryLog {
             rt: std::sync::Mutex::new(rt),
         });
         ql.initialize_schema()?;
+        ql.migrate_schema()?;
         Ok(ql)
     }
 
@@ -149,14 +152,15 @@ impl QueryLog {
         rt.block_on(async {
             sqlx::query(r#"
                 CREATE TABLE IF NOT EXISTS query_log (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp    INTEGER NOT NULL,
-                    client_ip    TEXT    NOT NULL,
-                    domain       TEXT    NOT NULL,
-                    query_type   TEXT    NOT NULL,
-                    resolved_ip  TEXT,
-                    blocked      INTEGER NOT NULL DEFAULT 0,
-                    response_ms  INTEGER NOT NULL DEFAULT 0
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp      INTEGER NOT NULL,
+                    client_ip      TEXT    NOT NULL,
+                    domain         TEXT    NOT NULL,
+                    query_type     TEXT    NOT NULL,
+                    resolved_ip    TEXT,
+                    blocked        INTEGER NOT NULL DEFAULT 0,
+                    response_ms    INTEGER NOT NULL DEFAULT 0,
+                    dnssec_status  TEXT
                 );
             "#).execute(&self.pool).await?;
 
@@ -182,6 +186,19 @@ impl QueryLog {
         Ok(())
     }
 
+    /// Add columns introduced after initial schema creation (idempotent).
+    fn migrate_schema(&self) -> Result<()> {
+        let rt = self.rt.lock().expect("query_log runtime mutex poisoned");
+        rt.block_on(async {
+            // Ignore error – column already exists on fresh DBs.
+            let _ = sqlx::query(
+                "ALTER TABLE query_log ADD COLUMN dnssec_status TEXT"
+            ).execute(&self.pool).await;
+            Ok::<_, sqlx::Error>(())
+        })?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Write
     // -----------------------------------------------------------------------
@@ -196,6 +213,21 @@ impl QueryLog {
         blocked: bool,
         response_ms: i64,
     ) {
+        self.log_query_with_dnssec(client_ip, domain, query_type, resolved_ip, blocked, response_ms, None);
+    }
+
+    /// Like [`log_query`] but also records the DNSSEC validation status
+    /// (`"SECURE"`, `"BOGUS"`, `"INDETERMINATE"`, or `None`).
+    pub fn log_query_with_dnssec(
+        &self,
+        client_ip: &str,
+        domain: &str,
+        query_type: &str,
+        resolved_ip: Option<&str>,
+        blocked: bool,
+        response_ms: i64,
+        dnssec_status: Option<&str>,
+    ) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -207,6 +239,7 @@ impl QueryLog {
         let domain = domain.to_string();
         let query_type = query_type.to_string();
         let resolved_ip = resolved_ip.map(|s| s.to_string());
+        let dnssec_status = dnssec_status.map(|s| s.to_string());
 
         let rt = match self.rt.lock() {
             Ok(r) => r,
@@ -215,8 +248,9 @@ impl QueryLog {
 
         let _ = rt.block_on(async {
             let _ = sqlx::query(
-                "INSERT INTO query_log (timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO query_log \
+                 (timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(now)
             .bind(&client_ip)
@@ -225,6 +259,7 @@ impl QueryLog {
             .bind(resolved_ip.as_deref())
             .bind(blocked_i)
             .bind(response_ms)
+            .bind(dnssec_status.as_deref())
             .execute(&self.pool)
             .await;
 
@@ -258,7 +293,7 @@ impl QueryLog {
         rt.block_on(async {
             // Build query dynamically based on filters
             let mut query_str = String::from(
-                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms \
+                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status \
                  FROM query_log WHERE 1=1"
             );
             if client_filter.is_some() {
@@ -282,14 +317,15 @@ impl QueryLog {
             rows.iter().map(|row| {
                 let blocked_i: i64 = row.get::<i64, _>(6);
                 QueryLogEntry {
-                    id:          row.get::<i64, _>(0),
-                    timestamp:   row.get::<i64, _>(1),
-                    client_ip:   row.get::<String, _>(2),
-                    domain:      row.get::<String, _>(3),
-                    query_type:  row.get::<String, _>(4),
-                    resolved_ip: row.get::<Option<String>, _>(5),
-                    blocked:     blocked_i != 0,
-                    response_ms: row.get::<i64, _>(7),
+                    id:            row.get::<i64, _>(0),
+                    timestamp:     row.get::<i64, _>(1),
+                    client_ip:     row.get::<String, _>(2),
+                    domain:        row.get::<String, _>(3),
+                    query_type:    row.get::<String, _>(4),
+                    resolved_ip:   row.get::<Option<String>, _>(5),
+                    blocked:       blocked_i != 0,
+                    response_ms:   row.get::<i64, _>(7),
+                    dnssec_status: row.get::<Option<String>, _>(8),
                 }
             }).collect()
         })
@@ -304,7 +340,7 @@ impl QueryLog {
 
         rt.block_on(async {
             let rows = sqlx::query(
-                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms \
+                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status \
                  FROM query_log WHERE timestamp >= ? ORDER BY timestamp DESC"
             )
             .bind(since)
@@ -315,14 +351,15 @@ impl QueryLog {
             rows.iter().map(|row| {
                 let blocked_i: i64 = row.get::<i64, _>(6);
                 QueryLogEntry {
-                    id:          row.get::<i64, _>(0),
-                    timestamp:   row.get::<i64, _>(1),
-                    client_ip:   row.get::<String, _>(2),
-                    domain:      row.get::<String, _>(3),
-                    query_type:  row.get::<String, _>(4),
-                    resolved_ip: row.get::<Option<String>, _>(5),
-                    blocked:     blocked_i != 0,
-                    response_ms: row.get::<i64, _>(7),
+                    id:            row.get::<i64, _>(0),
+                    timestamp:     row.get::<i64, _>(1),
+                    client_ip:     row.get::<String, _>(2),
+                    domain:        row.get::<String, _>(3),
+                    query_type:    row.get::<String, _>(4),
+                    resolved_ip:   row.get::<Option<String>, _>(5),
+                    blocked:       blocked_i != 0,
+                    response_ms:   row.get::<i64, _>(7),
+                    dnssec_status: row.get::<Option<String>, _>(8),
                 }
             }).collect()
         })

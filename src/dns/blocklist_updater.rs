@@ -233,6 +233,11 @@ impl BlocklistUpdater {
         self.entries.read().clone()
     }
 
+    /// Sum of `domains_count` across all active blocklist entries.
+    pub fn total_blocked_domains(&self) -> usize {
+        self.entries.read().iter().map(|e| e.domains_count).sum()
+    }
+
     /// Force an immediate re-fetch for the entry with the given ID.
     ///
     /// Returns the total number of domains loaded, or an error string.

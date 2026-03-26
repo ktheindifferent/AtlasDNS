@@ -516,6 +516,133 @@ impl SplitHorizonHandler {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// LocalRecordStore — simple internal zone records with wildcard support
+// ---------------------------------------------------------------------------
+
+/// A single local DNS record (used for internal zones like home.lan).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalRecord {
+    /// Fully-qualified domain name (may start with `*.` for wildcards).
+    pub name: String,
+    /// Record type: "A", "AAAA", "CNAME", "TXT"
+    pub record_type: String,
+    /// Record value (IP address, hostname, or text).
+    pub value: String,
+    /// Time-to-live in seconds.
+    pub ttl: u32,
+}
+
+impl LocalRecord {
+    /// Returns `true` if this is a wildcard record (`*.example.com`).
+    pub fn is_wildcard(&self) -> bool {
+        self.name.starts_with("*.")
+    }
+
+    /// The suffix that a wildcard record covers (e.g. `home.lan` for `*.home.lan`).
+    pub fn wildcard_suffix(&self) -> Option<&str> {
+        self.name.strip_prefix("*.")
+    }
+
+    /// Returns `true` if this record matches the given query name.
+    /// Exact records match only themselves; wildcard records match any
+    /// single-label subdomain of their suffix.
+    pub fn matches(&self, query: &str) -> bool {
+        if let Some(suffix) = self.wildcard_suffix() {
+            // `query` must end with `.suffix` and have exactly one label before it.
+            if let Some(rest) = query.strip_suffix(&format!(".{}", suffix)) {
+                return !rest.is_empty() && !rest.contains('.');
+            }
+            false
+        } else {
+            self.name.eq_ignore_ascii_case(query)
+        }
+    }
+
+    /// Convert to a [`DnsRecord`] for use in responses.
+    pub fn to_dns_record(&self) -> Result<DnsRecord, DnsError> {
+        let ttl = TransientTtl(self.ttl);
+        match self.record_type.to_uppercase().as_str() {
+            "A" => {
+                let addr: Ipv4Addr = self.value.parse().map_err(|_| DnsError::InvalidInput)?;
+                Ok(DnsRecord::A { domain: self.name.clone(), addr, ttl })
+            }
+            "AAAA" => {
+                let addr: Ipv6Addr = self.value.parse().map_err(|_| DnsError::InvalidInput)?;
+                Ok(DnsRecord::Aaaa { domain: self.name.clone(), addr, ttl })
+            }
+            "CNAME" => Ok(DnsRecord::Cname {
+                domain: self.name.clone(),
+                host: self.value.clone(),
+                ttl,
+            }),
+            "TXT" => Ok(DnsRecord::Txt {
+                domain: self.name.clone(),
+                data: self.value.clone(),
+                ttl,
+            }),
+            _ => Err(DnsError::InvalidInput),
+        }
+    }
+}
+
+/// Thread-safe store for local DNS records with wildcard and override support.
+///
+/// Records whose name starts with `*.` are wildcard records; all others
+/// require an exact match.  Override records force a particular resolution
+/// even when the name exists in an upstream zone.
+pub struct LocalRecordStore {
+    records: Arc<RwLock<Vec<LocalRecord>>>,
+}
+
+impl Default for LocalRecordStore {
+    fn default() -> Self { Self::new() }
+}
+
+impl LocalRecordStore {
+    /// Create an empty store.
+    pub fn new() -> Self {
+        Self { records: Arc::new(RwLock::new(Vec::new())) }
+    }
+
+    /// Insert or replace a local record.
+    pub fn upsert(&self, record: LocalRecord) {
+        let mut recs = self.records.write();
+        recs.retain(|r| !r.name.eq_ignore_ascii_case(&record.name) || r.record_type != record.record_type);
+        recs.push(record);
+    }
+
+    /// Remove all records whose name matches exactly.
+    pub fn remove(&self, name: &str) {
+        self.records.write().retain(|r| !r.name.eq_ignore_ascii_case(name));
+    }
+
+    /// Return a snapshot of all stored records.
+    pub fn list(&self) -> Vec<LocalRecord> {
+        self.records.read().clone()
+    }
+
+    /// Look up records for `query`, honouring wildcards and overrides.
+    /// Returns all matching records (may be empty).
+    pub fn lookup(&self, query: &str) -> Vec<DnsRecord> {
+        let recs = self.records.read();
+        recs.iter()
+            .filter(|r| r.matches(query))
+            .filter_map(|r| {
+                // For wildcard hits, rewrite the domain to the actual query name.
+                if r.is_wildcard() {
+                    let mut rewritten = r.clone();
+                    rewritten.name = query.to_string();
+                    rewritten.to_dns_record().ok()
+                } else {
+                    r.to_dns_record().ok()
+                }
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

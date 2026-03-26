@@ -260,6 +260,30 @@ impl SecurityManager {
         self.firewall.remove_from_blocklist(domains)
     }
 
+    // ---------------------------------------------------------------------------
+    // Allowlist CRUD
+    // ---------------------------------------------------------------------------
+
+    /// Add a domain or wildcard (e.g. `*.local`) to the per-domain allowlist.
+    pub fn add_domain_to_allowlist(&self, domain: &str) -> Result<(), DnsError> {
+        self.firewall.add_domain_to_allowlist(domain)
+    }
+
+    /// Remove a domain or wildcard from the allowlist. Returns `true` if found.
+    pub fn remove_domain_from_allowlist(&self, domain: &str) -> bool {
+        self.firewall.remove_domain_from_allowlist(domain)
+    }
+
+    /// Return all allowlisted domains and wildcard patterns sorted alphabetically.
+    pub fn list_allowlist_domains(&self) -> Vec<String> {
+        self.firewall.list_allowlist_domains()
+    }
+
+    /// Seed the allowlist with default local-network patterns.
+    pub fn init_local_defaults(&self) {
+        self.firewall.init_local_defaults();
+    }
+
     /// Unblock client
     pub fn unblock_client(&self, client_ip: IpAddr) {
         self.rate_limiter.unblock_client(client_ip);

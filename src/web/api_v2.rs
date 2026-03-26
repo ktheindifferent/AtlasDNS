@@ -22,6 +22,7 @@ use serde_json::{json, Value};
 use tiny_http::{Request, Response, Method, StatusCode};
 
 use crate::dns::protocol::DnsRecord;
+use crate::dns::security::firewall::ThreatCategory;
 use crate::dns::context::ServerContext;
 use crate::web::{WebError, handle_json_response};
 use crate::web::blocklists::BlocklistApiHandler;
@@ -328,6 +329,11 @@ impl ApiV2Handler {
             (Method::Post, ["local-records"]) => self.create_local_record(request),
             (Method::Delete, ["local-records", id]) => self.delete_local_record(id),
 
+            // Split-horizon local records alias (PUT /api/v2/records/local)
+            (Method::Get, ["records", "local"]) => self.list_local_records(),
+            (Method::Put, ["records", "local"]) => self.create_local_record(request),
+            (Method::Post, ["records", "local"]) => self.create_local_record(request),
+
             // Query log and device tracking
             (Method::Get, ["query-log"]) => self.get_query_log(request),
             (Method::Get, ["clients"]) => self.get_clients(),
@@ -337,6 +343,18 @@ impl ApiV2Handler {
             // Dashboard statistics
             (Method::Get, ["stats", "summary"]) => self.get_stats_summary(),
             (Method::Get, ["stats", "timeline"]) => self.get_stats_timeline(request),
+
+            // Allowlist management (overrides blocklists)
+            (Method::Get, ["allowlist"]) => self.list_allowlist(),
+            (Method::Post, ["allowlist"]) => self.add_to_allowlist(request),
+            (Method::Delete, ["allowlist", domain]) => self.remove_from_allowlist(domain),
+
+            // Config import from Pi-hole / AdGuard Home
+            (Method::Post, ["import", "pihole"]) => self.import_pihole(request),
+            (Method::Post, ["import", "adguard"]) => self.import_adguard(request),
+
+            // DNSSEC global validation status
+            (Method::Get, ["dnssec", "status"]) => self.get_dnssec_validation_status(),
 
             // Health check
             (Method::Get, ["health"]) => self.health_check(),
@@ -1772,7 +1790,7 @@ impl ApiV2Handler {
     fn get_dnssec_stats(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
         let stats = self.context.authority.get_dnssec_stats()
             .map_err(|_| WebError::InternalError("Failed to get DNSSEC stats".to_string()))?;
-        
+
         let response = ApiResponse {
             success: true,
             data: Some(stats),
@@ -1781,5 +1799,419 @@ impl ApiV2Handler {
         };
         handle_json_response(&response, StatusCode(200))
     }
+
+    // -------------------------------------------------------------------------
+    // Task 1: DNSSEC global validation status
+    // -------------------------------------------------------------------------
+
+    fn get_dnssec_validation_status(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let status = self.context.authority.get_dnssec_validation_status();
+        let response = ApiResponse {
+            success: true,
+            data: Some(status),
+            error: None,
+            meta: None,
+        };
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 3: Allowlist / whitelist management
+    // -------------------------------------------------------------------------
+
+    fn list_allowlist(&self) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        let domains = self.context.security_manager.list_allowlist_domains();
+        let response = ApiResponse {
+            success: true,
+            data: Some(json!({ "domains": domains, "total": domains.len() })),
+            error: None,
+            meta: None,
+        };
+        handle_json_response(&response, StatusCode(200))
+    }
+
+    fn add_to_allowlist(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        #[derive(serde::Deserialize)]
+        struct Req { domain: String }
+        let body: Req = self.parse_json_body(request)?;
+        self.context.security_manager
+            .add_domain_to_allowlist(&body.domain)
+            .map_err(|e| WebError::InternalError(e.to_string()))?;
+        log::info!("Allowlist: added '{}'", body.domain);
+        let response = json!({ "success": true, "data": { "domain": body.domain } });
+        handle_json_response(&response, StatusCode(201))
+    }
+
+    fn remove_from_allowlist(&self, domain: &str) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        // Percent-decode the domain segment (%2A → *, %2E → . etc.)
+        let decoded: String = percent_decode(domain);
+        if self.context.security_manager.remove_domain_from_allowlist(&decoded) {
+            log::info!("Allowlist: removed '{}'", decoded);
+            let response = json!({ "success": true });
+            handle_json_response(&response, StatusCode(200))
+        } else {
+            self.error_response("Domain not found in allowlist", StatusCode(404))
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 4: Pi-hole import
+    // -------------------------------------------------------------------------
+
+    fn import_pihole(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        use std::io::Read;
+
+        let mut body = Vec::new();
+        request.as_reader().read_to_end(&mut body)
+            .map_err(|e| WebError::InternalError(e.to_string()))?;
+
+        let result = parse_pihole_backup(&body);
+        match result {
+            Ok(imported) => {
+                let mut blocked_added = 0usize;
+                let mut allowed_added = 0usize;
+                let mut records_added = 0usize;
+
+                // Import blocklists
+                for url in &imported.adlists {
+                    if let Some(updater) = &self.context.blocklist_updater {
+                        let _ = updater.add_entry(url.clone(), ThreatCategory::Adware, 24, None);
+                        blocked_added += 1;
+                    }
+                }
+
+                // Import whitelist
+                for domain in &imported.whitelist {
+                    let _ = self.context.security_manager.add_domain_to_allowlist(domain);
+                    allowed_added += 1;
+                }
+
+                // Import local DNS records
+                for (ip, hostname) in &imported.local_dns {
+                    if let Ok(addr) = ip.parse::<std::net::Ipv4Addr>() {
+                        let _ = self.context.authority.add_a_record("local", hostname, addr, 300);
+                        records_added += 1;
+                    } else if let Ok(addr) = ip.parse::<std::net::Ipv6Addr>() {
+                        let _ = self.context.authority.add_aaaa_record("local", hostname, addr, 300);
+                        records_added += 1;
+                    }
+                }
+
+                log::info!("Pi-hole import: {} blocklists, {} allowlist domains, {} local DNS records",
+                    blocked_added, allowed_added, records_added);
+
+                let response = json!({
+                    "success": true,
+                    "data": {
+                        "blocklists_imported": blocked_added,
+                        "allowlist_imported": allowed_added,
+                        "local_records_imported": records_added
+                    }
+                });
+                handle_json_response(&response, StatusCode(200))
+            }
+            Err(e) => self.error_response(&format!("Pi-hole import failed: {}", e), StatusCode(400)),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Task 4: AdGuard Home import
+    // -------------------------------------------------------------------------
+
+    fn import_adguard(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
+        use std::io::Read;
+
+        let mut body = Vec::new();
+        request.as_reader().read_to_end(&mut body)
+            .map_err(|e| WebError::InternalError(e.to_string()))?;
+
+        let result = parse_adguard_config(&body);
+        match result {
+            Ok(imported) => {
+                let mut blocked_added = 0usize;
+                let mut allowed_added = 0usize;
+                let mut records_added = 0usize;
+
+                // Import filter lists as blocklists
+                for url in &imported.filter_urls {
+                    if let Some(updater) = &self.context.blocklist_updater {
+                        let _ = updater.add_entry(url.clone(), ThreatCategory::Adware, 24, None);
+                        blocked_added += 1;
+                    }
+                }
+
+                // Import user rules: @@|| prefix = allowlist, || prefix = blocklist
+                for domain in &imported.allowlist_domains {
+                    let _ = self.context.security_manager.add_domain_to_allowlist(domain);
+                    allowed_added += 1;
+                }
+
+                // Import DNS rewrites as local records
+                for (hostname, answer) in &imported.dns_rewrites {
+                    if let Ok(addr) = answer.parse::<std::net::Ipv4Addr>() {
+                        let _ = self.context.authority.add_a_record("local", hostname, addr, 300);
+                        records_added += 1;
+                    } else if let Ok(addr) = answer.parse::<std::net::Ipv6Addr>() {
+                        let _ = self.context.authority.add_aaaa_record("local", hostname, addr, 300);
+                        records_added += 1;
+                    }
+                }
+
+                log::info!("AdGuard import: {} filter lists, {} allow rules, {} DNS rewrites",
+                    blocked_added, allowed_added, records_added);
+
+                let response = json!({
+                    "success": true,
+                    "data": {
+                        "filter_lists_imported": blocked_added,
+                        "allowlist_imported": allowed_added,
+                        "dns_rewrites_imported": records_added
+                    }
+                });
+                handle_json_response(&response, StatusCode(200))
+            }
+            Err(e) => self.error_response(&format!("AdGuard import failed: {}", e), StatusCode(400)),
+        }
+    }
+}
+
+// =============================================================================
+// Import parsers (Pi-hole and AdGuard Home)
+// =============================================================================
+
+struct PiholeImport {
+    adlists: Vec<String>,
+    whitelist: Vec<String>,
+    /// (ip, hostname) pairs from custom.list
+    local_dns: Vec<(String, String)>,
+}
+
+struct AdguardImport {
+    filter_urls: Vec<String>,
+    allowlist_domains: Vec<String>,
+    dns_rewrites: Vec<(String, String)>,
+}
+
+/// Parse a Pi-hole teleporter backup (ZIP archive or raw JSON).
+///
+/// Supported inputs:
+/// - ZIP bytes containing `adlist.json`, `whitelist.json`, `custom.list`
+/// - Raw JSON: `{"adlists":[...],"whitelist":[...],"local_dns":[...]}`
+fn parse_pihole_backup(data: &[u8]) -> Result<PiholeImport, String> {
+    // Try ZIP first
+    if data.starts_with(b"PK") {
+        return parse_pihole_zip(data);
+    }
+    // Fall back to JSON body
+    parse_pihole_json(data)
+}
+
+fn parse_pihole_zip(data: &[u8]) -> Result<PiholeImport, String> {
+    use std::io::Read;
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| format!("Invalid ZIP: {}", e))?;
+
+    let mut adlists: Vec<String> = Vec::new();
+    let mut whitelist: Vec<String> = Vec::new();
+    let mut local_dns: Vec<(String, String)> = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = file.name().to_string();
+        let mut contents = String::new();
+        let _ = file.read_to_string(&mut contents);
+
+        if name.ends_with("adlist.json") {
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&contents) {
+                for item in arr {
+                    if item.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true) {
+                        if let Some(url) = item.get("address").and_then(|v| v.as_str()) {
+                            adlists.push(url.to_string());
+                        }
+                    }
+                }
+            }
+        } else if name.ends_with("whitelist.json") {
+            if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&contents) {
+                for item in arr {
+                    if item.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true) {
+                        if let Some(domain) = item.get("domain").and_then(|v| v.as_str()) {
+                            whitelist.push(domain.to_string());
+                        }
+                    }
+                }
+            }
+        } else if name.ends_with("custom.list") {
+            for line in contents.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') { continue; }
+                let parts: Vec<&str> = line.splitn(2, char::is_whitespace).collect();
+                if parts.len() == 2 {
+                    local_dns.push((parts[0].to_string(), parts[1].trim().to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(PiholeImport { adlists, whitelist, local_dns })
+}
+
+fn parse_pihole_json(data: &[u8]) -> Result<PiholeImport, String> {
+    let v: serde_json::Value = serde_json::from_slice(data)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let adlists = v.get("adlists")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(|u| u.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let whitelist = v.get("whitelist")
+        .and_then(|a| a.as_array())
+        .map(|arr| arr.iter().filter_map(|u| u.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    let local_dns = v.get("local_dns")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter().filter_map(|item| {
+                let ip = item.get("ip").and_then(|v| v.as_str())?;
+                let host = item.get("host").and_then(|v| v.as_str())?;
+                Some((ip.to_string(), host.to_string()))
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    Ok(PiholeImport { adlists, whitelist, local_dns })
+}
+
+/// Parse an AdGuard Home config (YAML or JSON).
+fn parse_adguard_config(data: &[u8]) -> Result<AdguardImport, String> {
+    // Try YAML first (AdGuard native format)
+    if let Ok(v) = serde_yaml::from_slice::<serde_yaml::Value>(data) {
+        return parse_adguard_yaml(&v);
+    }
+    // Fall back to JSON
+    let v: serde_json::Value = serde_json::from_slice(data)
+        .map_err(|e| format!("Failed to parse AdGuard config (YAML/JSON): {}", e))?;
+    parse_adguard_json(&v)
+}
+
+fn parse_adguard_yaml(v: &serde_yaml::Value) -> Result<AdguardImport, String> {
+    let mut filter_urls: Vec<String> = Vec::new();
+    let mut allowlist_domains: Vec<String> = Vec::new();
+    let mut dns_rewrites: Vec<(String, String)> = Vec::new();
+
+    // filters[].url where enabled == true
+    if let Some(filters) = v.get("filters").and_then(|f| f.as_sequence()) {
+        for f in filters {
+            let enabled = f.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+            if enabled {
+                if let Some(url) = f.get("url").and_then(|u| u.as_str()) {
+                    filter_urls.push(url.to_string());
+                }
+            }
+        }
+    }
+
+    // user_rules[]: @@|| prefix = allow, ||domain^ = block (ignore blocklist rules here)
+    if let Some(rules) = v.get("user_rules").and_then(|r| r.as_sequence()) {
+        for rule in rules {
+            if let Some(s) = rule.as_str() {
+                if let Some(domain) = extract_adguard_allow_domain(s) {
+                    allowlist_domains.push(domain);
+                }
+            }
+        }
+    }
+
+    // dns.rewrites[]: {domain, answer}
+    if let Some(dns) = v.get("dns") {
+        if let Some(rewrites) = dns.get("rewrites").and_then(|r| r.as_sequence()) {
+            for rw in rewrites {
+                let domain = rw.get("domain").and_then(|d| d.as_str());
+                let answer = rw.get("answer").and_then(|a| a.as_str());
+                if let (Some(d), Some(a)) = (domain, answer) {
+                    dns_rewrites.push((d.to_string(), a.to_string()));
+                }
+            }
+        }
+    }
+
+    Ok(AdguardImport { filter_urls, allowlist_domains, dns_rewrites })
+}
+
+fn parse_adguard_json(v: &serde_json::Value) -> Result<AdguardImport, String> {
+    let mut filter_urls: Vec<String> = Vec::new();
+    let mut allowlist_domains: Vec<String> = Vec::new();
+    let mut dns_rewrites: Vec<(String, String)> = Vec::new();
+
+    if let Some(filters) = v.get("filters").and_then(|f| f.as_array()) {
+        for f in filters {
+            let enabled = f.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+            if enabled {
+                if let Some(url) = f.get("url").and_then(|u| u.as_str()) {
+                    filter_urls.push(url.to_string());
+                }
+            }
+        }
+    }
+
+    if let Some(rules) = v.get("user_rules").and_then(|r| r.as_array()) {
+        for rule in rules {
+            if let Some(s) = rule.as_str() {
+                if let Some(domain) = extract_adguard_allow_domain(s) {
+                    allowlist_domains.push(domain);
+                }
+            }
+        }
+    }
+
+    if let Some(rewrites) = v.get("dns_rewrites").and_then(|r| r.as_array()) {
+        for rw in rewrites {
+            let domain = rw.get("domain").and_then(|d| d.as_str());
+            let answer = rw.get("answer").and_then(|a| a.as_str());
+            if let (Some(d), Some(a)) = (domain, answer) {
+                dns_rewrites.push((d.to_string(), a.to_string()));
+            }
+        }
+    }
+
+    Ok(AdguardImport { filter_urls, allowlist_domains, dns_rewrites })
+}
+
+/// Extract the domain from an AdGuard allowlist rule like `@@||example.com^`.
+fn extract_adguard_allow_domain(rule: &str) -> Option<String> {
+    let r = rule.trim();
+    if r.starts_with("@@||") {
+        let rest = r.trim_start_matches("@@||");
+        let domain = rest.trim_end_matches('^').trim_end_matches('/');
+        if !domain.is_empty() {
+            return Some(domain.to_string());
+        }
+    }
+    None
+}
+
+/// Minimal percent-decode for URL path segments (handles %2A, %2E, etc.)
+fn percent_decode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (
+                (bytes[i + 1] as char).to_digit(16),
+                (bytes[i + 2] as char).to_digit(16),
+            ) {
+                out.push((((h << 4) | l) as u8) as char);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
 }
 

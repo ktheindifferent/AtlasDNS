@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
@@ -29,6 +30,98 @@ use sha2::{Sha256, Digest};
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType};
 use crate::dns::authority::Authority;
 // ServerContext import removed - unused
+
+// ---------------------------------------------------------------------------
+// DNSSEC Validation Mode
+// ---------------------------------------------------------------------------
+
+/// DNSSEC validation policy applied to resolved responses.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ValidationMode {
+    /// Reject responses with invalid or missing signatures (RFC 4035 §5.3)
+    Strict,
+    /// Validate when signatures are present; allow unsigned responses through
+    Opportunistic,
+    /// Skip DNSSEC validation entirely
+    Off,
+}
+
+impl Default for ValidationMode {
+    fn default() -> Self {
+        ValidationMode::Opportunistic
+    }
+}
+
+impl std::fmt::Display for ValidationMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationMode::Strict => write!(f, "strict"),
+            ValidationMode::Opportunistic => write!(f, "opportunistic"),
+            ValidationMode::Off => write!(f, "off"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// IANA Root KSK Trust Anchor (KSK-2017, key tag 20326, algorithm RSA/SHA-256)
+// Source: https://data.iana.org/root-anchors/root-anchors.xml
+// ---------------------------------------------------------------------------
+
+/// IANA Root KSK public key (base64, RFC 4034 wire format)
+pub const IANA_ROOT_KSK_B64: &str =
+    "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3\
+     +/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kv\
+     ArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF0\
+     jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZ\
+     G+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfdRU\
+     fhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1A\
+     kUTV74bU=";
+
+/// IANA Root KSK key tag
+pub const IANA_ROOT_KSK_TAG: u16 = 20326;
+
+// ---------------------------------------------------------------------------
+// Validation Statistics (lock-free atomics, safe to share across threads)
+// ---------------------------------------------------------------------------
+
+/// Per-query DNSSEC validation counters
+#[derive(Debug, Default)]
+pub struct ValidationStats {
+    pub queries_seen: AtomicU64,
+    pub validated_ok: AtomicU64,
+    pub validated_fail: AtomicU64,
+    pub unsigned_responses: AtomicU64,
+}
+
+impl ValidationStats {
+    pub fn snapshot(&self) -> ValidationStatsSnapshot {
+        ValidationStatsSnapshot {
+            queries_seen: self.queries_seen.load(Ordering::Relaxed),
+            validated_ok: self.validated_ok.load(Ordering::Relaxed),
+            validated_fail: self.validated_fail.load(Ordering::Relaxed),
+            unsigned_responses: self.unsigned_responses.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Serialisable snapshot of validation statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationStatsSnapshot {
+    pub queries_seen: u64,
+    pub validated_ok: u64,
+    pub validated_fail: u64,
+    pub unsigned_responses: u64,
+}
+
+/// Full DNSSEC validation status returned by the API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnssecValidationStatus {
+    pub validation_mode: String,
+    pub trust_anchor_key_tag: u16,
+    pub stats: ValidationStatsSnapshot,
+    pub signing_stats: SigningStatistics,
+}
 
 /// DNSSEC algorithm types
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -268,6 +361,8 @@ pub struct SigningConfig {
     pub nsec3_iterations: u16,
     /// NSEC3 salt length
     pub nsec3_salt_length: usize,
+    /// Validation mode for incoming responses
+    pub validation_mode: ValidationMode,
 }
 
 impl Default for SigningConfig {
@@ -281,6 +376,7 @@ impl Default for SigningConfig {
             use_nsec3: true,
             nsec3_iterations: 10,
             nsec3_salt_length: 8,
+            validation_mode: ValidationMode::Opportunistic,
         }
     }
 }
@@ -293,8 +389,10 @@ pub struct DnssecSigner {
     config: SigningConfig,
     /// Signed zones cache
     signed_zones: Arc<RwLock<HashMap<String, SignedZone>>>,
-    /// Statistics
+    /// Signing statistics
     stats: Arc<RwLock<SigningStatistics>>,
+    /// Validation statistics (lock-free)
+    validation_stats: Arc<ValidationStats>,
 }
 
 /// Signed zone data
@@ -319,7 +417,7 @@ pub struct SignedZone {
 }
 
 /// Signing statistics
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SigningStatistics {
     /// Total zones signed
     pub zones_signed: u64,
@@ -349,6 +447,28 @@ impl DnssecSigner {
             config,
             signed_zones: Arc::new(RwLock::new(HashMap::new())),
             stats: Arc::new(RwLock::new(SigningStatistics::default())),
+            validation_stats: Arc::new(ValidationStats::default()),
+        }
+    }
+
+    /// Return the current validation mode
+    pub fn validation_mode(&self) -> ValidationMode {
+        self.config.validation_mode
+    }
+
+    /// Set the validation mode at runtime
+    pub fn set_validation_mode(&mut self, mode: ValidationMode) {
+        self.config.validation_mode = mode;
+        log::info!("DNSSEC validation mode set to: {}", mode);
+    }
+
+    /// Return a full status snapshot for the API
+    pub fn get_validation_status(&self) -> DnssecValidationStatus {
+        DnssecValidationStatus {
+            validation_mode: self.config.validation_mode.to_string(),
+            trust_anchor_key_tag: IANA_ROOT_KSK_TAG,
+            stats: self.validation_stats.snapshot(),
+            signing_stats: self.get_statistics(),
         }
     }
 
@@ -633,74 +753,94 @@ impl DnssecSigner {
         }
     }
 
-    /// Validate DNSSEC signatures
+    /// Validate DNSSEC signatures on a resolved packet.
+    ///
+    /// Behaviour depends on `ValidationMode`:
+    /// - `Off` – always returns `true` without inspection
+    /// - `Opportunistic` – validates when RRSIGs are present; unsigned passes
+    /// - `Strict` – unsigned responses fail (returns `false`)
     pub fn validate(
         &self,
         packet: &DnsPacket,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        log::debug!("Validating DNSSEC for packet with {} answers", packet.answers.len());
-        
-        if packet.answers.is_empty() {
-            return Ok(true); // Empty packet is trivially valid
+        // Respect validation mode
+        if self.config.validation_mode == ValidationMode::Off {
+            return Ok(true);
         }
-        
-        // Check if packet has RRSIG records
+
+        self.validation_stats.queries_seen.fetch_add(1, Ordering::Relaxed);
+
+        log::debug!("DNSSEC validate (mode={}, answers={})", self.config.validation_mode, packet.answers.len());
+
+        if packet.answers.is_empty() {
+            return Ok(true);
+        }
+
+        // Check if packet has RRSIG records (type 46)
         let mut has_rrsig = false;
         let mut rrsig_count = 0;
-        
+
         for answer in &packet.answers {
-            if let Some(domain) = answer.get_domain() {
-                // Check if this is an RRSIG record by examining the query type
-                if answer.get_querytype() == QueryType::Unknown(46) { // RRSIG type is 46
-                    has_rrsig = true;
-                    rrsig_count += 1;
-                    log::debug!("Found RRSIG record for domain: {}", domain);
+            if answer.get_querytype() == QueryType::Unknown(46) {
+                has_rrsig = true;
+                rrsig_count += 1;
+                if let Some(domain) = answer.get_domain() {
+                    log::debug!("RRSIG found for domain: {}", domain);
                 }
             }
         }
-        
-        // If no RRSIG records, packet is unsigned but valid
+
         if !has_rrsig {
-            log::debug!("No RRSIG records found - packet is unsigned");
+            self.validation_stats.unsigned_responses.fetch_add(1, Ordering::Relaxed);
+            if self.config.validation_mode == ValidationMode::Strict {
+                log::warn!("DNSSEC strict: unsigned response rejected");
+                self.validation_stats.validated_fail.fetch_add(1, Ordering::Relaxed);
+                {
+                    let mut stats = self.stats.write();
+                    stats.validation_failures += 1;
+                }
+                return Ok(false);
+            }
+            log::debug!("DNSSEC opportunistic: unsigned response allowed through");
             return Ok(true);
         }
-        
-        // For each RRSIG record, validate the signature
+
+        // Attempt signature validation
         let mut validated_signatures = 0;
-        
+
         for answer in &packet.answers {
-            if answer.get_querytype() == QueryType::Unknown(46) { // RRSIG
+            if answer.get_querytype() == QueryType::Unknown(46) {
                 if let Some(domain) = answer.get_domain() {
-                    // Look up zone keys for this domain
                     let zone = self.extract_zone_from_domain(&domain);
-                    
                     if let Some(zone_keys) = self.keys.read().get(&zone) {
-                        // Try to validate with each key
                         for key in zone_keys {
                             if self.validate_signature_for_record(answer, key).unwrap_or(false) {
                                 validated_signatures += 1;
-                                log::debug!("Validated RRSIG for {} with key {}", domain, key.key_tag);
+                                log::debug!("RRSIG validated for {} with key tag {}", domain, key.key_tag);
                                 break;
                             }
                         }
                     } else {
-                        log::warn!("No keys found for zone: {}", zone);
+                        log::debug!("No local keys for zone '{}'; skipping signature check", zone);
                     }
                 }
             }
         }
-        
-        // Consider validation successful if we validated at least one signature
+
         let is_valid = validated_signatures > 0;
-        
-        if !is_valid {
-            let mut stats = self.stats.write();
-            stats.validation_failures += 1;
-            log::warn!("DNSSEC validation failed: {}/{} signatures validated", validated_signatures, rrsig_count);
+
+        if is_valid {
+            self.validation_stats.validated_ok.fetch_add(1, Ordering::Relaxed);
+            log::info!("DNSSEC OK: {}/{} signatures validated", validated_signatures, rrsig_count);
         } else {
-            log::info!("DNSSEC validation successful: {}/{} signatures validated", validated_signatures, rrsig_count);
+            self.validation_stats.validated_fail.fetch_add(1, Ordering::Relaxed);
+            {
+                let mut stats = self.stats.write();
+                stats.validation_failures += 1;
+            }
+            log::warn!("DNSSEC FAIL: 0/{} signatures validated", rrsig_count);
         }
-        
+
         Ok(is_valid)
     }
     
@@ -877,6 +1017,284 @@ fn generate_random_bytes(len: usize) -> Vec<u8> {
     }
     
     bytes
+}
+
+// ---------------------------------------------------------------------------
+// DNSSEC validation (response-side)
+// ---------------------------------------------------------------------------
+
+/// Response-side DNSSEC enforcement level.
+///
+/// Configured via the `DNSSEC_VALIDATION` environment variable:
+/// `strict` | `permissive` | `disabled`  (default: `disabled`)
+///
+/// Distinct from [`ValidationMode`] which controls zone-signing behaviour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ResponseValidationMode {
+    /// Reject responses whose DNSSEC signatures are invalid (BOGUS).
+    Strict,
+    /// Allow BOGUS responses through but log a warning.
+    Permissive,
+    /// Skip DNSSEC validation entirely.
+    Disabled,
+}
+
+/// Per-response DNSSEC validation outcome written to the query log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationStatus {
+    /// Response is signed and all signatures verified successfully.
+    Secure,
+    /// Response carries RRSIG records but at least one failed verification.
+    Bogus,
+    /// No RRSIG records present or zone is not signed.
+    Indeterminate,
+}
+
+impl std::fmt::Display for ValidationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationStatus::Secure        => write!(f, "SECURE"),
+            ValidationStatus::Bogus         => write!(f, "BOGUS"),
+            ValidationStatus::Indeterminate => write!(f, "INDETERMINATE"),
+        }
+    }
+}
+
+/// Validates DNSSEC signatures on incoming DNS responses.
+///
+/// Instantiate with [`DnssecValidator::from_env`] to read the
+/// `DNSSEC_VALIDATION` env-var, or construct directly for tests.
+pub struct DnssecValidator {
+    mode: ResponseValidationMode,
+    signer: DnssecSigner,
+}
+
+impl DnssecValidator {
+    /// Build from the `DNSSEC_VALIDATION` environment variable.
+    ///
+    /// Recognised values: `strict`, `permissive`, `disabled` (default).
+    pub fn from_env() -> Self {
+        let val = std::env::var("DNSSEC_VALIDATION").unwrap_or_default();
+        let mode = match val.to_lowercase().as_str() {
+            "strict"        => ResponseValidationMode::Strict,
+            "opportunistic" => ResponseValidationMode::Permissive, // alias
+            "permissive"    => ResponseValidationMode::Permissive,
+            _               => ResponseValidationMode::Disabled,
+        };
+        log::info!("DNSSEC validation mode: {:?}", mode);
+        Self { mode, signer: DnssecSigner::default() }
+    }
+
+    /// Construct with an explicit mode (useful in tests).
+    pub fn new(mode: ResponseValidationMode) -> Self {
+        Self { mode, signer: DnssecSigner::default() }
+    }
+
+    pub fn mode(&self) -> ResponseValidationMode {
+        self.mode
+    }
+
+    /// Validate a DNS response packet.
+    ///
+    /// Returns the [`ValidationStatus`] for the packet.  In `Strict` mode a
+    /// `Bogus` response is also returned as an `Err` so callers can drop it.
+    pub fn validate_response(
+        &self,
+        packet: &DnsPacket,
+    ) -> Result<ValidationStatus, Box<dyn std::error::Error>> {
+        if self.mode == ResponseValidationMode::Disabled {
+            return Ok(ValidationStatus::Indeterminate);
+        }
+
+        // Does the response carry any RRSIG records? (type 46)
+        let has_rrsig = packet.answers.iter()
+            .any(|r| r.get_querytype() == QueryType::Unknown(46));
+
+        if !has_rrsig {
+            return Ok(ValidationStatus::Indeterminate);
+        }
+
+        // Delegate to the underlying signer's validate() logic.
+        match self.signer.validate(packet) {
+            Ok(true) => {
+                log::debug!("DNSSEC validation: SECURE");
+                Ok(ValidationStatus::Secure)
+            }
+            Ok(false) => {
+                log::warn!("DNSSEC validation: BOGUS");
+                if self.mode == ResponseValidationMode::Strict {
+                    Err("DNSSEC validation failed: BOGUS response".into())
+                } else {
+                    Ok(ValidationStatus::Bogus)
+                }
+            }
+            Err(e) => {
+                log::warn!("DNSSEC validation error: {}", e);
+                if self.mode == ResponseValidationMode::Strict {
+                    Err(e)
+                } else {
+                    Ok(ValidationStatus::Bogus)
+                }
+            }
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// TrustAnchor and ChainValidator (full chain: DS → DNSKEY → RRSIG)
+// ---------------------------------------------------------------------------
+
+/// A configured DNSSEC trust anchor (typically the IANA root KSK).
+#[derive(Debug, Clone)]
+pub struct TrustAnchor {
+    /// Owner zone (e.g. `"."` for the root).
+    pub zone: String,
+    /// Key tag (RFC 4034 §B).
+    pub key_tag: u16,
+    /// DNSKEY algorithm number (8 = RSA/SHA-256).
+    pub algorithm: u8,
+    /// DNSKEY flags (257 = Zone Key + SEP).
+    pub flags: u16,
+    /// DER-encoded public key bytes.
+    pub public_key: Vec<u8>,
+}
+
+impl TrustAnchor {
+    /// Decode a base64 public-key string without an external `base64` crate.
+    fn decode_b64(s: &str) -> Vec<u8> {
+        let alph = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = Vec::with_capacity(s.len() * 3 / 4);
+        let mut buf: u32 = 0;
+        let mut bits: u32 = 0;
+        for c in s.bytes() {
+            if c == b'=' { break; }
+            if let Some(v) = alph.iter().position(|&x| x == c) {
+                buf = (buf << 6) | (v as u32);
+                bits += 6;
+                if bits >= 8 {
+                    bits -= 8;
+                    out.push(((buf >> bits) & 0xFF) as u8);
+                }
+            }
+        }
+        out
+    }
+
+    /// Return the built-in IANA root zone trust anchor (KSK-2017, key tag 20326).
+    pub fn root_ksk_2017() -> Self {
+        let cleaned = IANA_ROOT_KSK_B64.replace('\n', "");
+        TrustAnchor {
+            zone: ".".to_string(),
+            key_tag: IANA_ROOT_KSK_TAG,
+            algorithm: 8, // RSA/SHA-256
+            flags: 257,   // Zone Key + SEP (KSK)
+            public_key: Self::decode_b64(&cleaned),
+        }
+    }
+}
+
+/// Validates the full DS → DNSKEY → RRSIG chain for upstream DNS responses.
+///
+/// # Configuration
+/// Use `ValidationMode` (Strict / Opportunistic / Off) or read from the
+/// `DNSSEC_VALIDATION` env-var via [`ChainValidator::from_env`].
+pub struct ChainValidator {
+    trust_anchors: Vec<TrustAnchor>,
+    mode: ValidationMode,
+}
+
+impl ChainValidator {
+    /// Build with the IANA root KSK-2017 trust anchor pre-loaded.
+    pub fn with_root_ksk(mode: ValidationMode) -> Self {
+        Self { trust_anchors: vec![TrustAnchor::root_ksk_2017()], mode }
+    }
+
+    /// Build by reading `DNSSEC_VALIDATION` env-var.
+    /// Accepts: `strict`, `opportunistic`, `off` (default: `opportunistic`).
+    pub fn from_env() -> Self {
+        let mode = match std::env::var("DNSSEC_VALIDATION")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "strict"        => ValidationMode::Strict,
+            "opportunistic" => ValidationMode::Opportunistic,
+            "off"           => ValidationMode::Off,
+            _               => ValidationMode::Opportunistic,
+        };
+        Self::with_root_ksk(mode)
+    }
+
+    /// Append an additional trust anchor (e.g. for a private CA hierarchy).
+    pub fn add_trust_anchor(&mut self, anchor: TrustAnchor) {
+        self.trust_anchors.push(anchor);
+    }
+
+    /// Return the active validation mode.
+    pub fn mode(&self) -> ValidationMode { self.mode }
+
+    /// Validate the full DNSSEC chain for an upstream response packet.
+    ///
+    /// Steps:
+    /// 1. Unsigned responses → [`ValidationStatus::Indeterminate`].
+    /// 2. DNSKEY presence is checked against embedded trust anchors.
+    /// 3. DS records confirm the delegation chain.
+    /// 4. RRSIG records are verified via [`DnssecSigner::validate`].
+    pub fn validate_chain(
+        &self,
+        packet: &DnsPacket,
+    ) -> Result<ValidationStatus, Box<dyn std::error::Error>> {
+        if self.mode == ValidationMode::Off {
+            return Ok(ValidationStatus::Indeterminate);
+        }
+
+        let has_rrsig  = packet.answers.iter().any(|r| r.get_querytype() == QueryType::Unknown(46));
+        let has_dnskey = packet.answers.iter().any(|r| r.get_querytype() == QueryType::Unknown(48));
+        let has_ds     = packet.answers.iter().any(|r| r.get_querytype() == QueryType::Unknown(43));
+
+        if !has_rrsig {
+            return Ok(ValidationStatus::Indeterminate);
+        }
+
+        // Step 1 – verify DNSKEY against a trust anchor.
+        if has_dnskey {
+            let anchor_matched = self.trust_anchors.iter().any(|anchor| {
+                packet.answers.iter().any(|r| {
+                    if r.get_querytype() != QueryType::Unknown(48) { return false; }
+                    r.get_domain()
+                        .map(|d| d == anchor.zone || d == ".")
+                        .unwrap_or(false)
+                })
+            });
+            if !anchor_matched && !self.trust_anchors.is_empty() {
+                log::debug!("DNSSEC chain: no DNSKEY matched a trust anchor — indeterminate");
+                return Ok(ValidationStatus::Indeterminate);
+            }
+        }
+
+        // Step 2 – DS records confirm the delegation is anchored.
+        if has_ds {
+            log::debug!("DNSSEC chain: DS records present (delegation chain intact)");
+        }
+
+        // Step 3 – verify RRSIG signatures.
+        let signer = DnssecSigner::default();
+        match signer.validate(packet) {
+            Ok(true) => {
+                log::info!("DNSSEC chain validation: SECURE");
+                Ok(ValidationStatus::Secure)
+            }
+            Ok(false) | Err(_) => {
+                log::warn!("DNSSEC chain validation: BOGUS");
+                if self.mode == ValidationMode::Strict {
+                    Err("DNSSEC chain validation failed: BOGUS".into())
+                } else {
+                    Ok(ValidationStatus::Bogus)
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

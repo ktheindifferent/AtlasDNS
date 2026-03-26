@@ -76,6 +76,30 @@ impl Default for DoqConfig {
     }
 }
 
+impl DoqConfig {
+    /// Build from environment variables.
+    ///
+    /// - `DOQ_ENABLED=true`  — enable the DoQ listener (default: `false`)
+    /// - `DOQ_PORT=853`      — UDP port for QUIC (default: `853`)
+    pub fn from_env() -> Self {
+        let mut cfg = Self::default();
+
+        if let Ok(v) = std::env::var("DOQ_ENABLED") {
+            cfg.enabled = matches!(v.to_lowercase().as_str(), "1" | "true" | "yes");
+        }
+        if let Ok(v) = std::env::var("DOQ_PORT") {
+            if let Ok(port) = v.parse::<u16>() {
+                cfg.port = port;
+            }
+        }
+
+        if cfg.enabled {
+            log::info!("DoQ enabled on port {}", cfg.port);
+        }
+        cfg
+    }
+}
+
 /// DoQ connection statistics
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DoqConnectionStats {

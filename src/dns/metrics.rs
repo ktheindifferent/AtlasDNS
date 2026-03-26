@@ -406,6 +406,67 @@ lazy_static! {
         log::error!("Failed to register Prometheus metric: {}", e);
         IntCounterVec::new(prometheus::Opts::new("dummy_blocked", "dummy"), &["dummy"]).expect("dummy fallback")
     });
+
+    // -----------------------------------------------------------------------
+    // Short-name Prometheus metrics (used by standard Grafana dashboards)
+    // These mirror the detailed atlas_dns_* metrics above but use the
+    // conventional names expected by the provided Grafana dashboard JSON.
+    // -----------------------------------------------------------------------
+
+    /// Total DNS queries (labels: client IP, blocked flag)
+    pub static ref ATLAS_QUERIES_TOTAL: IntCounterVec = register_int_counter_vec!(
+        "atlas_queries_total",
+        "Total DNS queries processed",
+        &["client", "blocked"]
+    ).unwrap_or_else(|_| {
+        IntCounterVec::new(prometheus::Opts::new("dummy_aqt", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Total blocked DNS queries
+    pub static ref ATLAS_BLOCKED_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "atlas_blocked_total",
+        "Total number of blocked DNS queries"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_abt", "dummy").expect("dummy")
+    });
+
+    /// Cache hits counter
+    pub static ref ATLAS_CACHE_HITS_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "atlas_cache_hits_total",
+        "Total DNS cache hits"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_acht", "dummy").expect("dummy")
+    });
+
+    /// Cache misses counter
+    pub static ref ATLAS_CACHE_MISSES_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "atlas_cache_misses_total",
+        "Total DNS cache misses"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_acmt", "dummy").expect("dummy")
+    });
+
+    /// Number of domains currently in blocklist (gauge)
+    pub static ref ATLAS_BLOCKLIST_DOMAINS_TOTAL: prometheus::IntGauge = prometheus::register_int_gauge!(
+        "atlas_blocklist_domains_total",
+        "Number of domains currently in the blocklist"
+    ).unwrap_or_else(|_| {
+        prometheus::IntGauge::new("dummy_abdt", "dummy").expect("dummy")
+    });
+
+    /// Query duration histogram (seconds)
+    pub static ref ATLAS_QUERY_DURATION_SECONDS: HistogramVec = register_histogram_vec!(
+        "atlas_query_duration_seconds",
+        "DNS query processing duration in seconds",
+        &["protocol", "query_type"],
+        vec![0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
+    ).unwrap_or_else(|_| {
+        HistogramVec::new(
+            prometheus::HistogramOpts::new("dummy_aqds", "dummy"),
+            &["dummy"],
+        ).expect("dummy")
+    });
+
 }
 
 /// Comprehensive metrics summary structure

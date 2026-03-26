@@ -19,6 +19,7 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
+use bloomfilter::Bloom;
 
 use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl};
 use crate::dns::errors::DnsError;
@@ -196,7 +197,9 @@ impl TrieNode {
 pub struct RpzEngine {
     /// Configuration
     config: Arc<RwLock<RpzConfig>>,
-    /// Policy trie for fast lookups
+    /// Bloom filter for fast negative lookups (avoids trie traversal for unknown domains)
+    domain_bloom: Arc<RwLock<Bloom<String>>>,
+    /// Policy trie for confirmed positive lookups
     policy_trie: Arc<RwLock<TrieNode>>,
     /// Statistics
     stats: Arc<RwLock<RpzStats>>,
@@ -226,8 +229,13 @@ pub struct RpzStats {
 impl RpzEngine {
     /// Create new RPZ engine
     pub fn new(config: RpzConfig) -> Self {
+        // Pre-allocate bloom filter for 1 million domains at 0.1 % false-positive rate.
+        // False positives only cause an unnecessary trie lookup — never a wrong block.
+        let bloom: Bloom<String> = Bloom::new_for_fp_rate(1_000_000, 0.001);
+
         let engine = Self {
             config: Arc::new(RwLock::new(config)),
+            domain_bloom: Arc::new(RwLock::new(bloom)),
             policy_trie: Arc::new(RwLock::new(TrieNode::new())),
             stats: Arc::new(RwLock::new(RpzStats::default())),
             last_update: Arc::new(RwLock::new(Instant::now())),
@@ -242,7 +250,8 @@ impl RpzEngine {
     /// Load default built-in policies
     fn load_default_policies(&self) {
         let mut trie = self.policy_trie.write();
-        
+        let mut bloom = self.domain_bloom.write();
+
         // Example malware domains
         let malware_domains = vec![
             "malware.example.com",
@@ -266,6 +275,7 @@ impl RpzEngine {
                 .map(|s| s.to_string())
                 .collect();
             trie.insert(&labels, policy);
+            bloom.set(&domain.to_string());
         }
 
         self.stats.write().policies_loaded = 3;
@@ -358,15 +368,30 @@ impl RpzEngine {
         }
     }
 
-    /// Lookup policy for domain
+    /// Lookup policy for domain using two-level bloom-filter + trie.
+    ///
+    /// The bloom filter provides a fast negative path: if the domain is
+    /// definitely not in the filter we skip the trie entirely.  False
+    /// positives (rare, ~0.1 %) fall through to the trie for confirmation.
     fn lookup_policy(&self, domain: &str) -> Option<PolicyEntry> {
+        let t0 = Instant::now();
+
+        // Level 1: bloom filter — O(1) negative check.
+        let maybe_present = self.domain_bloom.read().check(&domain.to_string());
+        if !maybe_present {
+            log::trace!("RPZ bloom fast-negative for {} in {:?}", domain, t0.elapsed());
+            return None;
+        }
+
+        // Level 2: trie confirmation.
         let labels: Vec<String> = domain.split('.')
             .rev()
             .map(|s| s.to_string())
             .collect();
 
-        let trie = self.policy_trie.read();
-        trie.lookup(&labels).cloned()
+        let result = self.policy_trie.read().lookup(&labels).cloned();
+        log::trace!("RPZ trie lookup for {} -> {:?} in {:?}", domain, result.is_some(), t0.elapsed());
+        result
     }
 
     /// Create NXDOMAIN response
@@ -442,6 +467,7 @@ impl RpzEngine {
             .map(|s| s.to_string())
             .collect();
 
+        self.domain_bloom.write().set(&policy.domain);
         self.policy_trie.write().insert(&labels, policy);
         self.stats.write().policies_loaded += 1;
     }

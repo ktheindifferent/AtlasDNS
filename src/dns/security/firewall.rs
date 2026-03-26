@@ -894,6 +894,69 @@ impl DnsFirewall {
         Ok(())
     }
 
+    // ---------------------------------------------------------------------------
+    // Allowlist CRUD (used by API v2 /allowlist endpoints)
+    // ---------------------------------------------------------------------------
+
+    /// Add a single domain or wildcard pattern (e.g. `*.local`) to the allowlist.
+    pub fn add_domain_to_allowlist(&self, domain: &str) -> Result<(), DnsError> {
+        let domain = domain.trim().to_lowercase();
+        let mut allowlists = self.allowlists.write();
+        if domain.starts_with("*.") {
+            let suffix = format!(".{}", &domain[2..]);
+            if !allowlists.wildcards.iter().any(|w| w.pattern == domain) {
+                allowlists.wildcards.push(WildcardPattern {
+                    pattern: domain,
+                    prefix: None,
+                    suffix: Some(suffix),
+                });
+            }
+        } else {
+            allowlists.domains.insert(domain);
+        }
+        let count = allowlists.domains.len() as u64 + allowlists.wildcards.len() as u64;
+        drop(allowlists);
+        self.metrics.write().total_allowlist_domains = count;
+        Ok(())
+    }
+
+    /// Remove a domain or wildcard pattern from the allowlist.
+    /// Returns `true` if an entry was removed.
+    pub fn remove_domain_from_allowlist(&self, domain: &str) -> bool {
+        let domain = domain.trim().to_lowercase();
+        let mut allowlists = self.allowlists.write();
+        let removed = if domain.starts_with("*.") {
+            let before = allowlists.wildcards.len();
+            allowlists.wildcards.retain(|w| w.pattern != domain);
+            allowlists.wildcards.len() < before
+        } else {
+            allowlists.domains.remove(&domain)
+        };
+        let count = allowlists.domains.len() as u64 + allowlists.wildcards.len() as u64;
+        drop(allowlists);
+        self.metrics.write().total_allowlist_domains = count;
+        removed
+    }
+
+    /// List all allowlisted domains and wildcard patterns.
+    pub fn list_allowlist_domains(&self) -> Vec<String> {
+        let allowlists = self.allowlists.read();
+        let mut out: Vec<String> = allowlists.domains.iter().cloned().collect();
+        out.extend(allowlists.wildcards.iter().map(|w| w.pattern.clone()));
+        out.sort();
+        out
+    }
+
+    /// Seed the allowlist with sensible defaults for local-network domains.
+    /// Called once during server initialisation.
+    pub fn init_local_defaults(&self) {
+        let defaults = ["*.local", "*.lan", "*.internal", "*.home.arpa", "*.localdomain"];
+        for pat in &defaults {
+            let _ = self.add_domain_to_allowlist(pat);
+        }
+        log::info!("Allowlist seeded with {} local-network default patterns", defaults.len());
+    }
+
     /// Basic domain validation
     fn is_valid_domain(&self, domain: &str) -> bool {
         if domain.is_empty() || domain.len() > 253 {

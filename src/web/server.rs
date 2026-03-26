@@ -325,7 +325,11 @@ impl<'a> WebServer<'a> {
         let url_parts: Vec<&str> = url.split("/").filter(|x| !x.is_empty()).collect();
 
         // Public routes that don't require authentication
-        let is_public_route = matches!(
+        // /admin/ (Pi-hole compatible API) and /metrics are intentionally public
+        let is_admin_pihole = url_parts.first().map(|s| *s == "admin").unwrap_or(false);
+        let is_metrics_endpoint = url_parts.as_slice() == ["metrics"];
+
+        let is_public_route = is_admin_pihole || is_metrics_endpoint || matches!(
             (method, url_parts.as_slice()),
             (Method::Get, ["auth", "login"]) |
             (Method::Post, ["auth", "login"]) |
@@ -378,6 +382,13 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["cache"]) => self.cacheinfo(request),
             (Method::Get, ["metrics"]) => self.metrics(request),
             (Method::Get, ["prometheus"]) => self.prometheus_metrics(request),
+
+            // Public Prometheus scrape endpoint (no auth; standard /metrics path)
+            // Served by is_metrics_endpoint exemption above; arrives here too.
+            // Pi-hole compatible API (/admin/api.php?summary etc.)
+            (_, url_parts) if url_parts.first().map(|s| *s == "admin").unwrap_or(false) => {
+                self.pihole_api_dispatch(request)
+            },
             (Method::Get, ["graphql"]) => self.graphql_playground(request),
             (Method::Post, ["graphql"]) => self.graphql_handler(request),
             (Method::Get, ["dns-query"]) => self.doh_handler(request),
@@ -1240,6 +1251,24 @@ impl<'a> WebServer<'a> {
         
         Ok(Response::from_string(metrics_output)
             .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/plain; version=0.0.4; charset=utf-8"))
+            .boxed())
+    }
+
+    /// Dispatch Pi-hole v5 compatible API requests at `/admin/api.php?<action>`.
+    fn pihole_api_dispatch(&self, request: &Request) -> Result<ResponseBox> {
+        let handler = crate::web::pihole_api::PiholeApiHandler::new(Arc::clone(&self.context));
+        handler.handle(request)
+            .map(|r| r.boxed())
+    }
+
+    /// Public Prometheus scrape endpoint at `/metrics` (no authentication required).
+    fn metrics_public(&self, _request: &Request) -> Result<ResponseBox> {
+        self.update_prometheus_metrics();
+        let output = self.metrics_collector.export_metrics()
+            .map_err(|e| WebError::InternalError(format!("metrics export failed: {}", e)))?;
+        Ok(Response::from_string(output)
+            .with_header::<tiny_http::Header>(Self::safe_header("Content-Type: text/plain; version=0.0.4; charset=utf-8"))
+            .with_header::<tiny_http::Header>(Self::safe_header("Cache-Control: no-cache, must-revalidate"))
             .boxed())
     }
 
