@@ -2,33 +2,28 @@
 
 ![Rust](https://github.com/EmilHernvall/hermes/workflows/Rust/badge.svg)
 
-A high-performance, feature-rich DNS server implementation in Rust with built-in SSL/TLS support, automatic certificate management via ACME protocol, and a comprehensive web-based management interface.
+A high-performance, feature-rich DNS server written in Rust. Authoritative + recursive, with encrypted transports, DNSSEC, a web UI, and Pi-hole compatibility — all in a single binary.
 
-## 🚀 Features
+## Feature Matrix
 
-### Core DNS Functionality
-- **Full DNS Protocol Support**: UDP and TCP transport protocols
-- **Authoritative Zone Management**: Host your own DNS zones
-- **Recursive Resolution**: Full recursive DNS resolver capabilities
-- **Forwarding Support**: Forward queries to upstream DNS servers
-- **Response Caching**: Built-in cache with TTL management
-- **Rate Limiting**: Protection against DNS amplification attacks
-
-### Advanced Features
-- **SSL/TLS Support with ACME**: Automatic certificate management
-- **Web Management Interface**: Modern Bootstrap 5 UI
-- **Multi-User Support**: Role-based access control (Admin, User, ReadOnly)
-- **Session Management**: Secure token-based authentication
-- **RESTful API v2**: Complete CRUD operations for DNS resources
-- **DNS-over-HTTPS (DoH)**: Encrypted DNS queries over HTTPS
-- **DNS-over-TLS (DoT)**: Encrypted DNS queries over TLS
-- **Split-Horizon DNS**: Different responses based on client source
-- **Geo-Load Balancing**: Route queries based on geographic location
-- **CNAME Flattening**: Automatic CNAME resolution at zone apex
-- **Dynamic DNS Updates**: RFC 2136 compliant dynamic updates
-- **Health Checking**: Monitor endpoint availability
-- **Alert Management**: Configurable alerts and notifications
-- **Metrics & Analytics**: Comprehensive statistics and monitoring
+| Category | Features |
+|----------|----------|
+| **Core DNS** | UDP/TCP, authoritative zones, recursive resolution, forwarding, caching (adaptive + TTL), EDNS(0), QNAME minimization, wildcard records, CNAME flattening, dynamic updates (RFC 2136), zone transfer (AXFR) |
+| **DNSSEC** | Full chain-of-trust validation (RFC 4034/4035/5155), zone signing, RSA/ECDSA/Ed25519, NSEC + NSEC3, AD flag, CD bit |
+| **Encrypted DNS** | DNS-over-HTTPS (DoH, RFC 8484), DNS-over-TLS (DoT, RFC 7858), DNS-over-QUIC (DoQ, RFC 9250) |
+| **Security** | Rate limiting, DDoS protection, cache-poisoning countermeasures, RPZ, DNS rebinding protection, CSRF, source validation, CT log monitoring |
+| **Blocklists** | Bloom-filter engine, auto-updating lists, Pi-hole v3/v4/v5 API (`/admin/api.php`), per-client allow/deny |
+| **GeoIP / Traffic** | MaxMind GeoIP2, geo-load balancing, proximity routing, multi-region failover, weighted + latency steering, split-horizon views |
+| **HA Clustering** | Heartbeat membership, zone replication, leader election, intelligent failover |
+| **Anomaly / Threat** | Statistical anomaly detection, threat-intel feeds, alert management, DNS tunnel heuristics |
+| **ACME / TLS** | Let's Encrypt + ZeroSSL, DNS-01 challenge, auto-renewal, manual cert support |
+| **Kubernetes** | CRD operator (`DnsZone` / `DnsRecord`), reconciliation loop (feature-gated `k8s`) |
+| **mDNS** | Multicast DNS responder + browser (RFC 6762), service discovery |
+| **Observability** | Prometheus metrics (:9153), OpenTelemetry tracing, structured JSON query log, Grafana dashboards, WebSocket event stream |
+| **Web UI** | Bootstrap 5 dashboard, zone/record CRUD, user management (Admin/User/ReadOnly), session management, cache viewer, activity log |
+| **APIs** | REST v2 (full CRUD), GraphQL (subscriptions), webhooks, HMAC API keys, bulk operations |
+| **CLI Tools** | `atlas` (server), `atlas-cli` (management), `atlas-admin` (admin utils), `atlasdns-check` (health checker) |
+| **Deployment** | Docker, Docker Compose, CapRover one-click, privilege escalation for port 53, graceful shutdown |
 
 ## SSL/TLS Configuration
 
@@ -460,18 +455,47 @@ For production deployments, consider:
 4. **Monitoring**: Set up monitoring for DNS query metrics
 5. **Multi-Instance**: Deploy multiple instances for high availability
 
-## 📊 API v2 Endpoints
+## DNS-over-QUIC (DoQ)
 
-The RESTful API provides complete DNS management capabilities:
+Atlas supports DNS-over-QUIC on **port 8853** (RFC 9250) via the quinn QUIC transport.
 
-- `GET /api/v2/zones` - List all zones
-- `POST /api/v2/zones` - Create new zone
-- `GET /api/v2/zones/{zone}` - Get zone details
-- `PUT /api/v2/zones/{zone}` - Update zone
-- `DELETE /api/v2/zones/{zone}` - Delete zone
-- `GET /api/v2/zones/{zone}/records` - List zone records
-- `POST /api/v2/zones/{zone}/records` - Create record
-- Plus many more...
+```bash
+# Enable DoQ
+sudo ./atlas --doq
+
+# Enable DoQ with custom certificate
+sudo ./atlas --doq --doq-cert /path/to/cert.pem --doq-key /path/to/key.pem
+```
+
+## API Endpoints Summary
+
+### REST API v2
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v2/zones` | List all zones |
+| `POST` | `/api/v2/zones` | Create new zone |
+| `GET` | `/api/v2/zones/{zone}` | Get zone details |
+| `PUT` | `/api/v2/zones/{zone}` | Update zone |
+| `DELETE` | `/api/v2/zones/{zone}` | Delete zone |
+| `GET` | `/api/v2/zones/{zone}/records` | List zone records |
+| `POST` | `/api/v2/zones/{zone}/records` | Create record |
+| `PUT` | `/api/v2/zones/{zone}/records/{id}` | Update record |
+| `DELETE` | `/api/v2/zones/{zone}/records/{id}` | Delete record |
+| `GET` | `/api/v2/cache` | View cache contents |
+| `DELETE` | `/api/v2/cache` | Flush cache |
+| `GET` | `/api/v2/users` | List users |
+| `POST` | `/api/v2/users` | Create user |
+| `GET` | `/api/v2/stats` | Server statistics |
+| `GET` | `/api/v2/health` | Health check |
+
+### GraphQL
+
+GraphQL endpoint at `/graphql` with subscriptions for real-time zone change events.
+
+### Pi-hole API
+
+`GET /admin/api.php?<action>` — see Pi-hole API Compatibility section below.
 
 ## 🔌 Pi-hole API Compatibility
 
@@ -541,19 +565,9 @@ RUST_LOG=debug sudo ./target/release/atlas
 
 This project is a fork of the original Hermes DNS server. See LICENSE file for details.
 
-## ⚠️ Status
+## Status
 
-This is an active development fork with significant enhancements over the original project. The codebase has been extensively refactored and expanded with enterprise-grade features.
-
-### Recent Updates
-- ✅ Fixed all compilation errors
-- ✅ Added comprehensive user authentication and session management
-- ✅ Implemented RESTful API v2 with full CRUD operations
-- ✅ Added DNS-over-HTTPS and DNS-over-TLS support
-- ✅ Implemented split-horizon DNS and geo-load balancing
-- ✅ Added CNAME flattening and dynamic DNS updates
-- ✅ Revamped UI with Bootstrap 5
-- ✅ Enhanced error handling and logging throughout
+All planned features are implemented and the codebase compiles with zero warnings. AtlasDNS is in maintenance/stability mode. See [CHANGELOG.md](CHANGELOG.md) for the full feature history.
 
 ## Prometheus & Grafana Monitoring
 

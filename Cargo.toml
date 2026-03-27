@@ -3,6 +3,10 @@ name = "atlas"
 version = "0.0.1"
 authors = ["emil", "p0indexter", "PixelCoda"]
 edition = "2018"
+description = "High-performance authoritative & recursive DNS server with DNSSEC, DoH/DoT/DoQ, ACME, web UI, and Pi-hole compatibility"
+repository = "https://github.com/ktheindifferent/AtlasDNS"
+homepage = "https://github.com/ktheindifferent/AtlasDNS"
+license = "MIT"
 
 [features]
 # Enable the Pi-hole compatible API layer at /admin/api.php
