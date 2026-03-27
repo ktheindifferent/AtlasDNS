@@ -7,9 +7,11 @@ use std::vec::Vec;
 use derive_more::{Display, Error, From};
 
 use crate::dns::context::ServerContext;
-use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode, ValidationStatus};
+use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode};
 use crate::dns::buffer::BytePacketBuffer;
-use crate::dns::dnssec::{ChainValidator, ValidationMode};
+use crate::dns::dnssec::ValidationMode;
+use crate::dnssec::chain::ChainOfTrustValidator;
+use crate::dnssec::validator::DnssecValidationMode;
 
 #[derive(Debug, Display, From, Error)]
 pub enum ResolveError {
@@ -184,86 +186,55 @@ pub trait DnsResolver {
 
         let mut result = self.perform(qname, qtype)?;
 
-        // DNSSEC chain-of-trust validation (full iterative chain with on-demand fetching)
+        // DNSSEC chain-of-trust validation (ring-based, full iterative chain)
         {
-            use crate::dns::dnssec::ChainValidationResult;
             use crate::dns::context::ResolveStrategy;
 
             let context = self.get_context();
             if context.dnssec_enabled {
-                let mode = context.dnssec_validation_mode;
-                let validator = ChainValidator::with_root_ksk(mode);
+                let ring_mode = match context.dnssec_validation_mode {
+                    ValidationMode::Strict => DnssecValidationMode::Strict,
+                    ValidationMode::Opportunistic => DnssecValidationMode::Opportunistic,
+                    ValidationMode::Off => DnssecValidationMode::Off,
+                };
+                let chain_validator = ChainOfTrustValidator::new(ring_mode);
 
-                // Determine the upstream server to use for fetching missing
-                // DNSKEY / DS records during chain validation.
+                // Determine the upstream server for fetching DNSKEY/DS records
                 let upstream: Option<(String, u16)> = match &context.resolve_strategy {
                     ResolveStrategy::Forward { host, port } =>
                         Some((host.clone(), *port)),
                     ResolveStrategy::DohForward { fallback_host, fallback_port, .. } =>
                         Some((fallback_host.clone(), *fallback_port)),
-                    // Recursive mode: use a well-known public resolver to
-                    // fetch DS/DNSKEY records for chain validation.
                     ResolveStrategy::Recursive =>
                         Some(("8.8.8.8".to_string(), 53)),
                 };
 
-                // Build a fetch closure that uses the server's DNS client.
-                let chain_result = if let Some((host, port)) = upstream {
+                let status = if let Some((host, port)) = upstream {
                     let fetch = |name: &str, qt: QueryType| -> Option<DnsPacket> {
                         context.client
                             .send_query(name, qt, (host.as_str(), port), true)
                             .ok()
                     };
-                    validator.validate_chain_with_fetcher(&result, qname, qtype, fetch)
-                } else {
-                    // Fallback: validate only what's in the packet.
-                    validator.validate_packet_rrsigs(&result)
-                };
-
-                // For negative responses, factor NSEC/NSEC3 denial proof into
-                // the validation result.  An authenticated negative response
-                // with no valid denial proof is downgraded to ValidationFailed
-                // in Strict mode or Unsigned in Opportunistic mode.
-                let is_negative = result.header.rescode == ResultCode::NXDOMAIN
-                    || result.answers.is_empty();
-                let chain_result = if is_negative && chain_result == ChainValidationResult::Authenticated {
-                    let denial_ok = validator.validate_nxdomain_proof(&result, qname, qtype);
-                    log::debug!("DNSSEC: denial proof for {} {:?}: {}", qname, qtype, denial_ok);
-                    if !denial_ok {
-                        log::warn!("DNSSEC: negative response missing valid NSEC/NSEC3 denial for {} {:?}", qname, qtype);
-                        if mode == ValidationMode::Strict {
-                            ChainValidationResult::ValidationFailed
-                        } else {
-                            // Opportunistic: accept but don't claim authenticated
-                            ChainValidationResult::Unsigned
-                        }
-                    } else {
-                        ChainValidationResult::Authenticated
-                    }
-                } else {
-                    chain_result
-                };
-
-                let status = match chain_result {
-                    ChainValidationResult::Authenticated => {
-                        log::info!("DNSSEC full-chain: SECURE for {} {:?}", qname, qtype);
-                        ValidationStatus::Secure
-                    }
-                    ChainValidationResult::Unsigned => {
-                        log::debug!("DNSSEC full-chain: unsigned for {} {:?}", qname, qtype);
-                        ValidationStatus::Indeterminate
-                    }
-                    ChainValidationResult::ValidationFailed => {
-                        log::warn!("DNSSEC full-chain: BOGUS for {} {:?}", qname, qtype);
-                        if mode == ValidationMode::Strict {
+                    match chain_validator.dnssec_validate(&result, qname, qtype, fetch) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            // Strict mode: return SERVFAIL
                             return Err(ResolveError::Io(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!("DNSSEC full-chain validation failed for {}", qname),
+                                std::io::ErrorKind::InvalidData, e,
                             )));
                         }
-                        ValidationStatus::Bogus
+                    }
+                } else {
+                    match chain_validator.validator().validate_response(&result) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            return Err(ResolveError::Io(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData, e,
+                            )));
+                        }
                     }
                 };
+
                 result.dnssec_status = Some(status);
             }
         }

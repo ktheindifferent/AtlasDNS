@@ -73,6 +73,9 @@ zip = "0.6"
 # DNSSEC resolver with built-in chain-of-trust validation
 hickory-resolver = { version = "0.24", features = ["dnssec-openssl"] }
 
+# DNSSEC signature verification (RSA, ECDSA, Ed25519)
+ring = "0.17"
+
 # Real-time metrics dependencies
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 maxminddb = "0.23"

@@ -42,3 +42,6 @@ pub mod threat_intel;
 
 /// Top-level configuration types (re-exports from sub-modules)
 pub mod config;
+
+/// DNSSEC full validation chain using `ring` for cryptographic operations
+pub mod dnssec;
