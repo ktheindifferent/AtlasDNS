@@ -971,42 +971,52 @@ impl KubernetesOperator {
         let service_name = service.name_any();
         let namespace = service.namespace().unwrap_or("default".to_string());
         
+        let domain_suffix = config.domain_suffix.clone();
+        drop(config);
+
+        let (dns_server, api_token, default_ttl) = {
+            let cfg = self.config.read().await;
+            (cfg.dns_server.clone(), cfg.api_token.clone(), cfg.default_ttl)
+        };
+
+        let dns_name = format!("{}.{}.{}", service_name, namespace, domain_suffix);
+
         if deleted {
-            // Remove DNS records for the service
-            let dns_name = format!("{}.{}.{}", service_name, namespace, config.domain_suffix);
             log::info!("Removing DNS records for service {}", dns_name);
-            
-            // Would call DNS server API to remove A and SRV records
+            self.delete_raw_record(&dns_server, &api_token, &domain_suffix, &dns_name).await?;
             return Ok(());
         }
-        
+
         if let Some(spec) = &service.spec {
             let cluster_ip = spec.cluster_ip.as_ref();
-            
+
             if let Some(ip) = cluster_ip {
-                if ip != "None" { // Skip headless services
-                    let dns_name = format!("{}.{}.{}", service_name, namespace, config.domain_suffix);
-                    
-                    // Create A record
-                    let _record_data = serde_json::json!({
+                if ip != "None" {
+                    let record_data = serde_json::json!({
                         "name": dns_name,
                         "record_type": "A",
                         "record_class": "IN",
-                        "ttl": 30,
+                        "ttl": default_ttl,
                         "rdata": [ip]
                     });
-                    
-                    log::info!("Creating DNS record for service {}: {} -> {}", service_name, dns_name, ip);
-                    
-                    // Create SRV records for each port
+
+                    self.upsert_raw_record(&dns_server, &api_token, &domain_suffix, &record_data).await?;
+                    log::info!("Created DNS A record for service {}: {} -> {}", service_name, dns_name, ip);
+
                     if let Some(ports) = &spec.ports {
                         for port in ports {
                             if let Some(port_name) = &port.name {
                                 let srv_name = format!("_{}._{}.{}", port_name, "tcp", dns_name);
                                 let srv_target = format!("{}.", dns_name);
-                                let srv_data = format!("0 5 {} {}", port.port, srv_target);
-                                
-                                log::info!("Creating SRV record: {} -> {}", srv_name, srv_data);
+                                let srv_data = serde_json::json!({
+                                    "name": srv_name,
+                                    "record_type": "SRV",
+                                    "record_class": "IN",
+                                    "ttl": default_ttl,
+                                    "rdata": [format!("0 5 {} {}", port.port, srv_target)]
+                                });
+                                self.upsert_raw_record(&dns_server, &api_token, &domain_suffix, &srv_data).await?;
+                                log::info!("Created SRV record: {}", srv_name);
                             }
                         }
                     }
@@ -1027,15 +1037,27 @@ impl KubernetesOperator {
             return Ok(());
         }
         
+        let (dns_server, api_token, default_ttl) = {
+            let config = self.config.read().await;
+            (config.dns_server.clone(), config.api_token.clone(), config.default_ttl)
+        };
+
         if let Some(spec) = &ingress.spec {
             if let Some(rules) = &spec.rules {
                 for rule in rules {
                     if let Some(host) = &rule.host {
+                        // Derive zone from host (e.g. "app.example.com" -> "example.com")
+                        let zone = host.split('.').collect::<Vec<_>>();
+                        let zone_name = if zone.len() >= 2 {
+                            format!("{}.{}", zone[zone.len() - 2], zone[zone.len() - 1])
+                        } else {
+                            host.to_string()
+                        };
+
                         if deleted {
                             log::info!("Removing DNS record for ingress host: {}", host);
-                            // Would call DNS server API to remove record
+                            self.delete_raw_record(&dns_server, &api_token, &zone_name, host).await?;
                         } else {
-                            // Get ingress IP
                             let ingress_ip = if let Some(status) = &ingress.status {
                                 if let Some(load_balancer) = &status.load_balancer {
                                     if let Some(ingresses) = &load_balancer.ingress {
@@ -1043,20 +1065,17 @@ impl KubernetesOperator {
                                     } else { None }
                                 } else { None }
                             } else { None };
-                            
+
                             if let Some(ip) = ingress_ip {
-                                log::info!("Creating DNS record for ingress host: {} -> {}", host, ip);
-                                
-                                // Create A record for ingress host
-                                let _record_data = serde_json::json!({
+                                let record_data = serde_json::json!({
                                     "name": host,
                                     "record_type": "A",
                                     "record_class": "IN",
-                                    "ttl": 60,
+                                    "ttl": default_ttl,
                                     "rdata": [ip]
                                 });
-                                
-                                // Would call DNS server API to create record
+                                self.upsert_raw_record(&dns_server, &api_token, &zone_name, &record_data).await?;
+                                log::info!("Created DNS A record for ingress host: {} -> {}", host, ip);
                             }
                         }
                     }
@@ -1065,6 +1084,46 @@ impl KubernetesOperator {
         }
         
         Ok(())
+    }
+
+    /// Upsert a DNS record via the Atlas DNS server REST API.
+    async fn upsert_raw_record(
+        &self,
+        dns_server: &str,
+        api_token: &Option<String>,
+        zone: &str,
+        record_data: &serde_json::Value,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v2/zones/{}/records", dns_server, zone);
+        let mut request = self.http_client.post(&url).json(record_data);
+        if let Some(ref token) = api_token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+        match request.send().await {
+            Ok(resp) if resp.status().is_success() => Ok(()),
+            Ok(resp) => Err(format!("DNS API returned {}", resp.status())),
+            Err(e) => Err(format!("DNS API request failed: {}", e)),
+        }
+    }
+
+    /// Delete a DNS record via the Atlas DNS server REST API.
+    async fn delete_raw_record(
+        &self,
+        dns_server: &str,
+        api_token: &Option<String>,
+        zone: &str,
+        name: &str,
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v2/zones/{}/records/{}", dns_server, zone, name);
+        let mut request = self.http_client.delete(&url);
+        if let Some(ref token) = api_token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+        match request.send().await {
+            Ok(resp) if resp.status().is_success() => Ok(()),
+            Ok(resp) => Err(format!("DNS API returned {}", resp.status())),
+            Err(e) => Err(format!("DNS API request failed: {}", e)),
+        }
     }
 
     /// Update statistics
