@@ -12,19 +12,6 @@ use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsRecord, TransientTtl};
 
 // ---------------------------------------------------------------------------
-// Base64url helper (base64 0.13 API)
-// ---------------------------------------------------------------------------
-
-fn b64url(data: impl AsRef<[u8]>) -> String {
-    base64::encode_config(data.as_ref(), base64::URL_SAFE_NO_PAD)
-}
-
-#[cfg(test)]
-fn b64url_decode(s: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    Ok(base64::decode_config(s, base64::URL_SAFE_NO_PAD)?)
-}
-
-// ---------------------------------------------------------------------------
 // ACME provider
 // ---------------------------------------------------------------------------
 
@@ -93,145 +80,7 @@ pub struct CertificateStatus {
 }
 
 // ---------------------------------------------------------------------------
-// ACME v2 wire types (JSON)
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize)]
-struct AcmeDirectory {
-    #[serde(rename = "newAccount")]
-    new_account: String,
-    #[serde(rename = "newNonce")]
-    new_nonce: String,
-    #[serde(rename = "newOrder")]
-    new_order: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AcmeOrder {
-    status: String,
-    authorizations: Vec<String>,
-    finalize: String,
-    certificate: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AcmeAuthorization {
-    identifier: AcmeIdentifier,
-    challenges: Vec<AcmeChallenge>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AcmeIdentifier {
-    value: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AcmeChallenge {
-    #[serde(rename = "type")]
-    challenge_type: String,
-    url: String,
-    token: String,
-    status: Option<String>,
-}
-
-// ---------------------------------------------------------------------------
-// ACME key helpers
-// ---------------------------------------------------------------------------
-
-/// Load or generate an RSA account key.
-fn load_or_create_account_key(path: &PathBuf) -> Result<PKey<Private>, Box<dyn std::error::Error>> {
-    if path.exists() {
-        let pem = fs::read(path)?;
-        Ok(PKey::private_key_from_pem(&pem)?)
-    } else {
-        use openssl::rsa::Rsa;
-        let rsa = Rsa::generate(2048)?;
-        let pkey = PKey::from_rsa(rsa)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(path, pkey.private_key_to_pem_pkcs8()?)?;
-        log::info!("Generated new ACME account key at {}", path.display());
-        Ok(pkey)
-    }
-}
-
-/// Compute JWK (public key) for an RSA PKey.
-fn rsa_jwk(pkey: &PKey<Private>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let rsa = pkey.rsa()?;
-    let n = b64url(rsa.n().to_vec());
-    let e = b64url(rsa.e().to_vec());
-    Ok(serde_json::json!({
-        "kty": "RSA",
-        "n": n,
-        "e": e,
-    }))
-}
-
-/// Compute JWK thumbprint (SHA-256) per RFC 7638.
-fn jwk_thumbprint(jwk: &serde_json::Value) -> Result<String, Box<dyn std::error::Error>> {
-    use sha2::{Digest, Sha256};
-    let canonical = serde_json::json!({
-        "e": jwk["e"],
-        "kty": jwk["kty"],
-        "n": jwk["n"],
-    });
-    let bytes = serde_json::to_vec(&canonical)?;
-    let hash = Sha256::digest(bytes);
-    Ok(b64url(hash))
-}
-
-/// Sign a JWS payload with RSA-SHA256.
-fn jws_sign(
-    pkey: &PKey<Private>,
-    protected: &str,
-    payload: &str,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    use openssl::hash::MessageDigest;
-    use openssl::sign::Signer;
-
-    let signing_input = format!("{}.{}", protected, payload);
-    let mut signer = Signer::new(MessageDigest::sha256(), pkey)?;
-    signer.update(signing_input.as_bytes())?;
-    let sig = signer.sign_to_vec()?;
-    let sig_b64 = b64url(&sig);
-
-    Ok(serde_json::json!({
-        "protected": protected,
-        "payload": payload,
-        "signature": sig_b64,
-    }))
-}
-
-/// Build protected header using JWK (for account creation).
-fn protected_jwk(jwk: &serde_json::Value, nonce: &str, url: &str) -> String {
-    let header = serde_json::json!({
-        "alg": "RS256",
-        "jwk": jwk,
-        "nonce": nonce,
-        "url": url,
-    });
-    b64url(serde_json::to_vec(&header).unwrap())
-}
-
-/// Build protected header using KID (for authenticated requests).
-fn protected_kid(kid: &str, nonce: &str, url: &str) -> String {
-    let header = serde_json::json!({
-        "alg": "RS256",
-        "kid": kid,
-        "nonce": nonce,
-        "url": url,
-    });
-    b64url(serde_json::to_vec(&header).unwrap())
-}
-
-/// Encode payload as base64url JSON.
-fn encode_payload(payload: &serde_json::Value) -> String {
-    b64url(serde_json::to_vec(payload).unwrap())
-}
-
-// ---------------------------------------------------------------------------
-// AcmeCertificateManager
+// AcmeCertificateManager  (powered by the `acme2` crate)
 // ---------------------------------------------------------------------------
 
 pub struct AcmeCertificateManager {
@@ -375,410 +224,140 @@ impl AcmeCertificateManager {
         });
     }
 
-    // ── Internal ACME v2 flow ───────────────────────────────────────────────
+    // ── Internal ACME v2 flow (using acme2 crate) ──────────────────────────
 
     fn run_acme_flow(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
+        // acme2 is async — create a dedicated tokio runtime for this blocking thread
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
             .build()?;
 
-        // 1. Fetch directory
-        let dir: AcmeDirectory = client
-            .get(self.config.provider.get_directory_url())
-            .send()?
-            .json()?;
+        let config = self.config.clone();
+        let context = self.context.clone();
 
-        // 2. Load / create account key
-        let account_key = load_or_create_account_key(&self.config.account_key_path)?;
-        let jwk = rsa_jwk(&account_key)?;
+        rt.block_on(async move {
+            Self::run_acme_flow_async(&config, &context).await
+        })
+    }
 
-        // 3. Get initial nonce
-        let nonce = self.fetch_nonce(&client, &dir.new_nonce)?;
+    async fn run_acme_flow_async(
+        config: &AcmeConfig,
+        context: &Arc<ServerContext>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 1. Connect to ACME directory
+        let dir = acme2::DirectoryBuilder::new(config.provider.get_directory_url().to_string())
+            .build()
+            .await?;
 
-        // 4. Create / find account
-        let (kid, nonce) = self.create_or_find_account(
-            &client, &account_key, &jwk, &dir.new_account, nonce,
-        )?;
+        // 2. Create or retrieve ACME account
+        let mut account_builder = acme2::AccountBuilder::new(dir.clone());
+        account_builder.contact(vec![format!("mailto:{}", config.email)]);
+        account_builder.terms_of_service_agreed(true);
 
-        // 5. Create order
-        let (order_url, mut order, nonce) = self.create_order(
-            &client, &account_key, &kid, &dir.new_order, nonce,
-        )?;
-
-        // 6. Fulfil DNS-01 challenges
-        let mut nonce = nonce;
-        let thumbprint = jwk_thumbprint(&jwk)?;
-        let mut challenge_records: Vec<String> = Vec::new();
-
-        for auth_url in &order.authorizations.clone() {
-            let (txt_name, ch_url, n) = self.setup_dns_challenge(
-                &client, &account_key, &kid, auth_url, &thumbprint, nonce,
-            )?;
-            nonce = n;
-            challenge_records.push(txt_name.clone());
-
-            log::info!("Waiting 30s for DNS propagation of {}", txt_name);
-            std::thread::sleep(Duration::from_secs(30));
-
-            nonce = self.trigger_challenge(&client, &account_key, &kid, &ch_url, nonce)?;
-            self.poll_challenge_ready(&client, &account_key, &kid, auth_url, nonce.clone())?;
+        // Load existing account key if present, otherwise let acme2 generate one
+        if config.account_key_path.exists() {
+            let pem = fs::read(&config.account_key_path)?;
+            let pkey = PKey::private_key_from_pem(&pem)?;
+            account_builder.private_key(pkey);
         }
 
-        // 7. Generate domain key + CSR
-        let (domain_key, csr_der) = self.generate_csr()?;
+        let account = account_builder.build().await?;
 
-        // 8. Finalize order
-        nonce = self.finalize_order(&client, &account_key, &kid, &order.finalize, &csr_der, nonce)?;
+        // Save account key for future use
+        if let Some(parent) = config.account_key_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let account_key = account.private_key();
+        fs::write(&config.account_key_path, account_key.private_key_to_pem_pkcs8()?)?;
+        log::info!("ACME account registered/loaded");
 
-        // 9. Poll order until valid
-        order = self.poll_order_ready(&client, &account_key, &kid, &order_url, nonce)?;
+        // 3. Create order for all domains
+        let mut order_builder = acme2::OrderBuilder::new(account.clone());
+        for domain in &config.domains {
+            order_builder.add_dns_identifier(domain.clone());
+        }
+        let order = order_builder.build().await?;
+        log::info!("ACME order created");
 
-        // 10. Download certificate
-        let cert_url = order.certificate.ok_or("Order has no certificate URL")?;
-        self.download_certificate(&client, &account_key, &kid, &cert_url, &domain_key)?;
+        // 4. Process authorizations — set up DNS-01 challenges
+        let authorizations = order.authorizations().await?;
+        let mut challenge_records: Vec<String> = Vec::new();
 
-        // 11. Clean up DNS challenge records
+        for auth in authorizations {
+            let dns_challenge = auth
+                .get_challenge("dns-01")
+                .ok_or("No dns-01 challenge found for authorization")?;
+
+            // Get the DNS TXT value for dns-01 (base64url-encoded SHA-256 of key authorization)
+            let txt_value = dns_challenge
+                .key_authorization_encoded()?
+                .ok_or("No key authorization available")?;
+
+            // Determine the challenge domain name
+            let domain = &auth.identifier.value;
+            let txt_name = challenge_domain(domain);
+
+            // Install TXT record via authority
+            Self::add_dns_record(context, &txt_name, &txt_value)?;
+            challenge_records.push(txt_name.clone());
+            log::info!("Installed DNS-01 challenge: {} = \"{}\"", txt_name, txt_value);
+
+            // Wait for DNS propagation
+            log::info!("Waiting 30s for DNS propagation of {}", txt_name);
+            tokio::time::sleep(Duration::from_secs(30)).await;
+
+            // Tell ACME server to validate
+            let challenge = dns_challenge.validate().await?;
+
+            // Poll until challenge is valid
+            challenge.wait_done(Duration::from_secs(5), 20).await?;
+            log::info!("DNS-01 challenge validated for {}", domain);
+
+            // Poll authorization until done
+            auth.wait_done(Duration::from_secs(5), 20).await?;
+        }
+
+        // 5. Wait for order to be ready
+        let order = order.wait_ready(Duration::from_secs(5), 20).await?;
+        log::info!("ACME order ready for finalization");
+
+        // 6. Generate domain key and finalize with CSR
+        let domain_key = acme2::gen_rsa_private_key(2048)?;
+        let order = order.finalize(acme2::Csr::Automatic(domain_key.clone())).await?;
+
+        // 7. Wait for order to be done
+        let order = order.wait_done(Duration::from_secs(5), 20).await?;
+
+        // 8. Download certificate chain
+        let certs = order
+            .certificate()
+            .await?
+            .ok_or("Order has no certificate")?;
+
+        // Convert certificate chain to PEM
+        let mut cert_pem = Vec::new();
+        for cert in &certs {
+            cert_pem.extend_from_slice(&cert.to_pem()?);
+        }
+
+        // Write cert and key to disk
+        if let Some(parent) = config.cert_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&config.cert_path, &cert_pem)?;
+        fs::write(&config.key_path, domain_key.private_key_to_pem_pkcs8()?)?;
+
+        log::info!("Certificate saved to {}", config.cert_path.display());
+        log::info!("Private key saved to {}", config.key_path.display());
+
+        // 9. Clean up DNS challenge records
         for name in &challenge_records {
-            if let Err(e) = self.remove_dns_record(name) {
+            if let Err(e) = Self::remove_dns_record(context, name) {
                 log::warn!("Failed to remove ACME challenge record {}: {}", name, e);
             }
         }
 
         Ok(())
-    }
-
-    // ── ACME v2 helper methods ──────────────────────────────────────────────
-
-    fn fetch_nonce(
-        &self,
-        client: &reqwest::blocking::Client,
-        nonce_url: &str,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let resp = client.head(nonce_url).send()?;
-        let nonce = resp
-            .headers()
-            .get("replay-nonce")
-            .ok_or("Missing Replay-Nonce header")?
-            .to_str()?
-            .to_string();
-        Ok(nonce)
-    }
-
-    fn extract_nonce(resp: &reqwest::blocking::Response) -> Option<String> {
-        resp.headers()
-            .get("replay-nonce")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string())
-    }
-
-    fn create_or_find_account(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        jwk: &serde_json::Value,
-        new_account_url: &str,
-        nonce: String,
-    ) -> Result<(String, String), Box<dyn std::error::Error>> {
-        let payload = serde_json::json!({
-            "termsOfServiceAgreed": true,
-            "contact": [format!("mailto:{}", self.config.email)],
-        });
-        let protected = protected_jwk(jwk, &nonce, new_account_url);
-        let payload_b64 = encode_payload(&payload);
-        let body = jws_sign(account_key, &protected, &payload_b64)?;
-
-        let resp = client
-            .post(new_account_url)
-            .header("Content-Type", "application/jose+json")
-            .json(&body)
-            .send()?;
-
-        let new_nonce = Self::extract_nonce(&resp).unwrap_or_default();
-        let kid = resp
-            .headers()
-            .get("location")
-            .ok_or("Missing Location header in account response")?
-            .to_str()?
-            .to_string();
-
-        log::info!("ACME account: {}", kid);
-        Ok((kid, new_nonce))
-    }
-
-    fn create_order(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        new_order_url: &str,
-        nonce: String,
-    ) -> Result<(String, AcmeOrder, String), Box<dyn std::error::Error>> {
-        let identifiers: Vec<serde_json::Value> = self
-            .config
-            .domains
-            .iter()
-            .map(|d| serde_json::json!({ "type": "dns", "value": d }))
-            .collect();
-
-        let payload = serde_json::json!({ "identifiers": identifiers });
-        let protected = protected_kid(kid, &nonce, new_order_url);
-        let payload_b64 = encode_payload(&payload);
-        let body = jws_sign(account_key, &protected, &payload_b64)?;
-
-        let resp = client
-            .post(new_order_url)
-            .header("Content-Type", "application/jose+json")
-            .json(&body)
-            .send()?;
-
-        let new_nonce = Self::extract_nonce(&resp).unwrap_or_default();
-        let order_url = resp
-            .headers()
-            .get("location")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or(new_order_url)
-            .to_string();
-        let order: AcmeOrder = resp.json()?;
-        log::info!("ACME order created, status: {}", order.status);
-        Ok((order_url, order, new_nonce))
-    }
-
-    fn setup_dns_challenge(
-        &mut self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        auth_url: &str,
-        thumbprint: &str,
-        nonce: String,
-    ) -> Result<(String, String, String), Box<dyn std::error::Error>> {
-        // POST-as-GET with empty payload ""
-        let protected = protected_kid(kid, &nonce, auth_url);
-        let body = jws_sign(account_key, &protected, "")?;
-        let resp = client
-            .post(auth_url)
-            .header("Content-Type", "application/jose+json")
-            .json(&body)
-            .send()?;
-
-        let new_nonce = Self::extract_nonce(&resp).unwrap_or_default();
-        let auth: AcmeAuthorization = resp.json()?;
-        let domain = auth.identifier.value.clone();
-
-        let dns_challenge = auth
-            .challenges
-            .iter()
-            .find(|c| c.challenge_type == "dns-01")
-            .ok_or_else(|| format!("No dns-01 challenge for {}", domain))?;
-
-        // key-auth = token || '.' || thumbprint
-        let key_auth = format!("{}.{}", dns_challenge.token, thumbprint);
-        // TXT value = base64url(sha256(key_auth))
-        use sha2::{Digest, Sha256};
-        let digest = Sha256::digest(key_auth.as_bytes());
-        let txt_value = b64url(digest);
-        // For wildcard domains (*.example.com) the challenge is
-        // _acme-challenge.example.com (without the *. prefix).
-        let txt_name = challenge_domain(&domain);
-
-        self.add_dns_record(&txt_name, &txt_value)?;
-        log::info!("Installed DNS-01 challenge: {} = \"{}\"", txt_name, txt_value);
-
-        Ok((txt_name, dns_challenge.url.clone(), new_nonce))
-    }
-
-    fn trigger_challenge(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        challenge_url: &str,
-        nonce: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let payload = serde_json::json!({});
-        let protected = protected_kid(kid, &nonce, challenge_url);
-        let payload_b64 = encode_payload(&payload);
-        let body = jws_sign(account_key, &protected, &payload_b64)?;
-
-        let resp = client
-            .post(challenge_url)
-            .header("Content-Type", "application/jose+json")
-            .json(&body)
-            .send()?;
-
-        let new_nonce = Self::extract_nonce(&resp).unwrap_or_default();
-        log::info!("Triggered DNS-01 challenge validation at {}", challenge_url);
-        Ok(new_nonce)
-    }
-
-    fn poll_challenge_ready(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        auth_url: &str,
-        initial_nonce: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut nonce = initial_nonce;
-        for attempt in 0..20 {
-            std::thread::sleep(Duration::from_secs(5));
-            let protected = protected_kid(kid, &nonce, auth_url);
-            let body = jws_sign(account_key, &protected, "")?;
-            let resp = client
-                .post(auth_url)
-                .header("Content-Type", "application/jose+json")
-                .json(&body)
-                .send()?;
-
-            nonce = Self::extract_nonce(&resp).unwrap_or_default();
-            let auth: AcmeAuthorization = resp.json()?;
-            let dns_ch = auth.challenges.iter().find(|c| c.challenge_type == "dns-01");
-            let status = dns_ch.and_then(|c| c.status.as_deref()).unwrap_or("pending");
-
-            log::debug!("Challenge poll #{} status: {}", attempt, status);
-            match status {
-                "valid" => return Ok(()),
-                "invalid" => return Err("Challenge validation failed (invalid)".into()),
-                _ => continue,
-            }
-        }
-        Err("Challenge did not become valid within timeout".into())
-    }
-
-    fn generate_csr(&self) -> Result<(PKey<Private>, Vec<u8>), Box<dyn std::error::Error>> {
-        use openssl::hash::MessageDigest;
-        use openssl::rsa::Rsa;
-        use openssl::x509::extension::SubjectAlternativeName;
-        use openssl::x509::{X509NameBuilder, X509ReqBuilder};
-
-        let rsa = Rsa::generate(2048)?;
-        let domain_key = PKey::from_rsa(rsa)?;
-
-        let mut req_builder = X509ReqBuilder::new()?;
-        req_builder.set_pubkey(&domain_key)?;
-
-        let mut name_builder = X509NameBuilder::new()?;
-        name_builder.append_entry_by_text("CN", &self.config.domains[0])?;
-        let name = name_builder.build();
-        req_builder.set_subject_name(&name)?;
-
-        // Add Subject Alternative Names for all domains (including wildcards)
-        if !self.config.domains.is_empty() {
-            let mut san = SubjectAlternativeName::new();
-            for domain in &self.config.domains {
-                san.dns(domain);
-            }
-            let san_ext = san.build(&req_builder.x509v3_context(None))?;
-
-            let mut extensions = openssl::stack::Stack::new()?;
-            extensions.push(san_ext)?;
-            req_builder.add_extensions(&extensions)?;
-        }
-
-        req_builder.sign(&domain_key, MessageDigest::sha256())?;
-
-        let csr = req_builder.build();
-        let csr_der = csr.to_der()?;
-
-        Ok((domain_key, csr_der))
-    }
-
-    fn finalize_order(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        finalize_url: &str,
-        csr_der: &[u8],
-        nonce: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let csr_b64 = b64url(csr_der);
-        let payload = serde_json::json!({ "csr": csr_b64 });
-        let protected = protected_kid(kid, &nonce, finalize_url);
-        let payload_b64 = encode_payload(&payload);
-        let body = jws_sign(account_key, &protected, &payload_b64)?;
-
-        let resp = client
-            .post(finalize_url)
-            .header("Content-Type", "application/jose+json")
-            .json(&body)
-            .send()?;
-
-        let new_nonce = Self::extract_nonce(&resp).unwrap_or_default();
-        log::info!("Sent CSR to finalize order");
-        Ok(new_nonce)
-    }
-
-    fn poll_order_ready(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        order_url: &str,
-        initial_nonce: String,
-    ) -> Result<AcmeOrder, Box<dyn std::error::Error>> {
-        let mut nonce = initial_nonce;
-        for attempt in 0..20 {
-            std::thread::sleep(Duration::from_secs(5));
-            let protected = protected_kid(kid, &nonce, order_url);
-            let body = jws_sign(account_key, &protected, "")?;
-            let resp = client
-                .post(order_url)
-                .header("Content-Type", "application/jose+json")
-                .json(&body)
-                .send()?;
-
-            nonce = Self::extract_nonce(&resp).unwrap_or_default();
-            let order: AcmeOrder = resp.json()?;
-            log::debug!("Order poll #{} status: {}", attempt, order.status);
-            match order.status.as_str() {
-                "valid" => return Ok(order),
-                "invalid" => return Err("Order became invalid".into()),
-                _ => continue,
-            }
-        }
-        Err("Order did not become valid within timeout".into())
-    }
-
-    fn download_certificate(
-        &self,
-        client: &reqwest::blocking::Client,
-        account_key: &PKey<Private>,
-        kid: &str,
-        cert_url: &str,
-        domain_key: &PKey<Private>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let nonce = self.fetch_nonce_from_any(client)?;
-        let protected = protected_kid(kid, &nonce, cert_url);
-        let body = jws_sign(account_key, &protected, "")?;
-
-        let resp = client
-            .post(cert_url)
-            .header("Content-Type", "application/jose+json")
-            .header("Accept", "application/pem-certificate-chain")
-            .json(&body)
-            .send()?;
-
-        let cert_pem = resp.text()?;
-
-        if let Some(parent) = self.config.cert_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&self.config.cert_path, cert_pem.as_bytes())?;
-        fs::write(&self.config.key_path, domain_key.private_key_to_pem_pkcs8()?)?;
-
-        log::info!("Certificate saved to {}", self.config.cert_path.display());
-        log::info!("Private key saved to {}", self.config.key_path.display());
-        Ok(())
-    }
-
-    fn fetch_nonce_from_any(
-        &self,
-        client: &reqwest::blocking::Client,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let dir_url = self.config.provider.get_directory_url();
-        let r = client.head(dir_url).send()?;
-        Self::extract_nonce(&r).ok_or_else(|| "Could not obtain nonce".into())
     }
 
     // ── Self-signed fallback ────────────────────────────────────────────────
@@ -824,7 +403,7 @@ impl AcmeCertificateManager {
 
     // ── DNS challenge helpers ───────────────────────────────────────────────
 
-    fn add_dns_record(&mut self, name: &str, value: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn add_dns_record(context: &Arc<ServerContext>, name: &str, value: &str) -> Result<(), Box<dyn std::error::Error>> {
         let parts: Vec<&str> = name.split('.').collect();
         if parts.len() < 2 {
             return Err("Invalid record name".into());
@@ -835,18 +414,18 @@ impl AcmeCertificateManager {
             data: value.to_string(),
             ttl: TransientTtl(60),
         };
-        self.context.authority.upsert(&zone, record)?;
+        context.authority.upsert(&zone, record)?;
         log::info!("Added ACME DNS challenge record: {} = {}", name, value);
         Ok(())
     }
 
-    fn remove_dns_record(&mut self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn remove_dns_record(context: &Arc<ServerContext>, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let parts: Vec<&str> = name.split('.').collect();
         if parts.len() < 2 {
             return Err("Invalid record name".into());
         }
         let zone = format!("{}.{}", parts[parts.len() - 2], parts[parts.len() - 1]);
-        self.context.authority.delete_records(&zone, name)?;
+        context.authority.delete_records(&zone, name)?;
         log::info!("Removed ACME DNS challenge record: {}", name);
         Ok(())
     }
@@ -923,6 +502,13 @@ mod tests {
     }
 
     #[test]
+    fn test_challenge_domain() {
+        assert_eq!(challenge_domain("example.com"), "_acme-challenge.example.com");
+        assert_eq!(challenge_domain("*.example.com"), "_acme-challenge.example.com");
+        assert_eq!(challenge_domain("sub.example.com"), "_acme-challenge.sub.example.com");
+    }
+
+    #[test]
     fn test_default_acme_config() {
         let cfg = AcmeConfig::default();
         assert_eq!(cfg.renew_days_before_expiry, 30);
@@ -931,47 +517,10 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_payload_roundtrip() {
-        let v = serde_json::json!({ "hello": "world" });
-        let encoded = encode_payload(&v);
-        let decoded = b64url_decode(&encoded).unwrap();
-        let back: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
-        assert_eq!(back["hello"], "world");
-    }
-
-    #[test]
-    fn test_jwk_thumbprint_stable() {
-        use openssl::pkey::PKey;
-        use openssl::rsa::Rsa;
-        let rsa = Rsa::generate(2048).unwrap();
-        let pkey = PKey::from_rsa(rsa).unwrap();
-        let jwk = rsa_jwk(&pkey).unwrap();
-        let t1 = jwk_thumbprint(&jwk).unwrap();
-        let t2 = jwk_thumbprint(&jwk).unwrap();
-        assert_eq!(t1, t2);
-        assert!(!t1.is_empty());
-    }
-
-    #[test]
-    fn test_b64url_roundtrip() {
-        let data = b"hello world test 123";
-        let encoded = b64url(data);
-        let decoded = b64url_decode(&encoded).unwrap();
-        assert_eq!(decoded, data);
-    }
-
-    #[test]
-    fn test_jws_sign_produces_valid_structure() {
-        use openssl::pkey::PKey;
-        use openssl::rsa::Rsa;
-        let rsa = Rsa::generate(2048).unwrap();
-        let pkey = PKey::from_rsa(rsa).unwrap();
-        let jwk = rsa_jwk(&pkey).unwrap();
-        let protected = protected_jwk(&jwk, "test-nonce", "https://example.com/test");
-        let payload = encode_payload(&serde_json::json!({"test": "value"}));
-        let jws = jws_sign(&pkey, &protected, &payload).unwrap();
-        assert!(jws.get("protected").is_some());
-        assert!(jws.get("payload").is_some());
-        assert!(jws.get("signature").is_some());
+    fn test_default_ssl_config() {
+        let cfg = SslConfig::default();
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.port, 5343);
+        assert!(cfg.acme.is_none());
     }
 }
