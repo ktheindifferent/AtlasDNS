@@ -13,16 +13,12 @@
 //! * **Insecure delegations**: Treated as Insecure (not an error)
 
 use std::sync::Arc;
-use std::collections::HashMap;
 use std::net::Ipv4Addr;
-
-use parking_lot::RwLock;
 
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{
-    DnsPacket, DnsQuestion, DnsRecord, QueryType, ResultCode, TransientTtl, ValidationStatus,
+    DnsPacket, DnsRecord, QueryType, ResultCode, TransientTtl, ValidationStatus,
 };
-use crate::dns::buffer::BytePacketBuffer;
 use crate::dns::cache::SynchronizedCache;
 
 // ─── Root Hints ──────────────────────────────────────────────────────────────

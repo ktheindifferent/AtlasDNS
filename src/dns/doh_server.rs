@@ -16,13 +16,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use std::collections::HashMap;
-use parking_lot::RwLock;
-use serde::{Serialize, Deserialize};
 
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsPacket, DnsQuestion, QueryType, ResultCode};
 use crate::dns::buffer::BytePacketBuffer;
-use crate::dns::doh::{DnsJson, DnsJsonQuestion, DnsJsonRecord, DOH_CONTENT_TYPE_MESSAGE, DOH_CONTENT_TYPE_JSON};
+use crate::dns::doh::{DnsJson, DnsJsonQuestion, DnsJsonRecord};
 
 /// Standalone DoH server configuration.
 #[derive(Debug, Clone)]
@@ -166,7 +164,7 @@ impl StandaloneDohServer {
             .map_err(|e| format!("Parse error: {:?}", e))?;
 
         // Resolve
-        let response = self.resolve_packet(request)?;
+        let mut response = self.resolve_packet(request)?;
 
         // Serialize response
         let mut resp_buf = BytePacketBuffer::new();

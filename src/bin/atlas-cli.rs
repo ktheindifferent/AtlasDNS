@@ -143,6 +143,16 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
+enum BlocklistCommands {
+    /// Reload all RPZ/blocklist feeds from their sources
+    Reload,
+    /// Show blocklist/RPZ feed status and statistics
+    Status,
+    /// List all registered RPZ feeds
+    List,
+}
+
+#[derive(Subcommand)]
 enum DevicesCommands {
     /// List all discovered local devices
     List {
@@ -936,8 +946,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::ThreatIntel { action } => handle_threat_intel_commands(action, &client, &formatter).await?,
         Commands::SplitHorizon { action } => handle_split_horizon_commands(action, &client, &formatter).await?,
         Commands::Devices { action } => handle_devices_commands(action, &client, &formatter).await?,
+        Commands::Blocklist { action } => handle_blocklist_commands(action, &client, &formatter).await?,
+        Commands::FlushCache { domain } => handle_flush_cache(domain, &client, &formatter).await?,
     }
-    
+
     Ok(())
 }
 
@@ -2084,6 +2096,59 @@ async fn handle_devices_commands(
             } else {
                 formatter.print(&data);
             }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_blocklist_commands(
+    action: BlocklistCommands,
+    client: &AtlasClient,
+    formatter: &OutputFormatter,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        BlocklistCommands::Reload => {
+            let pb = show_progress("Reloading blocklists/RPZ feeds...");
+            let result = client.post("/api/v2/rpz/refresh", json!({})).await?;
+            pb.finish_and_clear();
+            formatter.print_success("Blocklist/RPZ feeds reloaded");
+            formatter.print(&result);
+        }
+        BlocklistCommands::Status => {
+            let pb = show_progress("Fetching blocklist status...");
+            let result = client.get("/api/v2/rpz/stats").await?;
+            pb.finish_and_clear();
+            formatter.print(&result);
+        }
+        BlocklistCommands::List => {
+            let pb = show_progress("Fetching RPZ feed list...");
+            let result = client.get("/api/v2/rpz/zones").await?;
+            pb.finish_and_clear();
+            formatter.print(&result);
+        }
+    }
+    Ok(())
+}
+
+async fn handle_flush_cache(
+    domain: Option<String>,
+    client: &AtlasClient,
+    formatter: &OutputFormatter,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match domain {
+        Some(ref d) => {
+            let pb = show_progress(&format!("Flushing cache for {}...", d));
+            let result = client.post("/api/v2/cache/flush", json!({ "domain": d })).await?;
+            pb.finish_and_clear();
+            formatter.print_success(&format!("Cache flushed for domain: {}", d));
+            formatter.print(&result);
+        }
+        None => {
+            let pb = show_progress("Flushing entire DNS cache...");
+            let result = client.post("/api/v2/cache/flush", json!({})).await?;
+            pb.finish_and_clear();
+            formatter.print_success("DNS cache flushed");
+            formatter.print(&result);
         }
     }
     Ok(())
