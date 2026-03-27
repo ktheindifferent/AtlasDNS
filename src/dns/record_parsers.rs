@@ -212,6 +212,106 @@ impl RecordParser {
         })
     }
 
+    /// Parse an SSHFP record (SSH Fingerprint, RFC 4255)
+    pub fn parse_sshfp<T: PacketBuffer>(
+        buffer: &mut T,
+        domain: String,
+        ttl: u32,
+        data_len: u16,
+    ) -> Result<DnsRecord> {
+        let algorithm = buffer.read()?;
+        let fingerprint_type = buffer.read()?;
+        let fp_len = data_len.saturating_sub(2) as usize;
+        let mut fingerprint = vec![0u8; fp_len];
+        for i in 0..fp_len {
+            fingerprint[i] = buffer.read()?;
+        }
+        Ok(DnsRecord::Sshfp {
+            domain,
+            algorithm,
+            fingerprint_type,
+            fingerprint,
+            ttl: TransientTtl(ttl),
+        })
+    }
+
+    /// Parse a TLSA record (DNS-Based Authentication, RFC 6698)
+    pub fn parse_tlsa<T: PacketBuffer>(
+        buffer: &mut T,
+        domain: String,
+        ttl: u32,
+        data_len: u16,
+    ) -> Result<DnsRecord> {
+        let cert_usage = buffer.read()?;
+        let selector = buffer.read()?;
+        let matching_type = buffer.read()?;
+        let cert_len = data_len.saturating_sub(3) as usize;
+        let mut cert_data = vec![0u8; cert_len];
+        for i in 0..cert_len {
+            cert_data[i] = buffer.read()?;
+        }
+        Ok(DnsRecord::Tlsa {
+            domain,
+            cert_usage,
+            selector,
+            matching_type,
+            cert_data,
+            ttl: TransientTtl(ttl),
+        })
+    }
+
+    /// Parse an SVCB record (Service Binding, RFC 9460)
+    pub fn parse_svcb<T: PacketBuffer>(
+        buffer: &mut T,
+        domain: String,
+        ttl: u32,
+        data_len: u16,
+    ) -> Result<DnsRecord> {
+        let priority = buffer.read_u16()?;
+        let mut target = String::new();
+        let before_target = buffer.pos();
+        buffer.read_qname(&mut target)?;
+        let target_len = buffer.pos() - before_target;
+        let params_len = (data_len as usize).saturating_sub(2 + target_len);
+        let mut params = vec![0u8; params_len];
+        for i in 0..params_len {
+            params[i] = buffer.read()?;
+        }
+        Ok(DnsRecord::Svcb {
+            domain,
+            priority,
+            target,
+            params,
+            ttl: TransientTtl(ttl),
+        })
+    }
+
+    /// Parse an HTTPS record (HTTPS Service Binding, RFC 9460)
+    pub fn parse_https<T: PacketBuffer>(
+        buffer: &mut T,
+        domain: String,
+        ttl: u32,
+        data_len: u16,
+    ) -> Result<DnsRecord> {
+        let priority = buffer.read_u16()?;
+        let mut target = String::new();
+        let before_target = buffer.pos();
+        buffer.read_qname(&mut target)?;
+        let target_len = buffer.pos() - before_target;
+        let params_len = (data_len as usize).saturating_sub(2 + target_len);
+        let mut params = vec![0u8; params_len];
+        for i in 0..params_len {
+            params[i] = buffer.read()?;
+        }
+        Ok(DnsRecord::Https {
+            domain,
+            priority,
+            target,
+            params,
+            ttl: TransientTtl(ttl),
+        })
+    }
+
     /// Parse an Unknown record type
     pub fn parse_unknown<T: PacketBuffer>(
         buffer: &mut T,

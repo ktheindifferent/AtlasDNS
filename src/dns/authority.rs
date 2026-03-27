@@ -464,7 +464,11 @@ impl Authority {
                                     DnsRecord::Nsec { ref mut domain, .. } |
                                     DnsRecord::Dnskey { ref mut domain, .. } |
                                     DnsRecord::Nsec3 { ref mut domain, .. } |
-                                    DnsRecord::Nsec3param { ref mut domain, .. } => {
+                                    DnsRecord::Nsec3param { ref mut domain, .. } |
+                                    DnsRecord::Sshfp { ref mut domain, .. } |
+                                    DnsRecord::Tlsa { ref mut domain, .. } |
+                                    DnsRecord::Svcb { ref mut domain, .. } |
+                                    DnsRecord::Https { ref mut domain, .. } => {
                                         *domain = qname.to_string();
                                     }
                                     DnsRecord::Opt { .. } => {

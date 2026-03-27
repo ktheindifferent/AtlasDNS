@@ -26,6 +26,10 @@ pub enum QueryType {
     Dnskey,     // 48
     Nsec3,      // 50
     Nsec3param, // 51
+    Sshfp,      // 44
+    Tlsa,       // 52
+    Svcb,       // 64
+    Https,      // 65
     Ixfr,       // 251
     Axfr,       // 252
 }
@@ -49,6 +53,10 @@ impl QueryType {
             QueryType::Dnskey => 48,
             QueryType::Nsec3 => 50,
             QueryType::Nsec3param => 51,
+            QueryType::Sshfp => 44,
+            QueryType::Tlsa => 52,
+            QueryType::Svcb => 64,
+            QueryType::Https => 65,
             QueryType::Ixfr => 251,
             QueryType::Axfr => 252,
         }
@@ -71,6 +79,10 @@ impl QueryType {
             48 => QueryType::Dnskey,
             50 => QueryType::Nsec3,
             51 => QueryType::Nsec3param,
+            44 => QueryType::Sshfp,
+            52 => QueryType::Tlsa,
+            64 => QueryType::Svcb,
+            65 => QueryType::Https,
             251 => QueryType::Ixfr,
             252 => QueryType::Axfr,
             _ => QueryType::Unknown(num),

@@ -37,6 +37,8 @@ pub enum RpzAction {
     Passthru,
     /// Force the client to retry over TCP (truncated response)
     TcpOnly,
+    /// Return custom local data records
+    LocalData,
 }
 
 impl fmt::Display for RpzAction {
@@ -48,6 +50,7 @@ impl fmt::Display for RpzAction {
             RpzAction::Redirect => write!(f, "REDIRECT"),
             RpzAction::Passthru => write!(f, "PASSTHRU"),
             RpzAction::TcpOnly => write!(f, "TCP-ONLY"),
+            RpzAction::LocalData => write!(f, "LOCAL-DATA"),
         }
     }
 }
@@ -63,6 +66,8 @@ pub enum RpzTriggerType {
     ClientIp,
     /// Match against the authoritative nameserver name (NSDNAME trigger)
     NsDName,
+    /// Match against the IP address of an authoritative nameserver (NSIP trigger)
+    NsIp,
 }
 
 impl fmt::Display for RpzTriggerType {
@@ -71,6 +76,7 @@ impl fmt::Display for RpzTriggerType {
             RpzTriggerType::QName => write!(f, "QNAME"),
             RpzTriggerType::ClientIp => write!(f, "CLIENT-IP"),
             RpzTriggerType::NsDName => write!(f, "NSDNAME"),
+            RpzTriggerType::NsIp => write!(f, "NSIP"),
         }
     }
 }
@@ -107,6 +113,8 @@ pub struct RpzRule {
     pub category: ThreatCategory,
     /// Human-readable description
     pub description: Option<String>,
+    /// Custom records for LocalData action
+    pub local_data: Option<Vec<crate::dns::protocol::DnsRecord>>,
 }
 
 // ─── RPZ Zone ────────────────────────────────────────────────────────────────
@@ -140,6 +148,10 @@ pub struct RpzZone {
     client_cidr_rules: Vec<(IpNet, RpzRule)>,
     /// NSDNAME trigger rules: nameserver domain -> rule
     nsdname_trie: TrieNode,
+    /// NSIP trigger rules: nameserver IP -> rule
+    nsip_rules: HashMap<IpAddr, RpzRule>,
+    /// NSIP CIDR rules for subnet matching
+    nsip_cidr_rules: Vec<(IpNet, RpzRule)>,
     /// Bloom filter for fast QNAME negative lookups
     qname_bloom: Bloom<String>,
     /// Total number of rules in this zone
@@ -201,6 +213,8 @@ impl RpzZone {
             client_ip_rules: HashMap::new(),
             client_cidr_rules: Vec::new(),
             nsdname_trie: TrieNode::new(),
+            nsip_rules: HashMap::new(),
+            nsip_cidr_rules: Vec::new(),
             qname_bloom: new_bloom_filter(),
             rule_count: 0,
             serial: 0,
@@ -231,6 +245,17 @@ impl RpzZone {
                 let labels = domain_to_labels(&rule.trigger_value);
                 self.nsdname_trie.insert(&labels, rule);
             }
+            RpzTriggerType::NsIp => {
+                if let Some(net) = IpNet::parse(&rule.trigger_value) {
+                    let is_host = (net.addr.is_ipv4() && net.prefix_len == 32)
+                        || (net.addr.is_ipv6() && net.prefix_len == 128);
+                    if is_host {
+                        self.nsip_rules.insert(net.addr, rule);
+                    } else {
+                        self.nsip_cidr_rules.push((net, rule));
+                    }
+                }
+            }
         }
         self.rule_count += 1;
     }
@@ -260,6 +285,19 @@ impl RpzZone {
             RpzTriggerType::NsDName => {
                 let labels = domain_to_labels(trigger_value);
                 let removed = self.nsdname_trie.remove(&labels);
+                if removed { self.rule_count = self.rule_count.saturating_sub(1); }
+                removed
+            }
+            RpzTriggerType::NsIp => {
+                if let Ok(addr) = trigger_value.parse::<IpAddr>() {
+                    if self.nsip_rules.remove(&addr).is_some() {
+                        self.rule_count = self.rule_count.saturating_sub(1);
+                        return true;
+                    }
+                }
+                let before = self.nsip_cidr_rules.len();
+                self.nsip_cidr_rules.retain(|(_net, r)| r.trigger_value != trigger_value);
+                let removed = self.nsip_cidr_rules.len() < before;
                 if removed { self.rule_count = self.rule_count.saturating_sub(1); }
                 removed
             }
@@ -307,12 +345,33 @@ impl RpzZone {
         self.nsdname_trie.lookup(&labels)
     }
 
+    /// Lookup an NSIP trigger (match by nameserver IP).
+    fn lookup_nsip(&self, ns_ip: IpAddr) -> Option<&RpzRule> {
+        // Exact match first
+        if let Some(rule) = self.nsip_rules.get(&ns_ip) {
+            return Some(rule);
+        }
+        // CIDR match (most specific prefix wins)
+        let mut best: Option<(u8, &RpzRule)> = None;
+        for (net, rule) in &self.nsip_cidr_rules {
+            if net.contains(ns_ip) {
+                match best {
+                    Some((prev_len, _)) if net.prefix_len <= prev_len => {}
+                    _ => best = Some((net.prefix_len, rule)),
+                }
+            }
+        }
+        best.map(|(_, r)| r)
+    }
+
     /// Clear all rules in this zone.
     pub fn clear(&mut self) {
         self.qname_trie = TrieNode::new();
         self.client_ip_rules.clear();
         self.client_cidr_rules.clear();
         self.nsdname_trie = TrieNode::new();
+        self.nsip_rules.clear();
+        self.nsip_cidr_rules.clear();
         self.qname_bloom = new_bloom_filter();
         self.rule_count = 0;
     }
@@ -705,6 +764,31 @@ impl RpzEngine {
         Ok(None)
     }
 
+    /// Evaluate NSIP triggers against a set of nameserver IP addresses.
+    /// Called after we resolve the IP addresses of authoritative nameservers.
+    pub fn evaluate_nsip(
+        &self,
+        request: &DnsPacket,
+        ns_ips: &[IpAddr],
+    ) -> Result<Option<DnsPacket>, RpzDropSignal> {
+        if !*self.enabled.read() {
+            return Ok(None);
+        }
+
+        let zones = self.zones.read();
+        for (_priority, bucket) in zones.iter().rev() {
+            for zone in bucket {
+                if !zone.enabled { continue; }
+                for ip in ns_ips {
+                    if let Some(rule) = zone.lookup_nsip(*ip) {
+                        return self.apply_match(request, zone, rule);
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     fn apply_match(
         &self,
         request: &DnsPacket,
@@ -750,6 +834,10 @@ impl RpzEngine {
             RpzAction::TcpOnly => {
                 self.stats.write().queries_tcp_only += 1;
                 Ok(Some(self.build_truncated(request)))
+            }
+            RpzAction::LocalData => {
+                self.stats.write().queries_redirected += 1;
+                Ok(Some(self.build_local_data(request, rule)))
             }
         }
     }
@@ -812,6 +900,21 @@ impl RpzEngine {
         r.header.response = true;
         r.header.truncated_message = true;
         r.questions = request.questions.clone();
+        r
+    }
+
+    fn build_local_data(&self, request: &DnsPacket, rule: &RpzRule) -> DnsPacket {
+        let mut r = DnsPacket::new();
+        r.header.id = request.header.id;
+        r.header.response = true;
+        r.header.rescode = ResultCode::NOERROR;
+        r.header.authoritative_answer = true;
+        r.questions = request.questions.clone();
+        if let Some(ref records) = rule.local_data {
+            for record in records {
+                r.answers.push(record.clone());
+            }
+        }
         r
     }
 
@@ -904,8 +1007,29 @@ impl RpzEngine {
                             redirect_to: action.1,
                             category: ThreatCategory::Custom(0),
                             description: None,
+                            local_data: None,
                         });
                         count += 1;
+                    }
+                } else if owner.ends_with("rpz-nsip") {
+                    // NSIP trigger
+                    let ip_part = owner.trim_end_matches(".rpz-nsip")
+                        .trim_end_matches("rpz-nsip");
+                    let ip_part = ip_part.trim_end_matches('.');
+                    if !ip_part.is_empty() {
+                        if let Some(net) = IpNet::parse(ip_part) {
+                            let action = Self::rdata_to_action(&rtype, rdata);
+                            zone.add_rule(RpzRule {
+                                trigger_value: format!("{}/{}", net.addr, net.prefix_len),
+                                trigger_type: RpzTriggerType::NsIp,
+                                action: action.0,
+                                redirect_to: action.1,
+                                category: ThreatCategory::Custom(0),
+                                description: None,
+                                local_data: None,
+                            });
+                            count += 1;
+                        }
                     }
                 } else if rtype == "CNAME" || rtype == "A" || rtype == "AAAA" {
                     // QNAME trigger
@@ -917,6 +1041,7 @@ impl RpzEngine {
                         redirect_to: action.1,
                         category: ThreatCategory::Custom(0),
                         description: None,
+                        local_data: None,
                     });
                     count += 1;
                 }
@@ -933,6 +1058,7 @@ impl RpzEngine {
                             redirect_to: None,
                             category: ThreatCategory::Custom(0),
                             description: None,
+                            local_data: None,
                         });
                         count += 1;
                     }
@@ -946,6 +1072,7 @@ impl RpzEngine {
                         redirect_to: action.1,
                         category: ThreatCategory::Custom(0),
                         description: None,
+                        local_data: None,
                     });
                     count += 1;
                 }
@@ -960,6 +1087,7 @@ impl RpzEngine {
                         redirect_to: None,
                         category: ThreatCategory::Custom(0),
                         description: None,
+                        local_data: None,
                     });
                     count += 1;
                 }
@@ -1006,6 +1134,7 @@ impl RpzEngine {
             redirect_to: action.1,
             category: ThreatCategory::Custom(0),
             description: None,
+            local_data: None,
         })
     }
 
@@ -1133,6 +1262,7 @@ impl RpzEngine {
                             redirect_to: action.1,
                             category: ThreatCategory::Custom(0),
                             description: None,
+                            local_data: None,
                         });
                         count += 1;
                     }
@@ -1144,6 +1274,7 @@ impl RpzEngine {
                             redirect_to: Some(IpAddr::V4(*addr)),
                             category: ThreatCategory::Custom(0),
                             description: None,
+                            local_data: None,
                         });
                         count += 1;
                     }
@@ -1155,6 +1286,7 @@ impl RpzEngine {
                             redirect_to: Some(IpAddr::V6(*addr)),
                             category: ThreatCategory::Custom(0),
                             description: None,
+                            local_data: None,
                         });
                         count += 1;
                     }
@@ -1552,6 +1684,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1574,6 +1707,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1594,6 +1728,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Botnet,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1616,6 +1751,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Custom(1),
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1637,6 +1773,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(low);
 
@@ -1649,6 +1786,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Custom(0),
             description: None,
+            local_data: None,
         });
         engine.add_zone(high);
 
@@ -1669,6 +1807,7 @@ mod tests {
             redirect_to: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
             category: ThreatCategory::Advertising,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1694,6 +1833,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Custom(0),
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1713,6 +1853,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
         engine.add_whitelist("safe.example.com");
@@ -1732,6 +1873,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 
@@ -1753,6 +1895,7 @@ mod tests {
             redirect_to: None,
             category: ThreatCategory::Malware,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
         engine.set_enabled(false);
@@ -1803,6 +1946,7 @@ tracking.com
             redirect_to: None,
             category: ThreatCategory::Botnet,
             description: None,
+            local_data: None,
         });
         engine.add_zone(zone);
 

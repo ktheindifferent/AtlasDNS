@@ -201,6 +201,7 @@ pub fn add_rule(
         redirect_to,
         category,
         description: req.description,
+        local_data: None,
     };
 
     if context.rpz_engine.add_rule_to_zone(zone_name, rule) {

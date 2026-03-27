@@ -44,6 +44,10 @@ pub enum QueryType {
     Dnskey, // 48
     Nsec3,  // 50
     Nsec3param, // 51
+    Sshfp,      // 44
+    Tlsa,       // 52
+    Svcb,       // 64
+    Https,      // 65
     Ixfr,   // 251
     Axfr,   // 252
 }
@@ -67,6 +71,10 @@ impl QueryType {
             QueryType::Dnskey => 48,
             QueryType::Nsec3 => 50,
             QueryType::Nsec3param => 51,
+            QueryType::Sshfp => 44,
+            QueryType::Tlsa => 52,
+            QueryType::Svcb => 64,
+            QueryType::Https => 65,
             QueryType::Ixfr => 251,
             QueryType::Axfr => 252,
         }
@@ -89,6 +97,10 @@ impl QueryType {
             48 => QueryType::Dnskey,
             50 => QueryType::Nsec3,
             51 => QueryType::Nsec3param,
+            44 => QueryType::Sshfp,
+            52 => QueryType::Tlsa,
+            64 => QueryType::Svcb,
+            65 => QueryType::Https,
             251 => QueryType::Ixfr,
             252 => QueryType::Axfr,
             _ => QueryType::Unknown(num),
@@ -247,6 +259,35 @@ pub enum DnsRecord {
         salt: Vec<u8>,
         ttl: TransientTtl,
     }, // 51
+    Sshfp {
+        domain: String,
+        algorithm: u8,
+        fingerprint_type: u8,
+        fingerprint: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 44
+    Tlsa {
+        domain: String,
+        cert_usage: u8,
+        selector: u8,
+        matching_type: u8,
+        cert_data: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 52
+    Svcb {
+        domain: String,
+        priority: u16,
+        target: String,
+        params: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 64
+    Https {
+        domain: String,
+        priority: u16,
+        target: String,
+        params: Vec<u8>,
+        ttl: TransientTtl,
+    }, // 65
 }
 
 impl DnsRecord {
@@ -568,6 +609,78 @@ impl DnsRecord {
                     flags,
                     iterations,
                     salt,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Sshfp => {
+                let algorithm = buffer.read()?;
+                let fingerprint_type = buffer.read()?;
+                let fp_len = data_len - 2;
+                let mut fingerprint = vec![0; fp_len as usize];
+                for i in 0..fp_len as usize {
+                    fingerprint[i] = buffer.read()?;
+                }
+                Ok(DnsRecord::Sshfp {
+                    domain,
+                    algorithm,
+                    fingerprint_type,
+                    fingerprint,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Tlsa => {
+                let cert_usage = buffer.read()?;
+                let selector = buffer.read()?;
+                let matching_type = buffer.read()?;
+                let cert_len = data_len - 3;
+                let mut cert_data = vec![0; cert_len as usize];
+                for i in 0..cert_len as usize {
+                    cert_data[i] = buffer.read()?;
+                }
+                Ok(DnsRecord::Tlsa {
+                    domain,
+                    cert_usage,
+                    selector,
+                    matching_type,
+                    cert_data,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Svcb => {
+                let priority = buffer.read_u16()?;
+                let mut target = String::new();
+                let before_target = buffer.pos();
+                buffer.read_qname(&mut target)?;
+                let target_len = buffer.pos() - before_target;
+                let params_len = data_len as usize - 2 - target_len;
+                let mut params = vec![0; params_len];
+                for i in 0..params_len {
+                    params[i] = buffer.read()?;
+                }
+                Ok(DnsRecord::Svcb {
+                    domain,
+                    priority,
+                    target,
+                    params,
+                    ttl: TransientTtl(ttl),
+                })
+            }
+            QueryType::Https => {
+                let priority = buffer.read_u16()?;
+                let mut target = String::new();
+                let before_target = buffer.pos();
+                buffer.read_qname(&mut target)?;
+                let target_len = buffer.pos() - before_target;
+                let params_len = data_len as usize - 2 - target_len;
+                let mut params = vec![0; params_len];
+                for i in 0..params_len {
+                    params[i] = buffer.read()?;
+                }
+                Ok(DnsRecord::Https {
+                    domain,
+                    priority,
+                    target,
+                    params,
                     ttl: TransientTtl(ttl),
                 })
             }
@@ -901,6 +1014,92 @@ impl DnsRecord {
                     buffer.write_u8(*b)?;
                 }
             }
+            DnsRecord::Sshfp {
+                ref domain,
+                algorithm,
+                fingerprint_type,
+                ref fingerprint,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Sshfp.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                buffer.write_u16((2 + fingerprint.len()) as u16)?;
+                buffer.write_u8(algorithm)?;
+                buffer.write_u8(fingerprint_type)?;
+                for b in fingerprint {
+                    buffer.write_u8(*b)?;
+                }
+            }
+            DnsRecord::Tlsa {
+                ref domain,
+                cert_usage,
+                selector,
+                matching_type,
+                ref cert_data,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Tlsa.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+                buffer.write_u16((3 + cert_data.len()) as u16)?;
+                buffer.write_u8(cert_usage)?;
+                buffer.write_u8(selector)?;
+                buffer.write_u8(matching_type)?;
+                for b in cert_data {
+                    buffer.write_u8(*b)?;
+                }
+            }
+            DnsRecord::Svcb {
+                ref domain,
+                priority,
+                ref target,
+                ref params,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Svcb.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+
+                let pos = buffer.pos();
+                buffer.write_u16(0)?;
+
+                buffer.write_u16(priority)?;
+                buffer.write_qname(target)?;
+                for b in params {
+                    buffer.write_u8(*b)?;
+                }
+
+                let size = buffer.pos() - (pos + 2);
+                buffer.set_u16(pos, size as u16)?;
+            }
+            DnsRecord::Https {
+                ref domain,
+                priority,
+                ref target,
+                ref params,
+                ttl: TransientTtl(ttl),
+            } => {
+                buffer.write_qname(domain)?;
+                buffer.write_u16(QueryType::Https.to_num())?;
+                buffer.write_u16(1)?;
+                buffer.write_u32(ttl)?;
+
+                let pos = buffer.pos();
+                buffer.write_u16(0)?;
+
+                buffer.write_u16(priority)?;
+                buffer.write_qname(target)?;
+                for b in params {
+                    buffer.write_u8(*b)?;
+                }
+
+                let size = buffer.pos() - (pos + 2);
+                buffer.set_u16(pos, size as u16)?;
+            }
             DnsRecord::Unknown { .. } => {
                 log::info!("Skipping record: {:?}", self);
             }
@@ -927,6 +1126,10 @@ impl DnsRecord {
             DnsRecord::Dnskey { .. } => QueryType::Dnskey,
             DnsRecord::Nsec3 { .. } => QueryType::Nsec3,
             DnsRecord::Nsec3param { .. } => QueryType::Nsec3param,
+            DnsRecord::Sshfp { .. } => QueryType::Sshfp,
+            DnsRecord::Tlsa { .. } => QueryType::Tlsa,
+            DnsRecord::Svcb { .. } => QueryType::Svcb,
+            DnsRecord::Https { .. } => QueryType::Https,
         }
     }
 
@@ -946,7 +1149,11 @@ impl DnsRecord {
             | DnsRecord::Nsec { ref domain, .. }
             | DnsRecord::Dnskey { ref domain, .. }
             | DnsRecord::Nsec3 { ref domain, .. }
-            | DnsRecord::Nsec3param { ref domain, .. } => Some(domain.clone()),
+            | DnsRecord::Nsec3param { ref domain, .. }
+            | DnsRecord::Sshfp { ref domain, .. }
+            | DnsRecord::Tlsa { ref domain, .. }
+            | DnsRecord::Svcb { ref domain, .. }
+            | DnsRecord::Https { ref domain, .. } => Some(domain.clone()),
             DnsRecord::Opt { .. } => None,
         }
     }
@@ -1010,6 +1217,22 @@ impl DnsRecord {
                 ..
             }
             | DnsRecord::Nsec3param {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Sshfp {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Tlsa {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Svcb {
+                ttl: TransientTtl(ttl),
+                ..
+            }
+            | DnsRecord::Https {
                 ttl: TransientTtl(ttl),
                 ..
             } => ttl,
