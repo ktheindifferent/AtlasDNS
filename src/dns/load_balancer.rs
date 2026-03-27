@@ -647,7 +647,7 @@ mod tests {
         // All backends start healthy
         let b1 = pool.select_backend().unwrap();
         let b2 = pool.select_backend().unwrap();
-        let b3 = pool.select_backend().unwrap();
+        let _b3 = pool.select_backend().unwrap();
         let b4 = pool.select_backend().unwrap();
 
         // Round-robin should cycle through backends

@@ -16,26 +16,26 @@
             </nav>
         </div>
         <div class="col-auto">
-            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addPoolModal">
-                <i class="bi bi-plus-circle"></i> Add Pool
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addLbPoolModal">
+                <i class="bi bi-plus-circle"></i> Add LB Pool
             </button>
-            <button class="btn btn-primary ms-2" onclick="saveConfig()">
-                <i class="bi bi-save"></i> Save Changes
+            <button class="btn btn-outline-primary ms-2" onclick="refreshPools()">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
             </button>
         </div>
     </div>
 </div>
 
-<!-- Load Balancing Overview -->
+<!-- Overview Stats -->
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card">
             <div class="card-body">
                 <div class="d-flex align-items-center">
                     <div class="flex-grow-1">
-                        <h6 class="text-muted mb-2">Active Pools</h6>
-                        <div class="h3 mb-0">{{active_pools}}</div>
-                        <small class="text-success">Healthy</small>
+                        <h6 class="text-muted mb-2">LB Pools</h6>
+                        <div class="h3 mb-0">{{lb_pool_count}}</div>
+                        <small class="text-success">Configured</small>
                     </div>
                     <div class="ms-3">
                         <i class="bi bi-collection text-success" style="font-size: 2rem;"></i>
@@ -49,9 +49,9 @@
             <div class="card-body">
                 <div class="d-flex align-items-center">
                     <div class="flex-grow-1">
-                        <h6 class="text-muted mb-2">Total Endpoints</h6>
-                        <div class="h3 mb-0">{{total_endpoints}}</div>
-                        <small class="text-info">Configured</small>
+                        <h6 class="text-muted mb-2">Backends</h6>
+                        <div class="h3 mb-0">{{lb_healthy_backends}} / {{lb_total_backends}}</div>
+                        <small class="text-info">Healthy</small>
                     </div>
                     <div class="ms-3">
                         <i class="bi bi-server text-info" style="font-size: 2rem;"></i>
@@ -65,9 +65,9 @@
             <div class="card-body">
                 <div class="d-flex align-items-center">
                     <div class="flex-grow-1">
-                        <h6 class="text-muted mb-2">Requests/sec</h6>
-                        <div class="h3 mb-0">{{requests_per_sec}}</div>
-                        <small class="text-primary">Current</small>
+                        <h6 class="text-muted mb-2">Total Requests</h6>
+                        <div class="h3 mb-0">{{lb_total_requests}}</div>
+                        <small class="text-primary">LB routed</small>
                     </div>
                     <div class="ms-3">
                         <i class="bi bi-activity text-primary" style="font-size: 2rem;"></i>
@@ -81,7 +81,7 @@
             <div class="card-body">
                 <div class="d-flex align-items-center">
                     <div class="flex-grow-1">
-                        <h6 class="text-muted mb-2">Failovers</h6>
+                        <h6 class="text-muted mb-2">Geo Failovers</h6>
                         <div class="h3 mb-0">{{failovers}}</div>
                         <small class="text-warning">Last 24h</small>
                     </div>
@@ -94,368 +94,255 @@
     </div>
 </div>
 
-<!-- Load Balancing Pools -->
+<!-- DNS Load Balancer Pools (real data from /api/v1/lb/pools) -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="mb-0">Load Balancing Pools</h5>
+        <h5 class="mb-0"><i class="bi bi-diagram-3"></i> DNS Load Balancer Pools</h5>
     </div>
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Pool Name</th>
-                        <th>Algorithm</th>
-                        <th>Endpoints</th>
-                        <th>Health</th>
-                        <th>Requests</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">Primary Pool</div>
-                            <small class="text-muted">api.example.com</small>
-                        </td>
-                        <td><span class="badge bg-info">Round Robin</span></td>
-                        <td>4/5 healthy</td>
-                        <td>
-                            <div class="progress" style="height: 20px; width: 100px;">
-                                <div class="progress-bar bg-success" style="width: 80%"></div>
-                                <div class="progress-bar bg-danger" style="width: 20%"></div>
-                            </div>
-                        </td>
-                        <td>125.4K</td>
-                        <td><span class="badge bg-success">Active</span></td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="editPool('primary')">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-info" onclick="viewPool('primary')">
+        <div id="lbPoolsContainer">
+            {{#if lb_pool_count}}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Domain</th>
+                            <th>Strategy</th>
+                            <th>Health Check</th>
+                            <th>Backends</th>
+                            <th>Health</th>
+                            <th>Requests</th>
+                            <th>TTL</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#each lb_pools}}
+                        <tr>
+                            <td>
+                                <div class="fw-semibold">{{this.domain}}</div>
+                                <small class="text-muted">Interval: {{this.check_interval_secs}}s</small>
+                            </td>
+                            <td><span class="badge bg-info">{{this.strategy}}</span></td>
+                            <td><code>{{this.health_check}}</code></td>
+                            <td>{{this.healthy_backends}} / {{this.total_backends}}</td>
+                            <td>
+                                {{#if this.total_backends}}
+                                <div class="progress" style="height: 20px; width: 100px;">
+                                    <div class="progress-bar bg-success" style="width: {{#if this.total_backends}}{{this.healthy_backends}}{{else}}0{{/if}}00%;max-width:100%"></div>
+                                </div>
+                                {{else}}
+                                <span class="text-muted">-</span>
+                                {{/if}}
+                            </td>
+                            <td>{{this.total_requests}}</td>
+                            <td>{{this.ttl}}s</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-info" onclick="viewPoolDetails('{{this.domain}}')">
                                     <i class="bi bi-eye"></i>
                                 </button>
-                                <button class="btn btn-outline-danger" onclick="deletePool('primary')">
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteLbPool('{{this.domain}}')">
                                     <i class="bi bi-trash"></i>
                                 </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>
-                            <div class="fw-semibold">Backup Pool</div>
-                            <small class="text-muted">backup.example.com</small>
-                        </td>
-                        <td><span class="badge bg-warning">Least Connections</span></td>
-                        <td>3/3 healthy</td>
-                        <td>
-                            <div class="progress" style="height: 20px; width: 100px;">
-                                <div class="progress-bar bg-success" style="width: 100%"></div>
-                            </div>
-                        </td>
-                        <td>45.2K</td>
-                        <td><span class="badge bg-secondary">Standby</span></td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="editPool('backup')">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-info" onclick="viewPool('backup')">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                <button class="btn btn-outline-danger" onclick="deletePool('backup')">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            </td>
+                        </tr>
+                        <!-- Backend details row (hidden by default) -->
+                        <tr class="pool-details" id="details-{{this.domain}}" style="display:none;">
+                            <td colspan="8">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Backend IP</th>
+                                            <th>Status</th>
+                                            <th>Weight</th>
+                                            <th>Requests</th>
+                                            <th>Active Conns</th>
+                                            <th>Latency</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{#each this.backends}}
+                                        <tr>
+                                            <td><code>{{this.address}}</code></td>
+                                            <td>
+                                                {{#if (eq this.health "healthy")}}
+                                                <span class="badge bg-success">Healthy</span>
+                                                {{else}}
+                                                {{#if (eq this.health "unhealthy")}}
+                                                <span class="badge bg-danger">Unhealthy</span>
+                                                {{else}}
+                                                <span class="badge bg-secondary">Unknown</span>
+                                                {{/if}}
+                                                {{/if}}
+                                            </td>
+                                            <td>{{this.weight}}</td>
+                                            <td>{{this.request_count}}</td>
+                                            <td>{{this.active_connections}}</td>
+                                            <td>{{#if this.last_latency_ms}}{{this.last_latency_ms}}ms{{else}}-{{/if}}</td>
+                                        </tr>
+                                        {{/each}}
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <div class="text-center py-4 text-muted">
+                <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                <p class="mt-2">No load balancer pools configured.</p>
+                <p><small>Add pools via the button above or create <code>~/.atlasdns/lb.toml</code></small></p>
+                <pre class="text-start mx-auto" style="max-width: 450px; background: #f8f9fa; padding: 1rem; border-radius: 0.5rem;">[[pool]]
+name = "web.example.com"
+backends = ["192.168.1.10", "192.168.1.11"]
+strategy = "round-robin"
+health_check = "tcp:80"</pre>
+            </div>
+            {{/if}}
         </div>
     </div>
 </div>
 
-<!-- Endpoints Configuration -->
-<div class="row g-3 mb-4">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header">
-                <div class="row align-items-center">
-                    <div class="col">
-                        <h5 class="mb-0">Endpoints</h5>
-                    </div>
-                    <div class="col-auto">
-                        <button class="btn btn-sm btn-success" onclick="addEndpoint()">
-                            <i class="bi bi-plus"></i> Add Endpoint
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Endpoint</th>
-                                <th>Weight</th>
-                                <th>Priority</th>
-                                <th>Health</th>
-                                <th>Response Time</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>192.168.1.10:53</td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="100" style="width: 60px;">
-                                </td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="1" style="width: 50px;">
-                                </td>
-                                <td><span class="badge bg-success">Healthy</span></td>
-                                <td>12ms</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.10')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>192.168.1.11:53</td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="100" style="width: 60px;">
-                                </td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="1" style="width: 50px;">
-                                </td>
-                                <td><span class="badge bg-success">Healthy</span></td>
-                                <td>15ms</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.11')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>192.168.1.12:53</td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="50" style="width: 60px;">
-                                </td>
-                                <td>
-                                    <input type="number" class="form-control form-control-sm" value="2" style="width: 50px;">
-                                </td>
-                                <td><span class="badge bg-danger">Unhealthy</span></td>
-                                <td>-</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="removeEndpoint('192.168.1.12')">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Load Balancing Algorithms</h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label">Algorithm</label>
-                    <select class="form-select">
-                        <option value="round-robin">Round Robin</option>
-                        <option value="weighted">Weighted Round Robin</option>
-                        <option value="least-conn">Least Connections</option>
-                        <option value="least-time">Least Response Time</option>
-                        <option value="random">Random</option>
-                        <option value="ip-hash">IP Hash</option>
-                        <option value="geo">Geographic</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Session Persistence</label>
-                    <select class="form-select">
-                        <option value="none">None</option>
-                        <option value="ip">Source IP</option>
-                        <option value="cookie">Cookie-based</option>
-                        <option value="custom">Custom Header</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Failover Threshold</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" value="3">
-                        <span class="input-group-text">failures</span>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Recovery Checks</label>
-                    <div class="input-group">
-                        <input type="number" class="form-control" value="2">
-                        <span class="input-group-text">successes</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Health Checks Configuration -->
+<!-- Geo Load Balancing Stats -->
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="mb-0">Health Check Configuration</h5>
+        <h5 class="mb-0"><i class="bi bi-globe"></i> Geographic Load Balancing</h5>
     </div>
     <div class="card-body">
         <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label">Check Type</label>
-                <select class="form-select">
-                    <option value="dns">DNS Query</option>
-                    <option value="tcp">TCP Connect</option>
-                    <option value="http">HTTP/HTTPS</option>
-                    <option value="icmp">ICMP Ping</option>
-                </select>
+            <div class="col-md-4">
+                <h6>Total Queries</h6>
+                <div class="h4">{{total_queries}}</div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Check Interval</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" value="30">
-                    <span class="input-group-text">seconds</span>
-                </div>
+            <div class="col-md-4">
+                <h6>Active Regions</h6>
+                <div class="h4">{{active_pools}}</div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Timeout</label>
-                <div class="input-group">
-                    <input type="number" class="form-control" value="5">
-                    <span class="input-group-text">seconds</span>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Retries</label>
-                <input type="number" class="form-control" value="2">
-            </div>
-            <div class="col-12">
-                <label class="form-label">Health Check Query</label>
-                <input type="text" class="form-control" value="health.example.com" placeholder="Domain to query for health check">
+            <div class="col-md-4">
+                <h6>Avg Routing Time</h6>
+                <div class="h4">{{avg_routing_time_us}} &micro;s</div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Traffic Distribution Chart -->
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0">Traffic Distribution</h5>
-    </div>
-    <div class="card-body">
-        <canvas id="trafficChart" height="80"></canvas>
-    </div>
-</div>
-
-<!-- Add Pool Modal -->
-<div class="modal fade" id="addPoolModal" tabindex="-1">
+<!-- Add LB Pool Modal -->
+<div class="modal fade" id="addLbPoolModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Load Balancing Pool</h5>
+                <h5 class="modal-title">Add DNS Load Balancer Pool</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Pool Name</label>
-                        <input type="text" class="form-control" id="poolName">
+                        <label class="form-label">Domain Name</label>
+                        <input type="text" class="form-control" id="lbPoolDomain" placeholder="e.g., web.example.com">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Domain</label>
-                        <input type="text" class="form-control" id="poolDomain" placeholder="e.g., api.example.com">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Algorithm</label>
-                        <select class="form-select" id="poolAlgorithm">
+                        <label class="form-label">Strategy</label>
+                        <select class="form-select" id="lbPoolStrategy">
                             <option value="round-robin">Round Robin</option>
-                            <option value="weighted">Weighted Round Robin</option>
-                            <option value="least-conn">Least Connections</option>
+                            <option value="weighted">Weighted</option>
+                            <option value="least-connections">Least Connections</option>
+                            <option value="random">Random</option>
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Priority</label>
-                        <input type="number" class="form-control" id="poolPriority" value="1">
+                        <label class="form-label">Health Check</label>
+                        <input type="text" class="form-control" id="lbPoolHealthCheck" placeholder="e.g., tcp:80 or icmp" value="tcp:80">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">TTL (seconds)</label>
+                        <input type="number" class="form-control" id="lbPoolTtl" value="30">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Check Interval (s)</label>
+                        <input type="number" class="form-control" id="lbPoolInterval" value="30">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Backend IPs (one per line)</label>
+                        <textarea class="form-control" id="lbPoolBackends" rows="4" placeholder="192.168.1.10&#10;192.168.1.11&#10;192.168.1.12"></textarea>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="createPool()">Create Pool</button>
+                <button type="button" class="btn btn-primary" onclick="createLbPool()">Create Pool</button>
             </div>
         </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Traffic Distribution Chart
-const ctx = document.getElementById('trafficChart').getContext('2d');
-new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: ['Endpoint 1', 'Endpoint 2', 'Endpoint 3', 'Endpoint 4', 'Endpoint 5'],
-        datasets: [{
-            label: 'Requests',
-            data: [30000, 28000, 15000, 12000, 8000],
-            backgroundColor: 'rgba(0, 102, 255, 0.8)'
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-            y: {
-                beginAtZero: true
+function refreshPools() {
+    fetch('/api/v1/lb/pools', { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
             }
-        }
-    }
-});
-
-function saveConfig() {
-    showToast('Load balancing configuration saved', 'success');
+        })
+        .catch(err => showToast('Failed to refresh: ' + err, 'danger'));
 }
 
-function editPool(poolId) {
-    showToast('Loading pool configuration...', 'info');
-}
-
-function viewPool(poolId) {
-    showToast('Loading pool details...', 'info');
-}
-
-function deletePool(poolId) {
-    if (confirm('Delete this load balancing pool?')) {
-        showToast('Pool deleted', 'success');
+function viewPoolDetails(domain) {
+    const row = document.getElementById('details-' + domain);
+    if (row) {
+        row.style.display = row.style.display === 'none' ? '' : 'none';
     }
 }
 
-function createPool() {
-    showToast('Load balancing pool created', 'success');
-    bootstrap.Modal.getInstance(document.getElementById('addPoolModal')).hide();
+function deleteLbPool(domain) {
+    if (!confirm('Delete load balancer pool "' + domain + '"?')) return;
+    fetch('/api/v1/lb/pools/' + encodeURIComponent(domain), {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(data.message || 'Pool deleted', data.success ? 'success' : 'warning');
+        if (data.success) setTimeout(() => location.reload(), 500);
+    })
+    .catch(err => showToast('Error: ' + err, 'danger'));
 }
 
-function addEndpoint() {
-    showToast('Add new endpoint...', 'info');
-}
+function createLbPool() {
+    const domain = document.getElementById('lbPoolDomain').value.trim();
+    const strategy = document.getElementById('lbPoolStrategy').value;
+    const healthCheck = document.getElementById('lbPoolHealthCheck').value.trim();
+    const ttl = parseInt(document.getElementById('lbPoolTtl').value) || 30;
+    const interval = parseInt(document.getElementById('lbPoolInterval').value) || 30;
+    const backendsText = document.getElementById('lbPoolBackends').value.trim();
+    const backends = backendsText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
 
-function removeEndpoint(endpoint) {
-    if (confirm(`Remove endpoint ${endpoint}?`)) {
-        showToast('Endpoint removed', 'success');
+    if (!domain || backends.length === 0) {
+        showToast('Domain and at least one backend IP are required', 'warning');
+        return;
     }
+
+    fetch('/api/v1/lb/pools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+            name: domain,
+            backends: backends,
+            strategy: strategy,
+            health_check: healthCheck || null,
+            ttl: ttl,
+            check_interval_secs: interval
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        showToast(data.message || 'Pool created', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('addLbPoolModal')).hide();
+        setTimeout(() => location.reload(), 500);
+    })
+    .catch(err => showToast('Error: ' + err, 'danger'));
 }
 </script>
 {{/inline}}
