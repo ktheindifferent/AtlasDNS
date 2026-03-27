@@ -350,8 +350,8 @@ mod tests {
     fn test_percentiles() {
         let vals: Vec<u64> = (1..=100).collect();
         let stats = compute_percentiles(&vals);
-        assert_eq!(stats.p50, 50);
-        assert_eq!(stats.p95, 95);
+        assert_eq!(stats.p50, 51); // index 50 in 0-based sorted [1..=100]
+        assert_eq!(stats.p95, 96);
         assert_eq!(stats.min, 1);
         assert_eq!(stats.max, 100);
         assert_eq!(stats.count, 100);
