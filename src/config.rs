@@ -8,3 +8,6 @@
 //! ```
 
 pub use crate::dns::clustering::{ClusterConfig, ClusterRole};
+pub use crate::dns::rate_limit::{RateLimitConfig, RateLimiter};
+pub use crate::dns::rebinding::RebindingProtection;
+pub use crate::dns::rpz::{RpzEngine, RpzAction, RpzTriggerType, RpzRule, ThreatCategory};
