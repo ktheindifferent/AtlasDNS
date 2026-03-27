@@ -7,8 +7,9 @@ edition = "2018"
 [features]
 # Enable the Pi-hole compatible API layer at /admin/api.php
 # Enabled by default; disable with --no-default-features if not needed.
-default = ["pihole-api"]
+default = ["pihole-api", "k8s"]
 pihole-api = []
+k8s = ["dep:kube", "dep:k8s-openapi", "dep:kube-derive", "dep:kube-runtime", "dep:schemars"]
 
 [dependencies]
 ascii = "1.0.0"
@@ -26,6 +27,7 @@ tiny_http = { version = "0.11.0", features = ["ssl"] }
 log = "0.4.14"
 simple_logger = { git = "https://github.com/PixelCoda/rust-simple_logger.git", version = "1.13.6" }
 # acme2 = "0.5"  # Temporarily disabled - needs API adjustments
+instant-acme = { version = "0.8", features = ["hyper-rustls", "rcgen"] }
 openssl = "0.10"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.11", features = ["json", "blocking"] }
@@ -49,6 +51,9 @@ async-stream = "0.3"
 futures-util = "0.3"
 libc = "0.2"
 socket2 = { version = "0.5", features = ["all"] }
+
+# mDNS service discovery
+mdns-sd = "0.18"
 
 # DNS-over-QUIC dependencies
 quinn = "0.10"
@@ -81,13 +86,13 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 maxminddb = "0.23"
 axum = { version = "0.6", features = ["ws"] }
 
-# Kubernetes operator dependencies
-kube = { version = "0.87", features = ["runtime", "derive", "client", "ws"] }
-k8s-openapi = { version = "0.20", features = ["v1_28"] }
-kube-derive = "0.87"
-kube-runtime = "0.87"
+# Kubernetes operator dependencies (feature-gated behind "k8s")
+kube = { version = "0.87", features = ["runtime", "derive", "client", "ws"], optional = true }
+k8s-openapi = { version = "0.20", features = ["v1_28"], optional = true }
+kube-derive = { version = "0.87", optional = true }
+kube-runtime = { version = "0.87", optional = true }
 futures = "0.3"
-schemars = "0.8"
+schemars = { version = "0.8", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.48", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }

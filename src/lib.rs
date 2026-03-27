@@ -26,6 +26,7 @@ pub mod dns;
 pub mod web;
 
 /// Kubernetes integration for native K8s resource management
+#[cfg(feature = "k8s")]
 pub mod k8s;
 
 /// Privilege escalation utilities for binding to privileged ports
@@ -45,3 +46,12 @@ pub mod config;
 
 /// DNSSEC full validation chain using `ring` for cryptographic operations
 pub mod dnssec;
+
+/// ACME v2 certificate management using instant-acme (DNS-01 challenges, auto-renewal)
+pub mod acme;
+
+/// mDNS responder and service browser (RFC 6762) with REST API
+pub mod mdns;
+
+/// GeoIP enrichment for DNS query logs using MaxMind databases
+pub mod geoip;
