@@ -44,6 +44,7 @@ use crate::dns::split_horizon::SplitHorizonRuleManager;
 use crate::dns::dnssec::ValidationMode;
 use crate::dns::rpz::RpzEngine;
 use crate::dns::latency_analytics::LatencyTracker;
+use crate::dns::load_balancer::LoadBalancerManager;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -198,6 +199,8 @@ pub struct ServerContext {
     pub rpz_engine: Arc<RpzEngine>,
     /// Latency analytics tracker for percentile stats and upstream health.
     pub latency_tracker: Arc<LatencyTracker>,
+    /// DNS-based load balancer with health-checked backend pools.
+    pub load_balancer: Arc<LoadBalancerManager>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -330,6 +333,7 @@ impl Default for ServerContext {
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
+            load_balancer: Arc::new(LoadBalancerManager::new()),
         }
     }
 }
@@ -427,6 +431,7 @@ impl ServerContext {
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
+            load_balancer: Arc::new(LoadBalancerManager::new()),
         })
     }
 
@@ -495,6 +500,13 @@ impl ServerContext {
         } else {
             log::info!("Loading zones from zone files in {}", self.zones_dir);
             self.authority.load(&self.zones_dir)?;
+        }
+
+        // Load DNS load-balancer pools from ~/.atlasdns/lb.toml
+        self.load_balancer.load_default_config();
+        if self.load_balancer.pool_count() > 0 {
+            self.load_balancer.start_health_check_loop();
+            log::info!("[LB] Started health-check loop for {} pool(s)", self.load_balancer.pool_count());
         }
 
         Ok(())
@@ -727,6 +739,7 @@ pub mod tests {
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
+            load_balancer: Arc::new(LoadBalancerManager::new()),
         })
     }
 

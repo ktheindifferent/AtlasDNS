@@ -249,5 +249,8 @@ pub mod latency_analytics;
 /// DNS benchmark tool for measuring query latency percentiles
 pub mod bench;
 
+/// DNS-based load balancing with health checking
+pub mod load_balancer;
+
 #[cfg(test)]
 mod cache_test;

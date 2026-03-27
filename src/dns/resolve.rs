@@ -160,6 +160,14 @@ pub trait DnsResolver {
             }
         }
 
+        // Load-balancer pool lookup (takes priority over static authority)
+        if qtype == QueryType::A || qtype == QueryType::Aaaa {
+            if let Some(pkt) = context.load_balancer.resolve(qname, qtype) {
+                log::info!("[LB] resolved {} via load balancer pool", qname);
+                return Ok(pkt);
+            }
+        }
+
         if let Some(qr) = context.authority.query(qname, qtype) {
             log::info!("context.authority.query");
             return Ok(qr);
