@@ -278,7 +278,7 @@ impl SecurePasswordValidator {
             errors.push("Password must contain at least one lowercase letter".to_string());
         }
         
-        if self.require_digits && !password_str.chars().any(|c| c.is_digit(10)) {
+        if self.require_digits && !password_str.chars().any(|c| c.is_ascii_digit()) {
             errors.push("Password must contain at least one digit".to_string());
         }
         

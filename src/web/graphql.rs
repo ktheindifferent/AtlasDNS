@@ -502,7 +502,7 @@ impl QueryRoot {
                 avg_response_time_ms: *avg_response_time,
                 cache_hit_rate: metrics_summary.cache_hit_rate,
             });
-            current = current + interval_duration;
+            current += interval_duration;
         }
 
         Ok(data_points)
@@ -568,7 +568,7 @@ impl QueryRoot {
         let zone_names = authority.list_zones().unwrap_or_default();
         for zone_name in zone_names.iter().take(limit as usize) {
             // For now, use estimated metrics based on cache stats
-            let estimated_queries = if total_queries > 0 && zone_names.len() > 0 { 
+            let estimated_queries = if total_queries > 0 && !zone_names.is_empty() { 
                 total_queries / zone_names.len() as u64 
             } else { 
                 0 
@@ -759,7 +759,7 @@ impl QueryRoot {
                               
                 ThreatSource {
                     ip_address: ip,
-                    query_count: count as i32,
+                    query_count: count,
                     severity: severity.to_string(),
                     actions_taken: actions,
                 }
@@ -804,7 +804,7 @@ impl QueryRoot {
             })
             .collect();
         
-        event_timeline.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        event_timeline.sort_by_key(|a| a.timestamp);
 
         // Count specific event types
         let rate_limit_events = filtered_events.iter()
@@ -998,7 +998,7 @@ impl QueryRoot {
             ComponentHealth {
                 name: check.name,
                 status: status_str.to_string(),
-                last_check: DateTime::<Utc>::from_timestamp(check.last_check as i64, 0).unwrap_or_else(|| Utc::now()),
+                last_check: DateTime::<Utc>::from_timestamp(check.last_check as i64, 0).unwrap_or_else(Utc::now),
                 error_message: check.message,
             }
         }).collect();
@@ -1012,13 +1012,13 @@ impl QueryRoot {
                     crate::dns::health::HealthState::Degraded => "Warning",
                     crate::dns::health::HealthState::Unhealthy => "Unhealthy",
                 }.to_string(),
-                last_check: DateTime::<Utc>::from_timestamp(health_status.timestamp as i64, 0).unwrap_or_else(|| Utc::now()),
+                last_check: DateTime::<Utc>::from_timestamp(health_status.timestamp as i64, 0).unwrap_or_else(Utc::now),
                 error_message: None,
             },
             ComponentHealth {
                 name: "Cache".to_string(),
                 status: if health_status.cache_hit_rate > 0.5 { "Healthy" } else { "Warning" }.to_string(),
-                last_check: DateTime::<Utc>::from_timestamp(health_status.timestamp as i64, 0).unwrap_or_else(|| Utc::now()),
+                last_check: DateTime::<Utc>::from_timestamp(health_status.timestamp as i64, 0).unwrap_or_else(Utc::now),
                 error_message: if health_status.cache_hit_rate <= 0.5 {
                     Some(format!("Low cache hit rate: {:.1}%", health_status.cache_hit_rate * 100.0))
                 } else {
@@ -1723,7 +1723,7 @@ impl MutationRoot {
                         crate::dns::health::CheckStatus::Warn => "Warning".to_string(),
                         crate::dns::health::CheckStatus::Fail => "Unhealthy".to_string(),
                     },
-                    last_check: DateTime::<Utc>::from_timestamp(check.last_check as i64, 0).unwrap_or_else(|| Utc::now()),
+                    last_check: DateTime::<Utc>::from_timestamp(check.last_check as i64, 0).unwrap_or_else(Utc::now),
                     error_message: check.message,
                 }
             }).collect(),

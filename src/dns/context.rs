@@ -343,8 +343,7 @@ impl ServerContext {
         // Initialize structured logger
         let logger_config = LoggerConfig::default();
         let logger = Arc::new(StructuredLogger::init(logger_config)
-            .map_err(|e| ContextError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other, 
+            .map_err(|e| ContextError::Io(std::io::Error::other(
                 format!("Failed to initialize logger: {}", e)
             )))?);
         
@@ -433,8 +432,7 @@ impl ServerContext {
     /// database rather than from zone files.
     pub fn attach_storage(&mut self, db_path: &str) -> Result<()> {
         let storage = PersistentStorage::open(db_path).map_err(|e| {
-            ContextError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            ContextError::Io(std::io::Error::other(
                 format!("Failed to open storage database '{}': {}", db_path, e),
             ))
         })?;

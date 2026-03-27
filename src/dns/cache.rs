@@ -471,7 +471,7 @@ impl SynchronizedCache {
                     scope.set_tag("operation", "lookup");
                     scope.set_tag("error_type", "poisoned_lock");
                     scope.set_tag("qname", qname);
-                    scope.set_tag("qtype", &format!("{:?}", qtype));
+                    scope.set_tag("qtype", format!("{:?}", qtype));
                 });
                 sentry::capture_message(
                     &format!("DNS Cache poisoned lock error during lookup of {} {:?}", qname, qtype),
@@ -491,7 +491,7 @@ impl SynchronizedCache {
                 scope.set_tag("slow_operation", "true");
                 scope.set_extra("cache_lookup_duration_ms", (elapsed.as_millis() as u64).into());
                 scope.set_tag("qname", qname);
-                scope.set_tag("qtype", &format!("{:?}", qtype));
+                scope.set_tag("qtype", format!("{:?}", qtype));
                 scope.set_extra("cache_hit", result.is_some().into());
             });
             sentry::capture_message(

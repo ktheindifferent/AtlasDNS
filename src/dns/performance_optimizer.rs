@@ -129,7 +129,7 @@ impl ResponseTimeTracker {
         }
         
         // Update percentiles periodically
-        if times.len() % 100 == 0 {
+        if times.len().is_multiple_of(100) {
             self.update_percentiles(&times);
         }
     }
@@ -353,7 +353,7 @@ impl HotPathAnalyzer {
     pub fn record_path(&self, path: &str, duration: Duration) {
         // Sample based on rate
         let counter = self.sample_counter.fetch_add(1, Ordering::Relaxed);
-        if counter % self.sampling_rate != 0 {
+        if !counter.is_multiple_of(self.sampling_rate) {
             return;
         }
         

@@ -122,7 +122,7 @@ impl ZoneParser {
         })?;
 
         // Check if file is gzip compressed by looking at magic bytes and extension
-        let is_gzip = path.extension().map_or(false, |ext| ext == "gz") || self.is_gzip_file(&file)?;
+        let is_gzip = path.extension().is_some_and(|ext| ext == "gz") || self.is_gzip_file(&file)?;
         
         let lines = if is_gzip {
             // Handle gzip compressed files
@@ -178,7 +178,7 @@ impl ZoneParser {
                 // (e.g. "; refresh (1 hour)").
                 if stripped.contains(')') {
                     // Remove the parentheses from the assembled buffer
-                    let clean = multiline_buffer.replace('(', " ").replace(')', " ");
+                    let clean = multiline_buffer.replace(['(', ')'], " ");
                     in_multiline = false;
                     self.line_number = multiline_start;
                     self.parse_line(&mut zone, &clean)?;
@@ -344,7 +344,7 @@ impl ZoneParser {
             let t = &parts[idx];
             t.contains('.') && t.split('.').any(|p| !p.is_empty() && !p.chars().all(|c| c.is_ascii_digit()))
         };
-        if (!parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit()) || looks_like_domain)
+        if (!parts[idx].chars().next().is_some_and(|c| c.is_ascii_digit()) || looks_like_domain)
             && !parts[idx].eq_ignore_ascii_case("IN")
             && !is_record_type(&parts[idx]) {
             domain = Some(self.normalize_domain(&parts[idx]));
@@ -355,7 +355,7 @@ impl ZoneParser {
         }
 
         // Parse TTL (optional)
-        if idx < parts.len() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit())
+        if idx < parts.len() && parts[idx].chars().next().is_some_and(|c| c.is_ascii_digit())
             && !parts[idx].contains('.') {
             ttl = Some(self.parse_ttl(&parts[idx])?);
             idx += 1;
@@ -368,7 +368,7 @@ impl ZoneParser {
         }
 
         // Parse TTL again if it comes after class
-        if idx < parts.len() && ttl.is_none() && parts[idx].chars().next().map_or(false, |c| c.is_ascii_digit())
+        if idx < parts.len() && ttl.is_none() && parts[idx].chars().next().is_some_and(|c| c.is_ascii_digit())
             && !parts[idx].contains('.') {
             ttl = Some(self.parse_ttl(&parts[idx])?);
             idx += 1;

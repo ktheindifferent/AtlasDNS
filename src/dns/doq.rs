@@ -193,9 +193,9 @@ impl DoqServer {
             "localhost".to_string(),
             "atlas-dns".to_string(),
         ])
-        .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+        .map_err(|e| DnsError::Io(std::io::Error::other(e.to_string())))?;
         let cert_der = cert.serialize_der()
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e.to_string())))?;
         let key_der = cert.serialize_private_key_der();
         Ok((vec![Certificate(cert_der)], PrivateKey(key_der)))
     }
@@ -250,7 +250,7 @@ impl DoqServer {
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
 
         // Enable ALPN for DoQ
         tls_config.alpn_protocols = vec![b"doq".to_vec()];
@@ -275,7 +275,7 @@ impl DoqServer {
         // Create endpoint
         let bind_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), self.config.port);
         let endpoint = Endpoint::server(server_config, bind_addr)
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
 
         log::info!("DoQ server initialized on port {}", self.config.port);
         self.endpoint = Some(endpoint);
@@ -386,7 +386,7 @@ impl DoqServer {
         // Read DNS message length (2 bytes, big-endian)
         let mut len_buf = [0u8; 2];
         recv_stream.read_exact(&mut len_buf).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         let msg_len = u16::from_be_bytes(len_buf) as usize;
         
@@ -398,7 +398,7 @@ impl DoqServer {
         // Read DNS message
         let mut msg_buf = vec![0u8; msg_len];
         recv_stream.read_exact(&mut msg_buf).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Process DNS query
         let response = Self::process_dns_query(&msg_buf, context).await?;
@@ -406,15 +406,15 @@ impl DoqServer {
         // Write response length
         let response_len = response.len() as u16;
         send_stream.write_all(&response_len.to_be_bytes()).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Write response
         send_stream.write_all(&response).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Finish the stream
         send_stream.finish().await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         Ok(())
     }
@@ -536,7 +536,7 @@ impl DoqClient {
     /// Create a new DoQ client
     pub fn new(server_addr: SocketAddr) -> Result<Self, DnsError> {
         let mut endpoint = Endpoint::client(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
 
         // Configure client for DoQ
         let mut tls_client_config = rustls::ClientConfig::builder()
@@ -558,12 +558,12 @@ impl DoqClient {
     /// Query DNS over QUIC
     pub async fn query(&self, packet: &mut DnsPacket) -> Result<DnsPacket, DnsError> {
         let connection = self.endpoint.connect(self.server_addr, "localhost")
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?
             .await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         let (mut send_stream, mut recv_stream) = connection.open_bi().await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Serialize DNS packet
         let mut buffer = BytePacketBuffer::new();
@@ -573,22 +573,22 @@ impl DoqClient {
         // Send query with length prefix
         let query_len = query_bytes.len() as u16;
         send_stream.write_all(&query_len.to_be_bytes()).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         send_stream.write_all(query_bytes).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         send_stream.finish().await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Read response length
         let mut len_buf = [0u8; 2];
         recv_stream.read_exact(&mut len_buf).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         let response_len = u16::from_be_bytes(len_buf) as usize;
         
         // Read response
         let mut response_buf = vec![0u8; response_len];
         recv_stream.read_exact(&mut response_buf).await
-            .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
         
         // Parse response
         let mut response_buffer = BytePacketBuffer::new();

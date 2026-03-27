@@ -342,7 +342,7 @@ impl AnalyticsEngine {
         *counter.entry(domain.to_string()).or_insert(0) += 1;
 
         // Update top domains
-        if counter.len() % 100 == 0 {
+        if counter.len().is_multiple_of(100) {
             self.update_top_domains();
         }
     }

@@ -178,7 +178,7 @@ impl CachePoisonProtection {
         packet.header.id = query_id;
 
         // Get query details
-        let query = packet.questions.first().ok_or_else(|| {
+        let query = packet.questions.first().ok_or({
             DnsError::Protocol(crate::dns::errors::ProtocolError {
                 kind: crate::dns::errors::ProtocolErrorKind::MalformedPacket,
                 packet_id: Some(packet.header.id),
@@ -278,12 +278,11 @@ impl CachePoisonProtection {
         // Validate answers
         for answer in &response.answers {
             // Check bailiwick
-            if config.bailiwick_check {
-                if !self.check_bailiwick(answer, &tracker.bailiwick) {
+            if config.bailiwick_check
+                && !self.check_bailiwick(answer, &tracker.bailiwick) {
                     self.stats.write().bailiwick_failures += 1;
                     return ValidationResult::Invalid("Bailiwick check failed".to_string());
                 }
-            }
 
             // Check TTL limits
             let ttl = self.get_record_ttl(answer);
@@ -297,12 +296,11 @@ impl CachePoisonProtection {
         }
 
         // DNSSEC validation if enabled (simplified check)
-        if config.dnssec_validation && self.dnssec_enabled {
-            if !self.validate_dnssec_simple(response) {
+        if config.dnssec_validation && self.dnssec_enabled
+            && !self.validate_dnssec_simple(response) {
                 self.stats.write().dnssec_failures += 1;
                 return ValidationResult::Invalid("DNSSEC validation failed".to_string());
             }
-        }
 
         // Clean up tracker
         self.active_queries.write().remove(&response.header.id);

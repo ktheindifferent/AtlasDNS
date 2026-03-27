@@ -176,7 +176,7 @@ impl ThreatIntelApiHandler {
 
 /// Parse a numeric query-string parameter from a URL like `/path?key=value`.
 fn parse_query_param(url: &str, key: &str) -> Option<usize> {
-    let query = url.splitn(2, '?').nth(1)?;
+    let query = url.split_once('?')?.1;
     for part in query.split('&') {
         let mut kv = part.splitn(2, '=');
         if kv.next()? == key {

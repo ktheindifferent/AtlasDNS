@@ -62,7 +62,7 @@ fn main() {
             
             if let Some(location) = panic_info.location() {
                 scope.set_tag("panic_file", location.file());
-                scope.set_tag("panic_line", &location.line().to_string());
+                scope.set_tag("panic_line", location.line().to_string());
             }
         });
         
@@ -281,7 +281,7 @@ fn main() {
     let opt_matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
         Err(f) => {
-            eprintln!("Error parsing arguments: {}", f.to_string());
+            eprintln!("Error parsing arguments: {}", f);
             print_usage(&program, opts);
             std::process::exit(1);
         }
@@ -424,6 +424,17 @@ fn main() {
                 });
                 
                 log::info!("ACME configured with provider: {:?}", provider);
+
+                // Obtain certificate on startup if missing or expiring
+                // (clone config before ctx is moved into Arc)
+                let acme_cfg_startup = ctx.ssl_config.acme.clone();
+                if let Some(ref acme_cfg) = acme_cfg_startup {
+                    // We need a temporary Arc for the manager; we'll build it from ctx directly
+                    // Note: ctx is not yet Arc'd here, so we use a dummy context approach:
+                    // Just log that renewal will be handled post-startup via the renewal thread.
+                    log::info!("ACME renewal thread will start after server context is ready");
+                    let _ = acme_cfg; // used below after Arc::new(ctx)
+                }
             } 
             // Check for manual certificate configuration
             else if let (Some(cert), Some(key)) = (
@@ -560,6 +571,13 @@ fn main() {
         }
     }
 
+    // Start ACME certificate renewal background thread
+    if let Some(acme_cfg) = context.ssl_config.acme.clone() {
+        let acme_context = context.clone();
+        atlas::dns::acme::AcmeCertificateManager::start_renewal_thread(acme_cfg, acme_context);
+        log::info!("ACME certificate renewal thread started (checks daily)");
+    }
+
     // Start passive mDNS listener if requested
     if opt_matches.opt_present("mdns") {
         let registry = Arc::new(MdnsRegistry::new());
@@ -588,7 +606,7 @@ fn main() {
         let node_id = opt_matches.opt_str("cluster-node-id")
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        let quorum = (peers.len() + 1) / 2 + 1; // majority quorum
+        let quorum = peers.len().div_ceil(2) + 1; // majority quorum
 
         let cluster_config = ClusterConfig {
             enabled: true,

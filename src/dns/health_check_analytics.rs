@@ -477,7 +477,7 @@ impl HealthCheckAnalyticsHandler {
         let config = self.config.read();
         
         let endpoint_history = history.entry(result.endpoint_id.clone())
-            .or_insert_with(Vec::new);
+            .or_default();
         
         endpoint_history.push(result.clone());
         

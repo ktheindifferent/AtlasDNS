@@ -1048,6 +1048,7 @@ impl ResultCode {
 /// Set on [`DnsPacket::dnssec_status`] after a resolved response is validated
 /// by the chain validator.  Matches the RFC 4035 terminology.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ValidationStatus {
     /// Response is signed and all signatures are cryptographically verified.
     Secure,
@@ -1056,14 +1057,10 @@ pub enum ValidationStatus {
     /// RRSIG records are present but at least one failed verification.
     Bogus,
     /// No RRSIG records present and zone security status cannot be determined.
+    #[default]
     Indeterminate,
 }
 
-impl Default for ValidationStatus {
-    fn default() -> Self {
-        ValidationStatus::Indeterminate
-    }
-}
 
 impl std::fmt::Display for ValidationStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

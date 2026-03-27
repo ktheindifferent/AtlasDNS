@@ -1498,7 +1498,7 @@ impl ApiV2Handler {
                             "key_tag": key_tag,
                             "algorithm": algorithm,
                             "digest_type": digest_type,
-                            "digest": base64::encode(&digest)
+                            "digest": base64::encode(digest)
                         })
                     } else {
                         json!({})
@@ -1732,7 +1732,7 @@ impl ApiV2Handler {
     // -----------------------------------------------------------------------
 
     fn parse_url_params(url: &str) -> HashMap<String, String> {
-        let qs = url.splitn(2, '?').nth(1).unwrap_or("");
+        let qs = url.split_once('?').map(|x| x.1).unwrap_or("");
         qs.split('&')
             .filter_map(|pair| {
                 let mut it = pair.splitn(2, '=');

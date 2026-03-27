@@ -1,5 +1,6 @@
 //! Geographic IP analysis for DNS queries
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -31,9 +32,12 @@ pub struct Location {
     pub timezone: Option<String>,
 }
 
+/// Type alias for the MaxMind database reader.
+type GeoReader = Arc<Reader<Vec<u8>>>;
+
 /// GeoIP analyzer
 pub struct GeoIpAnalyzer {
-    reader: Option<Arc<Reader<Vec<u8>>>>,
+    reader: Option<GeoReader>,
     cache: Arc<RwLock<HashMap<String, Location>>>,
 }
 
@@ -50,19 +54,29 @@ impl GeoIpAnalyzer {
     }
 
     /// Load GeoIP database
-    fn load_database() -> Result<Option<Arc<Reader<Vec<u8>>>>, Box<dyn std::error::Error>> {
-        // Common paths for GeoLite2 database
-        let possible_paths = vec![
-            "/usr/share/GeoIP/GeoLite2-City.mmdb",
-            "/usr/local/share/GeoIP/GeoLite2-City.mmdb",
-            "/var/lib/GeoIP/GeoLite2-City.mmdb",
-            "./GeoLite2-City.mmdb",
-        ];
+    fn load_database() -> Result<Option<GeoReader>, Box<dyn std::error::Error>> {
+        // Priority 1: GEOIP_DB_PATH env var
+        // Priority 2: /etc/atlas/GeoLite2-City.mmdb (Atlas default)
+        // Priority 3: Common system paths
+        let mut possible_paths: Vec<String> = Vec::new();
 
-        for path in possible_paths {
-            if std::path::Path::new(path).exists() {
-                match maxminddb::Reader::open_readfile(path) {
-                    Ok(reader) => return Ok(Some(Arc::new(reader))),
+        if let Ok(env_path) = std::env::var("GEOIP_DB_PATH") {
+            possible_paths.push(env_path);
+        }
+
+        possible_paths.push("/etc/atlas/GeoLite2-City.mmdb".to_string());
+        possible_paths.push("/usr/share/GeoIP/GeoLite2-City.mmdb".to_string());
+        possible_paths.push("/usr/local/share/GeoIP/GeoLite2-City.mmdb".to_string());
+        possible_paths.push("/var/lib/GeoIP/GeoLite2-City.mmdb".to_string());
+        possible_paths.push("./GeoLite2-City.mmdb".to_string());
+
+        for path in &possible_paths {
+            if std::path::Path::new(path.as_str()).exists() {
+                match maxminddb::Reader::open_readfile(path.as_str()) {
+                    Ok(reader) => {
+                        log::info!("Loaded GeoIP database from {}", path);
+                        return Ok(Some(Arc::new(reader)));
+                    }
                     Err(e) => {
                         log::warn!("Failed to load GeoIP database from {}: {}", path, e);
                     }
@@ -70,7 +84,10 @@ impl GeoIpAnalyzer {
             }
         }
 
-        log::info!("GeoIP database not found. Geographic analytics will use mock data.");
+        log::warn!(
+            "GeoIP database not found. Set GEOIP_DB_PATH or place GeoLite2-City.mmdb at /etc/atlas/. \
+             Geographic analytics will use mock data."
+        );
         Ok(None)
     }
 
@@ -104,7 +121,7 @@ impl GeoIpAnalyzer {
                         .unwrap_or_else(|| "Unknown".to_string()),
                     region: city.subdivisions
                         .as_ref()
-                        .and_then(|s| s.get(0))
+                        .and_then(|s| s.first())
                         .and_then(|s| s.names.as_ref())
                         .and_then(|n| n.get("en"))
                         .map(|s| s.to_string()),
@@ -165,6 +182,7 @@ impl GeoIpAnalyzer {
             }
         } else {
             // Random mock locations for demo
+            #[allow(clippy::useless_vec)]
             let mock_locations = vec![
                 Location {
                     country_code: "GB".to_string(),
@@ -248,7 +266,7 @@ impl GeoIpAnalyzer {
             })
             .collect();
 
-        distribution.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        distribution.sort_by_key(|a| Reverse(a.query_count));
         distribution
     }
 
@@ -285,6 +303,95 @@ impl GeoIpAnalyzer {
         self.cache.write().await.clear();
     }
 }
+
+// ---------------------------------------------------------------------------
+// GeoIpLookup — lightweight synchronous struct for per-query IP lookup
+// ---------------------------------------------------------------------------
+
+/// Concise geographic info returned by [`GeoIpLookup::lookup`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeoInfo {
+    pub city: Option<String>,
+    pub country: Option<String>,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+/// Synchronous GeoIP lookup helper backed by a MaxMind DB file.
+///
+/// Gracefully degrades — if the database is unavailable [`lookup`] returns
+/// `None` instead of returning an error.
+pub struct GeoIpLookup {
+    reader: Option<Reader<Vec<u8>>>,
+}
+
+impl GeoIpLookup {
+    /// Load the MaxMind database.
+    ///
+    /// Path resolution order:
+    /// 1. `GEOIP_DB_PATH` environment variable
+    /// 2. `/etc/atlas/GeoLite2-City.mmdb`
+    ///
+    /// If neither path resolves to a readable file a warning is logged and
+    /// `reader` is set to `None`.
+    pub fn new() -> Self {
+        let path = std::env::var("GEOIP_DB_PATH")
+            .unwrap_or_else(|_| "/etc/atlas/GeoLite2-City.mmdb".to_string());
+
+        match maxminddb::Reader::open_readfile(&path) {
+            Ok(r) => {
+                log::info!("GeoIpLookup: loaded database from {}", path);
+                GeoIpLookup { reader: Some(r) }
+            }
+            Err(e) => {
+                log::warn!("GeoIpLookup: cannot open {} ({}); geo-lookup disabled", path, e);
+                GeoIpLookup { reader: None }
+            }
+        }
+    }
+
+    /// Look up geographic information for an IP address.
+    ///
+    /// Returns `None` if the database is unavailable or the IP is not found.
+    pub fn lookup(&self, ip: std::net::IpAddr) -> Option<GeoInfo> {
+        use maxminddb::geoip2;
+
+        let reader = self.reader.as_ref()?;
+        let city: geoip2::City = reader.lookup(ip).ok()?;
+
+        let country = city
+            .country
+            .as_ref()
+            .and_then(|c| c.names.as_ref())
+            .and_then(|n| n.get("en"))
+            .map(|s| s.to_string());
+
+        let city_name = city
+            .city
+            .as_ref()
+            .and_then(|c| c.names.as_ref())
+            .and_then(|n| n.get("en"))
+            .map(|s| s.to_string());
+
+        let lat = city.location.as_ref().and_then(|l| l.latitude).unwrap_or(0.0);
+        let lon = city.location.as_ref().and_then(|l| l.longitude).unwrap_or(0.0);
+
+        Some(GeoInfo {
+            city: city_name,
+            country,
+            lat,
+            lon,
+        })
+    }
+}
+
+impl Default for GeoIpLookup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 /// Heatmap data point
 #[derive(Debug, Clone, Serialize, Deserialize)]

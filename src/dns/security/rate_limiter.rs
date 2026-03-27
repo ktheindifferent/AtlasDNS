@@ -155,11 +155,7 @@ impl TokenBucket {
 impl RateLimitAlgorithmImpl for TokenBucket {
     fn check(&mut self, _limit: u32, _burst: u32) -> bool {
         self.refill();
-        if self.tokens >= 1.0 {
-            true
-        } else {
-            false
-        }
+        self.tokens >= 1.0
     }
 
     fn record(&mut self) {

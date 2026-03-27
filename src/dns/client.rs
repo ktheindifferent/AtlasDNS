@@ -225,9 +225,9 @@ impl DnsNetworkClient {
                 scope.set_tag("component", "dns_client");
                 scope.set_tag("operation", "tcp_connect");
                 scope.set_tag("protocol", "tcp");
-                scope.set_tag("server", &format!("{}:{}", server.0, server.1));
+                scope.set_tag("server", format!("{}:{}", server.0, server.1));
                 scope.set_tag("query_name", qname);
-                scope.set_tag("query_type", &format!("{:?}", qtype));
+                scope.set_tag("query_type", format!("{:?}", qtype));
                 scope.set_extra("recursive", recursive.into());
             });
             sentry::capture_message(
@@ -339,7 +339,7 @@ impl DnsNetworkClient {
             DnsClient::send_query(&client, &qname, qtype, server, recursive)
         })
         .await
-        .map_err(|e| ClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
+        .map_err(|e| ClientError::Io(std::io::Error::other(e)))?
     }
 }
 

@@ -49,7 +49,7 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
     let cache_entries = cache_list.len();
     
     // Get real cache hit rate from cache stats
-    let cache_stats = context.cache.get_stats().unwrap_or_else(|_| {
+    let cache_stats = context.cache.get_stats().unwrap_or({
         crate::dns::cache::CacheStats {
             total_entries: cache_entries,
             hit_rate: 0.0,

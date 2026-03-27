@@ -136,17 +136,13 @@ pub struct ClientAnomalyStats {
 
 /// Configuration for the anomaly detector.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct AnomalyConfig {
     /// If `true`, queries that score ≥ `THRESHOLD_CRITICAL` are blocked
     /// (the caller must check the returned score and act accordingly).
     pub block_on_critical: bool,
 }
 
-impl Default for AnomalyConfig {
-    fn default() -> Self {
-        AnomalyConfig { block_on_critical: false }
-    }
-}
 
 /// Main anomaly detector.  Cheap to clone (all state is behind `Arc`).
 pub struct DnsAnomalyDetector {
@@ -306,7 +302,7 @@ impl DnsAnomalyDetector {
 
     /// Score TLD rarity.
     fn score_tld_rarity(domain: &str) -> (f32, Vec<String>) {
-        let tld = domain.split('.').last().unwrap_or("").to_ascii_lowercase();
+        let tld = domain.split('.').next_back().unwrap_or("").to_ascii_lowercase();
         if !tld.is_empty() && !COMMON_TLDS.contains(&tld.as_str()) {
             (
                 0.10,
@@ -409,7 +405,7 @@ impl DnsAnomalyDetector {
             let mut windows = self.client_windows.lock().unwrap();
             windows
                 .entry(ip)
-                .or_insert_with(ClientWindow::default)
+                .or_default()
                 .push(domain.to_string());
         }
 

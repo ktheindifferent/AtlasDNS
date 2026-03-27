@@ -424,7 +424,7 @@ impl Authority {
             };
 
             // Check for exact match
-            if &normalized_domain == qname {
+            if normalized_domain == qname {
                 let rtype = rec.get_querytype();
                 log::info!("qtype: {:?}", qtype);
                 log::info!("rtype: {:?}", rtype);
@@ -434,14 +434,12 @@ impl Authority {
                 }
             } 
             // Check for wildcard match
-            else if normalized_domain.starts_with("*.") {
+            else if let Some(wildcard_suffix) = normalized_domain.strip_prefix("*.") {
                 // Extract the wildcard suffix (everything after "*.")
-                let wildcard_suffix = &normalized_domain[2..];
-                
                 // Check if the query name matches the wildcard pattern
                 if qname.ends_with(wildcard_suffix) {
                     // Ensure it's not an exact match with the wildcard domain itself
-                    if qname != &normalized_domain {
+                    if qname != normalized_domain {
                         // Verify there's at least one label before the wildcard suffix
                         let prefix_len = qname.len() - wildcard_suffix.len();
                         if prefix_len > 0 && qname.chars().nth(prefix_len - 1) == Some('.') {
@@ -827,7 +825,7 @@ impl Authority {
         
         // Sign the zone
         let signed_zone = signer.enable_zone(zone_name, self)
-            .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| AuthorityError::Io(std::io::Error::other(e.to_string())))?;
         
         // Store signed zone data
         let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
@@ -946,7 +944,7 @@ impl Authority {
         
         let mut signer = self.dnssec_signer.write().map_err(|_| AuthorityError::PoisonedLock)?;
         signer.rollover_keys(zone_name)
-            .map_err(|e| AuthorityError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| AuthorityError::Io(std::io::Error::other(e.to_string())))?;
         
         // Re-sign the zone with new keys
         self.enable_dnssec(zone_name)?;

@@ -89,7 +89,7 @@ impl RttTracker {
 
     /// Record an RTT sample
     fn record(&mut self, server: SocketAddr, rtt: Duration) {
-        let samples = self.samples.entry(server).or_insert_with(Vec::new);
+        let samples = self.samples.entry(server).or_default();
         samples.push(rtt);
         
         // Keep only recent samples

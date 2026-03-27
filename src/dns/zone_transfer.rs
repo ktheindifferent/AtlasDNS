@@ -585,14 +585,10 @@ impl ZoneTransferHandler {
     /// Track zone version for IXFR
     pub fn track_zone_version(&self, zone: &str, serial: u32, records: Vec<DnsRecord>) {
         let mut versions = self.zone_versions.write();
-        let zone_versions = versions.entry(zone.to_string()).or_insert_with(Vec::new);
+        let zone_versions = versions.entry(zone.to_string()).or_default();
         
         // Calculate changes from previous version
-        let change = if let Some(prev) = zone_versions.last() {
-            Some(self.calculate_changes(&prev.records, &records, serial))
-        } else {
-            None
-        };
+        let change = zone_versions.last().map(|prev| self.calculate_changes(&prev.records, &records, serial));
 
         // Add new version
         zone_versions.push(ZoneVersion {

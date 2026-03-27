@@ -294,6 +294,7 @@ impl SafeQueryBuilder {
 
 /// Statistics for SQL protection monitoring
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct SqlProtectionStats {
     /// Total queries processed
     pub queries_processed: u64,
@@ -305,16 +306,6 @@ pub struct SqlProtectionStats {
     pub parameters_sanitized: u64,
 }
 
-impl Default for SqlProtectionStats {
-    fn default() -> Self {
-        Self {
-            queries_processed: 0,
-            queries_blocked: 0,
-            suspicious_patterns: 0,
-            parameters_sanitized: 0,
-        }
-    }
-}
 
 /// SQL Protection Manager for coordinating protection mechanisms
 pub struct SqlProtectionManager {

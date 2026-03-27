@@ -328,11 +328,10 @@ impl SplitHorizonHandler {
         }
 
         // Check geo location (simplified)
-        if self.config.read().geo_routing {
-            if self.matches_geo_location(client_ip, &view.match_criteria.geolocations) {
+        if self.config.read().geo_routing
+            && self.matches_geo_location(client_ip, &view.match_criteria.geolocations) {
                 score += 75;
             }
-        }
 
         if score > 0 {
             Some(score)
@@ -780,7 +779,7 @@ impl SplitHorizonRuleManager {
         }
         let data = SplitHorizonToml { rules: self.rules.read().clone() };
         let contents = toml::to_string_pretty(&data)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         std::fs::write(&self.config_path, contents)
     }
 

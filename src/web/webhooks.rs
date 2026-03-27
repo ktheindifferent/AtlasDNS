@@ -403,7 +403,7 @@ impl WebhookHandler {
             let mut ready_deliveries = Vec::new();
             
             while let Some(delivery) = queue.pop_front() {
-                if delivery.next_retry.map_or(true, |t| Instant::now() >= t) {
+                if delivery.next_retry.is_none_or(|t| Instant::now() >= t) {
                     ready_deliveries.push(delivery);
                 } else {
                     queue.push_front(delivery);
@@ -457,11 +457,7 @@ impl WebhookHandler {
         };
         
         // Calculate signature
-        let signature = if let Some(secret) = &endpoint.secret {
-            Some(self.calculate_signature(&payload, secret))
-        } else {
-            None
-        };
+        let signature = endpoint.secret.as_ref().map(|secret| self.calculate_signature(&payload, secret));
         
         // Build request
         let mut request = self.client.post(&endpoint.url)
@@ -522,13 +518,13 @@ impl WebhookHandler {
                 format!("{:?}", event.event_type).contains(&filter.event_type);
             
             let resource_matches = filter.resource_type.as_ref()
-                .map_or(true, |rt| rt == &event.resource_type);
+                .is_none_or(|rt| rt == &event.resource_type);
             
             let zone_matches = filter.zone.as_ref()
-                .map_or(true, |z| event.zone.as_ref() == Some(z));
+                .is_none_or(|z| event.zone.as_ref() == Some(z));
             
             let action_matches = filter.action.as_ref()
-                .map_or(true, |a| format!("{:?}", event.action) == *a);
+                .is_none_or(|a| format!("{:?}", event.action) == *a);
             
             if type_matches && resource_matches && zone_matches && action_matches {
                 return true;

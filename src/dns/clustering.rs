@@ -151,6 +151,12 @@ pub struct ClusterState {
     nodes: RwLock<HashMap<String, ClusterNode>>,
 }
 
+impl Default for ClusterState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClusterState {
     pub fn new() -> Self {
         Self {
@@ -268,6 +274,7 @@ pub struct ZoneTransferEntry {
 
 /// Zone sync status for the status API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ZoneSyncStatus {
     /// Whether zone sync has completed at least once
     pub synced: bool,
@@ -279,16 +286,6 @@ pub struct ZoneSyncStatus {
     pub record_count: usize,
 }
 
-impl Default for ZoneSyncStatus {
-    fn default() -> Self {
-        Self {
-            synced: false,
-            last_sync: 0,
-            zone_count: 0,
-            record_count: 0,
-        }
-    }
-}
 
 // ─────────────────────────── Gossip membership ─────────────────────────────
 
@@ -314,6 +311,12 @@ pub struct GossipMessage {
 pub struct GossipState {
     /// Latest gossip received from each peer, keyed by node_id
     pub received: RwLock<HashMap<String, GossipMessage>>,
+}
+
+impl Default for GossipState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GossipState {
@@ -354,6 +357,12 @@ pub struct LeaderElection {
     votes_received: AtomicU32,
     /// Whether this node has voted in the current term
     voted_this_term: AtomicBool,
+}
+
+impl Default for LeaderElection {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LeaderElection {

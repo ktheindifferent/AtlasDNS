@@ -7,13 +7,11 @@ use clap::{Parser, Subcommand, Args, ValueEnum};
 use colored::*;
 use comfy_table::Table;
 use indicatif::{ProgressBar, ProgressStyle};
-use reqwest;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio;
 
 /// Atlas DNS CLI - Manage your DNS infrastructure from the command line
 #[derive(Parser)]
@@ -1009,7 +1007,7 @@ async fn handle_zone_commands(
             });
             let result = client.post("/api/v2/zones/clone", body).await?;
             pb.finish_and_clear();
-            formatter.print_success(&format!("Zone cloned successfully"));
+            formatter.print_success("Zone cloned successfully");
             formatter.print(&result);
         }
     }
@@ -1060,7 +1058,7 @@ async fn handle_record_commands(
             let path = format!("/api/v2/zones/{}/records", zone);
             let result = client.post(&path, body).await?;
             pb.finish_and_clear();
-            formatter.print_success(&format!("Record created successfully"));
+            formatter.print_success("Record created successfully");
             formatter.print(&result);
         }
         RecordCommands::Update { zone, name, record_type, value, ttl } => {
@@ -1075,7 +1073,7 @@ async fn handle_record_commands(
             let path = format!("/api/v2/zones/{}/records/{}/{}", zone, name, record_type);
             let result = client.put(&path, body).await?;
             pb.finish_and_clear();
-            formatter.print_success(&format!("Record updated successfully"));
+            formatter.print_success("Record updated successfully");
             formatter.print(&result);
         }
         RecordCommands::Delete { zone, name, record_type, force } => {
@@ -1087,7 +1085,7 @@ async fn handle_record_commands(
             let path = format!("/api/v2/zones/{}/records/{}/{}", zone, name, record_type);
             client.delete(&path).await?;
             pb.finish_and_clear();
-            formatter.print_success(&format!("Record deleted successfully"));
+            formatter.print_success("Record deleted successfully");
         }
         RecordCommands::Bulk { file, dry_run } => {
             let pb = show_progress("Processing bulk operations...");

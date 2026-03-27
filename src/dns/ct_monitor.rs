@@ -116,7 +116,7 @@ impl CertTransparencyMonitor {
         let mut new_certs = vec![];
 
         let mut known = self.known_certs.write();
-        let seen = known.entry(domain.to_string()).or_insert_with(HashSet::new);
+        let seen = known.entry(domain.to_string()).or_default();
 
         for entry in entries {
             if seen.contains(&entry.id) {

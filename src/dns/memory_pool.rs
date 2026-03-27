@@ -144,8 +144,7 @@ impl SizePool {
         let mut available = VecDeque::with_capacity(initial_count);
         
         for _ in 0..initial_count {
-            let mut buffer = Vec::with_capacity(size);
-            buffer.resize(size, 0);
+            let buffer = vec![0; size];
             available.push_back(buffer);
         }
 
@@ -187,8 +186,7 @@ impl SizePool {
         let mut available = self.available.lock();
         
         for _ in 0..count {
-            let mut buffer = Vec::with_capacity(self.size);
-            buffer.resize(self.size, 0);
+            let buffer = vec![0; self.size];
             available.push_back(buffer);
         }
         
@@ -373,8 +371,7 @@ impl BufferPool {
             // Be conservative - only shrink 25% of unused buffers at a time
             let unused = available;
             let shrink_count = (unused / 4)  // Shrink only 25% of unused buffers
-                .min(total - config.min_pool_size)
-                .max(0);
+                .min(total - config.min_pool_size);
             
             if shrink_count > 10 {  // Only shrink if it's worth it (more than 10 buffers)
                 pool.shrink(shrink_count);

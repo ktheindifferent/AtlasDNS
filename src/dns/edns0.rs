@@ -123,12 +123,12 @@ impl ClientSubnetOption {
         match self.address {
             IpAddr::V4(addr) => {
                 let bytes = addr.octets();
-                let byte_len = ((self.source_prefix_len + 7) / 8) as usize;
+                let byte_len = self.source_prefix_len.div_ceil(8) as usize;
                 data.extend_from_slice(&bytes[..byte_len]);
             }
             IpAddr::V6(addr) => {
                 let bytes = addr.octets();
-                let byte_len = ((self.source_prefix_len + 7) / 8) as usize;
+                let byte_len = self.source_prefix_len.div_ceil(8) as usize;
                 data.extend_from_slice(&bytes[..byte_len]);
             }
         }
@@ -154,14 +154,14 @@ impl ClientSubnetOption {
         let address = match family {
             1 => {
                 // IPv4
-                let byte_len = ((source_prefix_len + 7) / 8) as usize;
+                let byte_len = source_prefix_len.div_ceil(8) as usize;
                 let mut bytes = [0u8; 4];
                 bytes[..byte_len.min(4)].copy_from_slice(&data[4..4 + byte_len.min(4)]);
                 IpAddr::V4(Ipv4Addr::from(bytes))
             }
             2 => {
                 // IPv6
-                let byte_len = ((source_prefix_len + 7) / 8) as usize;
+                let byte_len = source_prefix_len.div_ceil(8) as usize;
                 let mut bytes = [0u8; 16];
                 bytes[..byte_len.min(16)].copy_from_slice(&data[4..4 + byte_len.min(16)]);
                 IpAddr::V6(Ipv6Addr::from(bytes))
@@ -219,7 +219,7 @@ impl CookieOption {
         let mut hasher = Sha256::new();
         hasher.update(client_cookie);
         hasher.update(secret);
-        hasher.update(&std::time::SystemTime::now()
+        hasher.update(std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH).unwrap_or_default()
             .as_secs()
             .to_be_bytes());

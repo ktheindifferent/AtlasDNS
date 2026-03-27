@@ -285,15 +285,14 @@ impl DDoSProtection {
         }
 
         // Check adaptive thresholds
-        if config.adaptive_thresholds {
-            if !self.check_adaptive_threshold() {
+        if config.adaptive_thresholds
+            && !self.check_adaptive_threshold() {
                 return Err(DnsError::Operation(crate::dns::errors::OperationError {
                     context: "DDoS Protection".to_string(),
                     details: "System under high load".to_string(),
                     recovery_hint: Some("Try again later".to_string()),
                 }));
             }
-        }
 
         // Update reputation positively for good behavior
         self.update_reputation(client_ip, 0.01);
@@ -326,7 +325,7 @@ impl DDoSProtection {
     /// Check rate limits
     fn check_rate_limits(&self, client_ip: IpAddr) -> bool {
         // Check rate limits using the rate limiter
-        if let Err(_) = self.rate_limiter.check_allowed(client_ip) {
+        if self.rate_limiter.check_allowed(client_ip).is_err() {
             return false;
         }
         

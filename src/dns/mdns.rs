@@ -459,6 +459,190 @@ fn extract_service_type(name: &str) -> Option<String> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// Public API — start listener / get devices
+// ---------------------------------------------------------------------------
+
+/// Spawn the passive mDNS listener thread and return a handle to the registry.
+pub fn start_mdns_listener(registry: Arc<MdnsRegistry>) {
+    let listener = MdnsListener::new(registry);
+    std::thread::Builder::new()
+        .name("mdns-listener".to_string())
+        .spawn(move || listener.run())
+        .expect("failed to spawn mDNS listener thread");
+}
+
+/// Convenience: create a fresh registry, start the listener, and return the registry.
+pub fn start() -> Arc<MdnsRegistry> {
+    let registry = Arc::new(MdnsRegistry::new());
+    start_mdns_listener(registry.clone());
+    registry
+}
+
+/// Return all devices currently in the registry.
+pub fn get_devices(registry: &Arc<MdnsRegistry>) -> Vec<MdnsDevice> {
+    registry.all_devices()
+}
+
+// ---------------------------------------------------------------------------
+// mDNS Responder
+// ---------------------------------------------------------------------------
+
+/// A configured local hostname that the responder will answer for.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MdnsLocalRecord {
+    /// Bare hostname (without `.local`).
+    pub hostname: String,
+    /// IPv4 address to respond with.
+    pub ip: Ipv4Addr,
+    /// TTL in seconds.
+    pub ttl: u32,
+}
+
+/// mDNS responder — answers queries for configured `.local` hostnames.
+pub struct MdnsResponder {
+    /// Static records to serve.
+    pub records: Vec<MdnsLocalRecord>,
+}
+
+impl MdnsResponder {
+    pub fn new(records: Vec<MdnsLocalRecord>) -> Self {
+        MdnsResponder { records }
+    }
+
+    /// Run the responder loop (blocks forever; call from a dedicated thread).
+    /// Shares the same multicast socket logic as the listener.
+    pub fn run(&self) {
+        // Bind a separate socket for sending responses (unicast or multicast).
+        let send_socket = match std::net::UdpSocket::bind("0.0.0.0:0") {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[mDNS responder] cannot bind send socket: {}", e);
+                return;
+            }
+        };
+
+        // Receive socket (same as listener)
+        let recv_socket = match MdnsListener::bind_socket() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[mDNS responder] cannot bind recv socket: {}", e);
+                return;
+            }
+        };
+
+        log::info!("[mDNS responder] active, serving {} record(s)", self.records.len());
+
+        let mdns_addr: std::net::SocketAddr = format!("{}:{}", MDNS_ADDR, MDNS_PORT).parse().unwrap();
+        let mut buf = vec![0u8; 9000];
+
+        loop {
+            match recv_socket.recv_from(&mut buf) {
+                Ok((len, src)) => {
+                    if let Some(response) = self.maybe_respond(&buf[..len]) {
+                        // Send response to the querier (unicast) or multicast
+                        let dest = if src.port() == MDNS_PORT { mdns_addr } else { src };
+                        if let Err(e) = send_socket.send_to(&response, dest) {
+                            log::debug!("[mDNS responder] send error: {}", e);
+                        }
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(e) => {
+                    log::debug!("[mDNS responder] recv_from: {}", e);
+                }
+            }
+        }
+    }
+
+    /// If the packet is an mDNS query for one of our hostnames, build and return a response.
+    fn maybe_respond(&self, data: &[u8]) -> Option<Vec<u8>> {
+        if data.len() < 12 {
+            return None;
+        }
+
+        // Check QR bit (bit 15 of flags) — must be 0 (query)
+        let flags = u16::from_be_bytes([data[2], data[3]]);
+        if flags & 0x8000 != 0 {
+            return None; // It's a response, not a query
+        }
+
+        let qdcount = u16::from_be_bytes([data[4], data[5]]) as usize;
+        let mut pos = 12usize;
+        let mut matched: Vec<&MdnsLocalRecord> = Vec::new();
+
+        for _ in 0..qdcount {
+            let name = read_name(data, &mut pos)?;
+            let qtype = read_u16(data, &mut pos)?;
+            let _qclass = read_u16(data, &mut pos)?;
+
+            // We only handle A queries (type 1) for .local hostnames
+            if qtype != 1 && qtype != 255 /* ANY */ {
+                continue;
+            }
+
+            if let Some(bare) = strip_local(&name) {
+                if let Some(rec) = self.records.iter().find(|r| r.hostname.eq_ignore_ascii_case(&bare)) {
+                    matched.push(rec);
+                }
+            }
+        }
+
+        if matched.is_empty() {
+            return None;
+        }
+
+        // Build DNS response
+        let mut response = Vec::with_capacity(256);
+
+        // Transaction ID (copy from query)
+        response.push(data[0]);
+        response.push(data[1]);
+
+        // Flags: QR=1, AA=1, RCODE=0
+        response.push(0x84);
+        response.push(0x00);
+
+        // QDCOUNT = 0 (mDNS responses omit the question)
+        response.extend_from_slice(&0u16.to_be_bytes());
+        // ANCOUNT
+        response.extend_from_slice(&(matched.len() as u16).to_be_bytes());
+        // NSCOUNT
+        response.extend_from_slice(&0u16.to_be_bytes());
+        // ARCOUNT
+        response.extend_from_slice(&0u16.to_be_bytes());
+
+        for rec in matched {
+            // Encode name: hostname.local
+            for label in rec.hostname.split('.') {
+                response.push(label.len() as u8);
+                response.extend_from_slice(label.as_bytes());
+            }
+            response.push(5); // "local"
+            response.extend_from_slice(b"local");
+            response.push(0); // end of name
+
+            // TYPE A (1), CLASS IN (1, with cache-flush bit 0x8000)
+            response.extend_from_slice(&1u16.to_be_bytes());
+            response.extend_from_slice(&0x8001u16.to_be_bytes());
+
+            // TTL
+            response.extend_from_slice(&rec.ttl.to_be_bytes());
+
+            // RDLENGTH = 4
+            response.extend_from_slice(&4u16.to_be_bytes());
+
+            // RDATA = IPv4
+            let octets = rec.ip.octets();
+            response.extend_from_slice(&octets);
+        }
+
+        Some(response)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,5 +678,78 @@ mod tests {
         let devs = reg.all_devices();
         assert_eq!(devs.len(), 1);
         assert!(devs[0].services.contains(&"_ssh._tcp".to_string()));
+    }
+
+    /// Build a minimal mDNS query for `hostname.local` (type A).
+    fn build_mdns_query(hostname: &str) -> Vec<u8> {
+        let mut pkt = Vec::new();
+        // Header
+        pkt.extend_from_slice(&0u16.to_be_bytes()); // TX id = 0 for mDNS
+        pkt.extend_from_slice(&0u16.to_be_bytes()); // flags = query
+        pkt.extend_from_slice(&1u16.to_be_bytes()); // QDCOUNT = 1
+        pkt.extend_from_slice(&0u16.to_be_bytes()); // ANCOUNT
+        pkt.extend_from_slice(&0u16.to_be_bytes()); // NSCOUNT
+        pkt.extend_from_slice(&0u16.to_be_bytes()); // ARCOUNT
+        // QNAME
+        for label in hostname.split('.') {
+            pkt.push(label.len() as u8);
+            pkt.extend_from_slice(label.as_bytes());
+        }
+        pkt.push(5); // "local"
+        pkt.extend_from_slice(b"local");
+        pkt.push(0); // end
+        pkt.extend_from_slice(&1u16.to_be_bytes()); // QTYPE A
+        pkt.extend_from_slice(&1u16.to_be_bytes()); // QCLASS IN
+        pkt
+    }
+
+    #[test]
+    fn test_responder_matches_configured_host() {
+        let records = vec![MdnsLocalRecord {
+            hostname: "myserver".to_string(),
+            ip: Ipv4Addr::new(192, 168, 1, 42),
+            ttl: 120,
+        }];
+        let responder = MdnsResponder::new(records);
+
+        let query = build_mdns_query("myserver");
+        let response = responder.maybe_respond(&query);
+        assert!(response.is_some(), "Expected a response for myserver.local");
+
+        let resp = response.unwrap();
+        // QR bit should be set
+        assert!(resp[2] & 0x80 != 0);
+        // Should contain the IP 192.168.1.42 somewhere
+        assert!(resp.windows(4).any(|w| w == [192, 168, 1, 42]));
+    }
+
+    #[test]
+    fn test_responder_ignores_unknown_host() {
+        let records = vec![MdnsLocalRecord {
+            hostname: "myserver".to_string(),
+            ip: Ipv4Addr::new(192, 168, 1, 42),
+            ttl: 120,
+        }];
+        let responder = MdnsResponder::new(records);
+
+        let query = build_mdns_query("unknownhost");
+        let response = responder.maybe_respond(&query);
+        assert!(response.is_none(), "Should not respond for unknown hosts");
+    }
+
+    #[test]
+    fn test_responder_ignores_mdns_responses() {
+        let records = vec![MdnsLocalRecord {
+            hostname: "myserver".to_string(),
+            ip: Ipv4Addr::new(192, 168, 1, 42),
+            ttl: 120,
+        }];
+        let responder = MdnsResponder::new(records);
+
+        // Build a "response" (QR=1) packet
+        let mut pkt = build_mdns_query("myserver");
+        pkt[2] |= 0x80; // set QR bit
+        let response = responder.maybe_respond(&pkt);
+        assert!(response.is_none(), "Should ignore mDNS response packets");
     }
 }

@@ -732,11 +732,9 @@ impl DnsFirewall {
     }
 
     fn matches_wildcard_string(&self, domain: &str, pattern: &str) -> bool {
-        if pattern.starts_with("*.") {
-            let suffix = &pattern[2..];
+        if let Some(suffix) = pattern.strip_prefix("*.") {
             domain == suffix || domain.ends_with(&format!(".{}", suffix))
-        } else if pattern.ends_with(".*") {
-            let prefix = &pattern[..pattern.len()-2];
+        } else if let Some(prefix) = pattern.strip_suffix(".*") {
             domain == prefix || domain.starts_with(&format!("{}.", prefix))
         } else {
             domain == pattern
@@ -766,13 +764,13 @@ impl DnsFirewall {
         log::debug!("Loading blocklist from file: {}", file_path);
         
         let file = File::open(file_path)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         
         let reader = BufReader::new(file);
         let mut domains = Vec::new();
         
         for (line_num, line) in reader.lines().enumerate() {
-            let line = line.map_err(|e| DnsError::Io(e))?;
+            let line = line.map_err(DnsError::Io)?;
             let line = line.trim();
             
             // Skip empty lines and comments

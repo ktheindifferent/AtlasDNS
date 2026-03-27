@@ -13,7 +13,7 @@ pub use collector::{MetricsCollector, MetricsSnapshot};
 pub use storage::{MetricsStorage, TimeSeriesData};
 pub use aggregator::{MetricsAggregator, AggregatedMetrics, TimeRange, AggregationInterval};
 pub use streaming::{MetricsStream, MetricsSubscriber};
-pub use geoip::{GeoIpAnalyzer, GeographicDistribution};
+pub use geoip::{GeoIpAnalyzer, GeoIpLookup, GeoInfo, GeographicDistribution};
 
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};

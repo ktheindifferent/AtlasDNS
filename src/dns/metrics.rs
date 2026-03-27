@@ -600,6 +600,12 @@ pub struct MetricsTracker {
     web_requests_total: Arc<RwLock<u64>>,
 }
 
+impl Default for MetricsTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsTracker {
     pub fn new() -> Self {
         Self {

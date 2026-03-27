@@ -172,8 +172,10 @@ pub struct FeedDescriptor {
 /// Action to take when a threat intel match is found.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum BlockAction {
     /// Return NXDOMAIN (default).
+    #[default]
     Nxdomain,
     /// Return REFUSED.
     Refused,
@@ -181,11 +183,6 @@ pub enum BlockAction {
     RedirectIp(String),
 }
 
-impl Default for BlockAction {
-    fn default() -> Self {
-        BlockAction::Nxdomain
-    }
-}
 
 // ---------------------------------------------------------------------------
 // CustomFeed

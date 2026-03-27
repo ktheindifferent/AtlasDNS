@@ -585,14 +585,19 @@ mod tests {
         // Wait for cleanup to run
         std::thread::sleep(Duration::from_millis(200));
         
-        // Old entries should be cleaned up
+        // Old entries should be cleaned up — queries older than the 50ms
+        // window should have been removed by the cleanup thread.
         let clients = limiter.clients.lock().unwrap();
-        // Clients with old queries should be removed or have empty query lists
+        // After cleanup, either the client entry is removed entirely
+        // (empty query list) or only recent queries remain.
         for entry in clients.values() {
-            let now = Instant::now();
-            for &query_time in &entry.queries {
-                assert!(now.duration_since(query_time) < Duration::from_millis(50));
-            }
+            // The cleanup thread removes queries outside the window,
+            // so the remaining list should be empty.
+            assert!(
+                entry.queries.is_empty(),
+                "Expected old queries to be cleaned up, but {} remain",
+                entry.queries.len()
+            );
         }
     }
 }

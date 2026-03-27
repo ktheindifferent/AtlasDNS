@@ -325,8 +325,8 @@ impl DnsResolver for ForwardingDnsResolver {
                 sentry::configure_scope(|scope| {
                     scope.set_tag("dns_operation", "forward");
                     scope.set_tag("qname", qname);
-                    scope.set_tag("qtype", &format!("{:?}", qtype));
-                    scope.set_tag("forward_server", &format!("{}:{}", host, port));
+                    scope.set_tag("qtype", format!("{:?}", qtype));
+                    scope.set_tag("forward_server", format!("{}:{}", host, port));
                 });
                 sentry::capture_message(
                     &format!("DNS forwarding failed for {} {:?}: {}", qname, qtype, e), 

@@ -413,12 +413,11 @@ impl MultiRegionFailoverHandler {
         }
 
         // Check for split-brain scenario
-        if config.split_brain_detection {
-            if !self.check_consensus_for_failover(failed_region) {
+        if config.split_brain_detection
+            && !self.check_consensus_for_failover(failed_region) {
                 self.stats.write().split_brain_incidents += 1;
                 return;
             }
-        }
 
         // Find alternative regions
         let alternatives = self.find_alternative_regions(failed_region);
@@ -515,7 +514,7 @@ impl MultiRegionFailoverHandler {
             // Rebalance weights
             let total_weight: f64 = traffic.regions.values().sum();
             for weight in traffic.regions.values_mut() {
-                *weight = *weight / total_weight;
+                *weight /= total_weight;
             }
         }
         
@@ -640,7 +639,7 @@ impl MultiRegionFailoverHandler {
         // Normalize weights
         if total_weight > 0.0 {
             for weight in traffic.regions.values_mut() {
-                *weight = *weight / total_weight;
+                *weight /= total_weight;
             }
         }
         

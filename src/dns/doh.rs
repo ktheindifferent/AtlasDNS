@@ -380,7 +380,7 @@ impl DohServer {
 
         // Serialize response
         let mut response_buffer = BytePacketBuffer::new();
-        if let Err(_) = response_packet.write(&mut response_buffer, 512) {
+        if response_packet.write(&mut response_buffer, 512).is_err() {
             return Ok(Response::from_string("Internal Server Error")
                 .with_status_code(500)
                 .boxed());
@@ -498,7 +498,7 @@ impl DohServer {
         // Use the configured resolver strategy (forwarding, recursive, or DoH-forwarding)
         let mut resolver = self.context.create_resolver(self.context.clone());
         
-        match resolver.resolve(&domain, qtype, true) {
+        match resolver.resolve(domain, qtype, true) {
             Ok(response_packet) => {
                 // Cache the response if successful
                 if response_packet.header.rescode == ResultCode::NOERROR && !response_packet.answers.is_empty() {

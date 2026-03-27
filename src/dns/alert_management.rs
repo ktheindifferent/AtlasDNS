@@ -635,7 +635,7 @@ impl AlertManagementHandler {
         let cutoff = Utc::now() - retention;
         
         self.history.write().retain(|alert| {
-            alert.resolved_at.map_or(true, |resolved| resolved > cutoff)
+            alert.resolved_at.is_none_or(|resolved| resolved > cutoff)
         });
     }
 

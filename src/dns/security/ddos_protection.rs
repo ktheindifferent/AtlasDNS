@@ -383,8 +383,8 @@ impl DDoSProtection {
 
         // Check DNS cookies if required
         // Skip cookie validation for internal/private networks
-        if config.enable_dns_cookies && !self.is_internal_network(client_ip) {
-            if !self.validate_dns_cookie(packet, client_ip) {
+        if config.enable_dns_cookies && !self.is_internal_network(client_ip)
+            && !self.validate_dns_cookie(packet, client_ip) {
                 metrics.cookie_validations += 1;
                 return SecurityCheckResult {
                     allowed: false,
@@ -394,7 +394,6 @@ impl DDoSProtection {
                     events: vec![SecurityEvent::DnsCookieRequired { client_ip }],
                 };
             }
-        }
 
         // Analyze patterns
         if config.enable_pattern_analysis {

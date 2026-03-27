@@ -228,7 +228,7 @@ impl WebSocketManager {
             }
 
             // System status updates (every 5 seconds)
-            if now.duration_since(last_update).unwrap_or_default().as_secs() % 5 == 0 {
+            if now.duration_since(last_update).unwrap_or_default().as_secs().is_multiple_of(5) {
                 // Get system metrics
                 let mut system_info = System::new_all();
                 system_info.refresh_all();

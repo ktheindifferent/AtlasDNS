@@ -166,14 +166,13 @@ impl CircuitBreaker {
         *success_count += 1;
         
         match *state {
-            CircuitState::HalfOpen { .. } => {
-                if *success_count >= self.config.success_threshold {
+            CircuitState::HalfOpen { .. }
+                if *success_count >= self.config.success_threshold => {
                     *state = CircuitState::Closed;
                     *failure_count = 0;
                     *success_count = 0;
                     log::info!("Circuit breaker closed after successful recovery");
                 }
-            }
             CircuitState::Closed => {
                 // Reset failure count on success in closed state
                 *failure_count = 0;
@@ -222,8 +221,8 @@ impl CircuitBreaker {
         *last_failure = Some(now);
         
         match *state {
-            CircuitState::Closed => {
-                if *failure_count >= self.config.failure_threshold {
+            CircuitState::Closed
+                if *failure_count >= self.config.failure_threshold => {
                     *state = CircuitState::Open { 
                         opened_at: Instant::now() 
                     };
@@ -232,7 +231,6 @@ impl CircuitBreaker {
                         *failure_count
                     );
                 }
-            }
             CircuitState::HalfOpen { .. } => {
                 // Single failure in half-open reopens circuit
                 *state = CircuitState::Open { 

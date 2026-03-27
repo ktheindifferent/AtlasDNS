@@ -364,17 +364,13 @@ impl UserManager {
                 log::warn!("🚨 FORCE_ADMIN=true but ADMIN_PASSWORD not set, generating random password");
                 rand::thread_rng()
                     .sample_iter(&Alphanumeric)
-                    .take(16)
-                    .map(char::from)
-                    .collect()
+                    .take(16).collect()
             }
         } else {
             // Generate a secure random password for production
             let random_password: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
-                .take(16)
-                .map(char::from)
-                .collect();
+                .take(16).collect();
             
             log::warn!("🔐 IMPORTANT: Generated admin password: {}", random_password);
             log::warn!("🔐 Please log in with username 'admin' and change this password immediately!");
@@ -621,7 +617,7 @@ impl UserManager {
                 // Check if account is locked
                 if self.is_account_locked(u) {
                     // account_locked_until is guaranteed Some when is_account_locked returns true
-                    let locked_until = u.account_locked_until.unwrap_or_else(|| Utc::now());
+                    let locked_until = u.account_locked_until.unwrap_or_else(Utc::now);
                     let remaining_minutes = (locked_until - Utc::now()).num_minutes();
                     
                     let user_id = u.id.clone();
@@ -918,7 +914,7 @@ impl UserManager {
         let audit_log = self.audit_log.read().map_err(|_| "Failed to acquire lock")?;
         let mut events: Vec<SecurityAuditEvent> = audit_log
             .iter()
-            .filter(|event| event.user_id.as_ref().map_or(false, |id| id == user_id))
+            .filter(|event| event.user_id.as_ref().is_some_and(|id| id == user_id))
             .cloned()
             .collect();
         
@@ -977,9 +973,7 @@ impl UserManager {
     ) -> InviteLink {
         let token: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(32)
-            .map(char::from)
-            .collect();
+            .take(32).collect();
         InviteLink {
             id: Uuid::new_v4().to_string(),
             token,
@@ -1013,7 +1007,7 @@ impl UserManager {
             password,
             role: invite.role,
         };
-        let user = self.create_user(req).map_err(|e| WebError::InternalError(e))?;
+        let user = self.create_user(req).map_err(WebError::InternalError)?;
         invite.used = true;
         invite.used_by = Some(user.id.clone());
         Ok(user)
@@ -1031,9 +1025,7 @@ impl UserManager {
     ) -> crate::web::Result<(String, String)> {
         let raw_key: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(48)
-            .map(char::from)
-            .collect();
+            .take(48).collect();
 
         let mut hasher = Sha256::new();
         hasher.update(raw_key.as_bytes());
@@ -1110,17 +1102,13 @@ impl UserManager {
         // Generate a random base32 secret (stub: just use random alphanumeric)
         let secret: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(32)
-            .map(char::from)
-            .collect();
+            .take(32).collect();
 
         let backup_codes: Vec<String> = (0..8)
             .map(|_| {
                 rand::thread_rng()
                     .sample_iter(&Alphanumeric)
-                    .take(8)
-                    .map(char::from)
-                    .collect()
+                    .take(8).collect()
             })
             .collect();
 

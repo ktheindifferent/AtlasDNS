@@ -499,8 +499,7 @@ impl TrafficSteeringHandler {
             return true;
         }
         
-        if pattern.starts_with("*.") {
-            let suffix = &pattern[2..];
+        if let Some(suffix) = pattern.strip_prefix("*.") {
             return domain.ends_with(suffix);
         }
         

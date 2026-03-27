@@ -345,18 +345,16 @@ impl SourceValidator {
         }
 
         // Geo-IP validation
-        if config.geo_validation {
-            if !self.validate_geo_consistency(source_ip) {
+        if config.geo_validation
+            && !self.validate_geo_consistency(source_ip) {
                 self.update_suspicious_score(source_ip, 0.3);
             }
-        }
 
         // AS path validation
-        if config.as_path_validation {
-            if !self.validate_as_path(source_ip) {
+        if config.as_path_validation
+            && !self.validate_as_path(source_ip) {
                 self.update_suspicious_score(source_ip, 0.2);
             }
-        }
 
         // Check suspicious score
         let score = self.get_suspicious_score(source_ip);
@@ -413,7 +411,7 @@ impl SourceValidator {
     /// Check if IP is bogon
     fn is_bogon(&self, ip: IpAddr) -> bool {
         for range in self.bogon_ranges.iter() {
-            if self.ip_in_range(ip, &range) {
+            if self.ip_in_range(ip, range) {
                 return true;
             }
         }
@@ -533,8 +531,8 @@ impl SourceValidator {
         // Create simple hash-based cookie (simplified HMAC)
         let mut hasher = Sha256::new();
         hasher.update(&config.cookie_secret);
-        hasher.update(&client_ip.to_string().as_bytes());
-        hasher.update(&timestamp.to_le_bytes());
+        hasher.update(client_ip.to_string().as_bytes());
+        hasher.update(timestamp.to_le_bytes());
         
         let result = hasher.finalize();
         let cookie = result.to_vec();

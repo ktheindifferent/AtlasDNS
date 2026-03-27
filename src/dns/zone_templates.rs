@@ -704,11 +704,10 @@ impl ZoneTemplatesHandler {
         variables: &HashMap<String, String>,
     ) -> Result<(), String> {
         for template_var in &template.variables {
-            if template_var.required {
-                if !variables.contains_key(&template_var.name) && template_var.default_value.is_none() {
+            if template_var.required
+                && !variables.contains_key(&template_var.name) && template_var.default_value.is_none() {
                     return Err(format!("Required variable {} not provided", template_var.name));
                 }
-            }
             
             if let Some(value) = variables.get(&template_var.name) {
                 // Check type
@@ -870,16 +869,16 @@ impl ZoneTemplatesHandler {
             ConditionOperator::Exists => value.is_some(),
             ConditionOperator::NotExists => value.is_none(),
             ConditionOperator::Equals => {
-                value.map_or(false, |v| v == &condition.value)
+                value == Some(&condition.value)
             }
             ConditionOperator::NotEquals => {
-                value.map_or(true, |v| v != &condition.value)
+                value != Some(&condition.value)
             }
             ConditionOperator::Contains => {
-                value.map_or(false, |v| v.contains(&condition.value))
+                value.is_some_and(|v| v.contains(&condition.value))
             }
             ConditionOperator::NotContains => {
-                value.map_or(true, |v| !v.contains(&condition.value))
+                value.is_none_or(|v| !v.contains(&condition.value))
             }
         }
     }

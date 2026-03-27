@@ -122,7 +122,7 @@ fn parse_category(s: &str) -> ThreatCategory {
 fn read_json_body<T: serde::de::DeserializeOwned>(request: &mut Request) -> Result<T> {
     let mut body = String::new();
     request.as_reader().read_to_string(&mut body)
-        .map_err(|e| WebError::Io(e))?;
+        .map_err(WebError::Io)?;
     serde_json::from_str(&body).map_err(|e| WebError::InvalidInput(e.to_string()))
 }
 

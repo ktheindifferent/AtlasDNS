@@ -347,7 +347,7 @@ impl<'a> WebServer<'a> {
         // Check authentication for protected routes
         if !is_public_route {
             // Check if user has a valid session
-            if let Err(_) = self.session_middleware.validate_request(request) {
+            if self.session_middleware.validate_request(request).is_err() {
                 // For API requests, return 401
                 if request.json_output() {
                     return Ok(Response::from_string("{\"error\": \"Unauthorized\"}")
@@ -464,6 +464,7 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api"]) => self.api_page(request),
             (Method::Get, ["webhooks"]) => self.webhooks_page(request),
             (Method::Get, ["certificates"]) => self.certificates_page(request),
+            (Method::Get, ["api", "acme", "status"]) => self.acme_status_api(request),
             (Method::Get, ["settings"]) => self.settings_page(request),
             (Method::Post, ["api", "settings", "upstream"]) => self.update_upstream_servers(request),
             (Method::Post, ["api", "settings", "config"]) => self.update_server_config(request),
@@ -515,6 +516,7 @@ impl<'a> WebServer<'a> {
             // Local device discovery (mDNS)
             (Method::Get, ["devices"]) => self.devices_page(request),
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
+            (Method::Get, ["api", "mdns", "devices"]) => self.devices_api(request),
 
             (Method::Get, ["healthz"]) => self.healthz(request),
             (Method::Get, ["health"]) => self.healthz(request),
@@ -1315,7 +1317,7 @@ impl<'a> WebServer<'a> {
         #[cfg(feature = "pihole-api")]
         {
             let handler = crate::web::pihole_api::PiholeApiHandler::new(Arc::clone(&self.context));
-            return handler.handle(request).map(|r| r.boxed());
+            handler.handle(request).map(|r| r.boxed())
         }
         #[cfg(not(feature = "pihole-api"))]
         {
@@ -1669,7 +1671,7 @@ impl<'a> WebServer<'a> {
         // Read the entire request body once to avoid EOF errors
         let mut body = Vec::new();
         request.as_reader().read_to_end(&mut body)
-            .map_err(|e| WebError::Io(e))?;
+            .map_err(WebError::Io)?;
         
         let login_request: LoginRequest = if request.json_input() {
             match serde_json::from_slice(&body) {
@@ -1715,7 +1717,7 @@ impl<'a> WebServer<'a> {
         
         let session = self.user_manager
             .create_session(user.id.clone(), ip_address, user_agent)
-            .map_err(|e| WebError::AuthenticationError(e))?;
+            .map_err(WebError::AuthenticationError)?;
         
         if request.json_output() {
             let response_data = serde_json::json!({
@@ -1757,7 +1759,7 @@ impl<'a> WebServer<'a> {
     fn create_user(&self, request: &mut Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let create_request: CreateUserRequest = if request.json_input() {
             serde_json::from_reader(request.as_reader())?
@@ -1785,7 +1787,7 @@ impl<'a> WebServer<'a> {
     fn list_users(&self, request: &Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let users = self.user_manager
             .list_users()
@@ -1804,7 +1806,7 @@ impl<'a> WebServer<'a> {
     fn get_user_details(&self, request: &Request, user_id: &str) -> Result<ResponseBox> {
         let (_, current_user) = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         if current_user.id != user_id && current_user.role != UserRole::Admin {
             return Err(WebError::AuthorizationError("Insufficient permissions".to_string()));
@@ -1830,7 +1832,7 @@ impl<'a> WebServer<'a> {
     fn update_user(&self, request: &mut Request, user_id: &str) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let update_request: UpdateUserRequest = serde_json::from_reader(request.as_reader())?;
         
@@ -1846,7 +1848,7 @@ impl<'a> WebServer<'a> {
     fn delete_user(&self, request: &Request, user_id: &str) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         self.user_manager
             .delete_user(user_id)
@@ -1858,7 +1860,7 @@ impl<'a> WebServer<'a> {
     fn list_sessions(&self, request: &Request) -> Result<ResponseBox> {
         let (_, user) = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let user_id = if user.role == UserRole::Admin {
             None
@@ -1883,7 +1885,7 @@ impl<'a> WebServer<'a> {
     fn revoke_session(&self, request: &Request, session_token: &str) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         self.user_manager
             .invalidate_session(session_token)
@@ -1895,7 +1897,7 @@ impl<'a> WebServer<'a> {
     fn user_profile(&self, request: &Request) -> Result<ResponseBox> {
         let (_, user) = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let data = serde_json::json!({
             "title": "Profile",
@@ -1908,7 +1910,7 @@ impl<'a> WebServer<'a> {
     fn update_profile(&self, request: &mut Request) -> Result<ResponseBox> {
         let (_, user) = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
         
         let update_request: UpdateUserRequest = serde_json::from_reader(request.as_reader())?;
         
@@ -1956,7 +1958,7 @@ impl<'a> WebServer<'a> {
         if let Ok((_, user)) = self.session_middleware.validate_request(request) {
             let user_ctx = crate::web::graphql::GraphQLUserContext {
                 username: user.username.clone(),
-                role: user.role.clone(),
+                role: user.role,
                 id: user.id.clone(),
             };
             graphql_request = graphql_request.data(user_ctx);
@@ -3073,7 +3075,40 @@ impl<'a> WebServer<'a> {
         });
         self.response_from_media_type(request, "certificates", data)
     }
-    
+
+    fn acme_status_api(&self, _request: &Request) -> Result<ResponseBox> {
+        let status = if let Some(ref acme_config) = self.context.ssl_config.acme {
+            match crate::dns::acme::AcmeCertificateManager::new(acme_config.clone(), self.context.clone()) {
+                Ok(mgr) => {
+                    let s = mgr.get_certificate_status();
+                    serde_json::json!({
+                        "acme_enabled": true,
+                        "provider": format!("{:?}", acme_config.provider),
+                        "domains": acme_config.domains,
+                        "cert_valid": s.valid,
+                        "days_until_expiry": s.days_until_expiry,
+                        "needs_renewal": s.needs_renewal,
+                        "issuer": s.issuer,
+                        "subject": s.subject,
+                        "cert_path": acme_config.cert_path.display().to_string(),
+                    })
+                }
+                Err(e) => serde_json::json!({
+                    "acme_enabled": true,
+                    "error": format!("{}", e),
+                }),
+            }
+        } else {
+            serde_json::json!({
+                "acme_enabled": false,
+                "ssl_enabled": self.context.ssl_config.enabled,
+            })
+        };
+        Ok(Response::from_string(serde_json::to_string(&status)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
     // Security API endpoints
     
     fn add_firewall_rule(&self, request: &mut Request) -> Result<ResponseBox> {
@@ -3461,7 +3496,7 @@ impl<'a> WebServer<'a> {
     fn update_upstream_servers(&self, request: &mut Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         #[derive(serde::Deserialize)]
         struct UpstreamRequest {
@@ -3507,7 +3542,7 @@ impl<'a> WebServer<'a> {
     fn update_server_config(&self, request: &mut Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         #[derive(serde::Deserialize, serde::Serialize)]
         struct ConfigRequest {
@@ -3563,7 +3598,7 @@ impl<'a> WebServer<'a> {
     fn get_geodns_stats(&self, request: &Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         let stats = self.context.geodns_handler.get_stats();
         let config = self.context.geodns_handler.get_config();
@@ -3599,7 +3634,7 @@ impl<'a> WebServer<'a> {
     fn create_geodns_zone(&self, request: &mut Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         #[derive(serde::Deserialize)]
         #[allow(dead_code)]
@@ -3651,7 +3686,7 @@ impl<'a> WebServer<'a> {
     fn delete_geodns_zone(&self, request: &Request, zone_id: &str) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         // Remove the zone from GeoDNS handler
         self.context.geodns_handler.remove_zone(zone_id);
@@ -3676,7 +3711,7 @@ impl<'a> WebServer<'a> {
     fn get_loadbalancing_stats(&self, request: &Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_auth(request)
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         let stats = self.context.geo_load_balancer.get_stats();
         
@@ -3708,7 +3743,7 @@ impl<'a> WebServer<'a> {
     fn create_loadbalancing_pool(&self, request: &mut Request) -> Result<ResponseBox> {
         let _ = self.session_middleware
             .require_role(request, vec![UserRole::Admin])
-            .map_err(|e| WebError::AuthorizationError(e))?;
+            .map_err(WebError::AuthorizationError)?;
 
         #[derive(serde::Deserialize)]
         struct CreatePoolRequest {

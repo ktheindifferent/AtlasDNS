@@ -273,7 +273,7 @@ impl QnameMinimizer {
                                     // Store NS information
                                     if let Some(addr) = self.resolve_ns_address(host, context) {
                                         state.known_ns.entry(qname.clone())
-                                            .or_insert_with(Vec::new)
+                                            .or_default()
                                             .push(addr);
                                     }
                                 }

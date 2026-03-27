@@ -73,6 +73,7 @@ pub struct ClientStats {
 
 /// Per-client DNS policy stored in the database.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ClientPolicy {
     /// If true, skip all blocklist checks for this client.
     pub bypass_all: bool,
@@ -82,15 +83,6 @@ pub struct ClientPolicy {
     pub blocked_hours: Vec<u32>,
 }
 
-impl Default for ClientPolicy {
-    fn default() -> Self {
-        Self {
-            bypass_all: false,
-            extra_block: Vec::new(),
-            blocked_hours: Vec::new(),
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // QueryLog
@@ -246,7 +238,7 @@ impl QueryLog {
             Err(_) => return,
         };
 
-        let _ = rt.block_on(async {
+        rt.block_on(async {
             let _ = sqlx::query(
                 "INSERT INTO query_log \
                  (timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status) \

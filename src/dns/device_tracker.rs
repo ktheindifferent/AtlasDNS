@@ -101,7 +101,7 @@ impl DeviceTracker {
         entries
             .iter()
             .rev()
-            .filter(|e| client_filter.map_or(true, |ip| e.client_ip == ip))
+            .filter(|e| client_filter.is_none_or(|ip| e.client_ip == ip))
             .take(limit)
             .cloned()
             .collect()

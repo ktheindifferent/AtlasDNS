@@ -374,7 +374,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             sentry::configure_scope(|scope| {
                 scope.set_tag("component", "dns_server");
                 scope.set_tag("event_type", "security_block");
-                scope.set_tag("security_action", &format!("{:?}", security_result.action));
+                scope.set_tag("security_action", format!("{:?}", security_result.action));
                 scope.set_tag("domain", &domain);
                 scope.set_tag("query_type", &query_type);
                 scope.set_extra("client_ip", ip.to_string().into());
@@ -542,7 +542,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         sentry::configure_scope(|scope| {
             scope.set_tag("component", "dns_server");
             scope.set_tag("event_type", "validation_error");
-            scope.set_tag("error_code", &format!("{:?}", error_code));
+            scope.set_tag("error_code", format!("{:?}", error_code));
             scope.set_tag("domain", &domain);
             scope.set_tag("query_type", &query_type);
             if let Some(ip) = client_ip {
@@ -928,7 +928,6 @@ impl DnsUdpServer {
                     &format!("UDP DNS Response Send Failed: {:?}", e),
                     sentry::Level::Warning
                 );
-                return;
             }
         }
     }
@@ -1090,7 +1089,7 @@ impl DnsUdpServer {
             }
             Err(e) => {
                 log::error!("DnsUdpServer incoming handler thread panicked: {:?}", e);
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "DNS server thread panicked").into())
+                Err(std::io::Error::other("DNS server thread panicked"))
             }
         }
     }
@@ -1147,7 +1146,7 @@ impl DnsUdpServer {
                         sentry::configure_scope(|scope| {
                             scope.set_tag("component", "dns_server");
                             scope.set_tag("server_type", "udp");
-                            scope.set_tag("error_type", &format!("{:?}", e.kind()));
+                            scope.set_tag("error_type", format!("{:?}", e.kind()));
                             scope.set_extra("port", self.context.dns_port.into());
                             scope.set_extra("attempt", attempt.into());
                         });
@@ -1393,7 +1392,7 @@ impl DnsTcpServer {
                         sentry::configure_scope(|scope| {
                             scope.set_tag("component", "dns_server");
                             scope.set_tag("server_type", "tcp");
-                            scope.set_tag("error_type", &format!("{:?}", e.kind()));
+                            scope.set_tag("error_type", format!("{:?}", e.kind()));
                             scope.set_extra("port", self.context.dns_port.into());
                             scope.set_extra("attempt", attempt.into());
                         });
@@ -1767,7 +1766,7 @@ impl DnsServer for DnsTcpServer {
             }
             Err(e) => {
                 log::error!("DnsTcpServer incoming handler thread panicked: {:?}", e);
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "TCP DNS server thread panicked").into())
+                Err(std::io::Error::other("TCP DNS server thread panicked").into())
             }
         }
     }
@@ -1785,10 +1784,7 @@ fn store_dns_query_log(
     use crate::dns::logging::DnsQueryLog;
 
     // Determine if response came from cache
-    let cache_hit = match context.cache.lookup(&question.name, question.qtype) {
-        Some(_) => true,
-        None => false,
-    };
+    let cache_hit = context.cache.lookup(&question.name, question.qtype).is_some();
 
     // Count answers
     let answer_count = results.iter()

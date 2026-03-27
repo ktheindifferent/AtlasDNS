@@ -44,20 +44,17 @@ pub use crate::dns::protocol::ValidationStatus;
 /// DNSSEC validation policy applied to resolved responses.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ValidationMode {
     /// Reject responses with invalid or missing signatures (RFC 4035 §5.3)
     Strict,
     /// Validate when signatures are present; allow unsigned responses through
+    #[default]
     Opportunistic,
     /// Skip DNSSEC validation entirely
     Off,
 }
 
-impl Default for ValidationMode {
-    fn default() -> Self {
-        ValidationMode::Opportunistic
-    }
-}
 
 impl std::fmt::Display for ValidationMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -575,7 +572,7 @@ impl DnssecSigner {
         let mut records_by_type: HashMap<QueryType, Vec<&DnsRecord>> = HashMap::new();
         for record in &records {
             let qtype = self.get_record_type(record);
-            records_by_type.entry(qtype).or_insert_with(Vec::new).push(record);
+            records_by_type.entry(qtype).or_default().push(record);
         }
         
         for (qtype, type_records) in records_by_type {

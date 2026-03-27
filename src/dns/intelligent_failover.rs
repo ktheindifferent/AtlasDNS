@@ -510,7 +510,7 @@ impl FailoverManager {
                 e.status == HealthStatus::Healthy || e.status == HealthStatus::Recovering
             })
             .filter(|e| {
-                region.map_or(true, |r| e.region == r)
+                region.is_none_or(|r| e.region == r)
             })
             .collect();
         

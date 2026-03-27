@@ -191,7 +191,7 @@ impl ServerConnectionPool {
     pub fn new(server: SocketAddr, config: PoolConfig) -> Result<Self, DnsError> {
         let ssl_connector = if config.use_tls {
             let mut builder = SslConnector::builder(SslMethod::tls())
-                .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
             
             // Configure TLS settings
             builder.set_verify(openssl::ssl::SslVerifyMode::NONE); // For testing
@@ -239,21 +239,21 @@ impl ServerConnectionPool {
     /// Create a new connection
     fn create_connection(&self) -> Result<PooledConnection, DnsError> {
         let tcp_stream = TcpStream::connect_timeout(&self.server, self.config.connection_timeout)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
 
         // Set TCP options
         tcp_stream.set_nodelay(true)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         tcp_stream.set_read_timeout(Some(self.config.connection_timeout))
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         tcp_stream.set_write_timeout(Some(self.config.connection_timeout))
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
 
         let stream = if let Some(ref ssl_connector) = self.ssl_connector {
             // Create TLS connection
             let ssl_stream = ssl_connector
                 .connect("dns.server", tcp_stream)
-                .map_err(|e| DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| DnsError::Io(std::io::Error::other(e)))?;
             ConnectionStream::Tls(ssl_stream)
         } else {
             ConnectionStream::Tcp(tcp_stream)
@@ -400,22 +400,22 @@ impl ServerConnectionPool {
         // Send query with length prefix (TCP DNS format)
         let query_len = query_bytes.len() as u16;
         conn.stream.write_all(&query_len.to_be_bytes())
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         conn.stream.write_all(query_bytes)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         conn.stream.flush()
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         
         // Read response length
         let mut len_buf = [0u8; 2];
         conn.stream.read_exact(&mut len_buf)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         let response_len = u16::from_be_bytes(len_buf) as usize;
         
         // Read response
         let mut response_buf = vec![0u8; response_len];
         conn.stream.read_exact(&mut response_buf)
-            .map_err(|e| DnsError::Io(e))?;
+            .map_err(DnsError::Io)?;
         
         // Parse response
         let mut response_buffer = BytePacketBuffer::new();

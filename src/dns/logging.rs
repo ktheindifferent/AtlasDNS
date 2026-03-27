@@ -267,24 +267,18 @@ impl CorrelationContext {
 }
 
 /// Structured logger implementation
+#[derive(Default)]
 pub struct StructuredLogger {
     #[allow(dead_code)]
     config: LoggerConfig,
 }
 
-impl Default for StructuredLogger {
-    fn default() -> Self {
-        Self {
-            config: LoggerConfig::default(),
-        }
-    }
-}
 
 impl StructuredLogger {
     /// Initialize the structured logger with configuration
     pub fn init(config: LoggerConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let filter = EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new(&format!("{:?}", config.level).to_lowercase()))
+            .or_else(|_| EnvFilter::try_new(format!("{:?}", config.level).to_lowercase()))
             .unwrap_or_else(|_| EnvFilter::new("info"));
 
         // Try to initialize subscriber, but don't fail if already initialized

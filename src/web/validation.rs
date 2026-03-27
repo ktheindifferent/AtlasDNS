@@ -233,7 +233,7 @@ pub fn validate_username(username: &str) -> Result<String, ValidationError> {
     }
     
     // Prevent reserved usernames
-    let reserved = vec!["admin", "root", "administrator", "system", "guest"];
+    let reserved = ["admin", "root", "administrator", "system", "guest"];
     if reserved.contains(&username.to_lowercase().as_str()) {
         return Err(ValidationError::InvalidUsername(
             "Username is reserved".to_string()
@@ -260,10 +260,10 @@ pub fn validate_password(password: &str) -> Result<(), ValidationError> {
     // Check for complexity requirements
     let has_uppercase = password.chars().any(|c| c.is_uppercase());
     let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_digit = password.chars().any(|c| c.is_digit(10));
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
     let has_special = password.chars().any(|c| !c.is_alphanumeric());
     
-    let complexity_score = vec![has_uppercase, has_lowercase, has_digit, has_special]
+    let complexity_score = [has_uppercase, has_lowercase, has_digit, has_special]
         .iter()
         .filter(|&&x| x)
         .count();
@@ -275,7 +275,7 @@ pub fn validate_password(password: &str) -> Result<(), ValidationError> {
     }
     
     // Check for common weak passwords
-    let weak_passwords = vec!["password", "12345678", "qwerty", "admin"];
+    let weak_passwords = ["password", "12345678", "qwerty", "admin"];
     if weak_passwords.contains(&password.to_lowercase().as_str()) {
         return Err(ValidationError::InvalidPassword(
             "Password is too common".to_string()
@@ -396,7 +396,7 @@ pub fn validate_srv_record(priority: u16, weight: u16, port: u16, target: &str)
 pub fn validate_caa_record(flags: u8, tag: &str, value: &str) 
     -> Result<(u8, String, String), ValidationError> {
     
-    let valid_tags = vec!["issue", "issuewild", "iodef"];
+    let valid_tags = ["issue", "issuewild", "iodef"];
     if !valid_tags.contains(&tag) {
         return Err(ValidationError::InvalidRecordType(
             format!("Invalid CAA tag: {}", tag)
@@ -405,22 +405,20 @@ pub fn validate_caa_record(flags: u8, tag: &str, value: &str)
     
     // Validate value based on tag
     match tag {
-        "issue" | "issuewild" => {
+        "issue" | "issuewild"
             // Should be a domain name or ";"
-            if value != ";" && validate_dns_name(value).is_err() {
+            if value != ";" && validate_dns_name(value).is_err() => {
                 return Err(ValidationError::InvalidRecordType(
                     "CAA issue value must be a domain or semicolon".to_string()
                 ));
             }
-        }
-        "iodef" => {
+        "iodef"
             // Should be a URL
-            if !value.starts_with("mailto:") && !value.starts_with("http://") && !value.starts_with("https://") {
+            if !value.starts_with("mailto:") && !value.starts_with("http://") && !value.starts_with("https://") => {
                 return Err(ValidationError::InvalidRecordType(
                     "CAA iodef must be a URL".to_string()
                 ));
             }
-        }
         _ => {}
     }
     

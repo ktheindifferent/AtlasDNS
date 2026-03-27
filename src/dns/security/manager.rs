@@ -561,11 +561,7 @@ impl SecurityManager {
                             let config = webhook_config.read();
                             if alert_batch.len() >= config.batch_size ||
                                last_send.elapsed() >= config.batch_interval {
-                                if config.url.is_empty() {
-                                    false
-                                } else {
-                                    true
-                                }
+                                !config.url.is_empty()
                             } else {
                                 false
                             }

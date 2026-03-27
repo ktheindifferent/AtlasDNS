@@ -189,7 +189,7 @@ fn handle_request(
     let host = raw
         .lines()
         .find(|l| l.to_ascii_lowercase().starts_with("host:"))
-        .and_then(|l| l.splitn(2, ':').nth(1))
+        .and_then(|l| l.split_once(':').map(|x| x.1))
         .map(|h| h.trim())
         .unwrap_or("blocked-site");
 

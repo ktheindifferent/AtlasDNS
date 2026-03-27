@@ -24,20 +24,17 @@ use crate::dnssec::trust_anchor::{
 /// DNSSEC validation policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DnssecValidationMode {
     /// Reject responses with invalid DNSSEC signatures (SERVFAIL).
     Strict,
     /// Validate when signatures present; pass unsigned responses through.
+    #[default]
     Opportunistic,
     /// Skip DNSSEC validation entirely.
     Off,
 }
 
-impl Default for DnssecValidationMode {
-    fn default() -> Self {
-        DnssecValidationMode::Opportunistic
-    }
-}
 
 impl std::fmt::Display for DnssecValidationMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -500,7 +500,7 @@ impl RpzEngine {
             // Remove empty buckets
             zones.retain(|_, v| !v.is_empty());
             // Insert at correct priority
-            zones.entry(priority).or_insert_with(Vec::new).push(zone);
+            zones.entry(priority).or_default().push(zone);
         }
         self.update_stats_count();
     }

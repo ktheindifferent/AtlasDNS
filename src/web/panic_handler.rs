@@ -54,7 +54,7 @@ impl PanicHandler {
             );
             
             // Send to Sentry if available (will be no-op if Sentry not initialized)
-            if let Ok(_) = std::env::var("SENTRY_DSN") {
+            if std::env::var("SENTRY_DSN").is_ok() {
                 // Note: This would work if sentry is a global dependency
                 // For now, just log that we would send to Sentry
                 log::info!("Would send panic to Sentry: {} at {}", message, location);

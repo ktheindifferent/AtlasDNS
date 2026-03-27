@@ -79,7 +79,7 @@ impl DotServer {
             .with_no_client_auth()
             .with_single_cert(certs, key)
             .map_err(|e| {
-                DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                DnsError::Io(std::io::Error::other(e.to_string()))
             })?;
 
         Ok(Self {
@@ -141,11 +141,11 @@ impl DotServer {
             "atlas-dns".to_string(),
         ])
         .map_err(|e| {
-            DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            DnsError::Io(std::io::Error::other(e.to_string()))
         })?;
 
         let cert_der = cert.serialize_der().map_err(|e| {
-            DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            DnsError::Io(std::io::Error::other(e.to_string()))
         })?;
         let key_der = cert.serialize_private_key_der();
 
@@ -251,7 +251,7 @@ impl DotServer {
         tcp.set_nodelay(true).map_err(DnsError::Io)?;
 
         let conn = ServerConnection::new(tls_cfg).map_err(|e| {
-            DnsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            DnsError::Io(std::io::Error::other(e.to_string()))
         })?;
         let mut tls = StreamOwned::new(conn, tcp);
 

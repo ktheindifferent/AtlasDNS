@@ -315,13 +315,10 @@ impl DynamicUpdateHandler {
         
         for record in records {
             // Simplified parsing - would be more complex in production
-            match record {
-                DnsRecord::A { domain, .. } => {
-                    prereqs.push(Prerequisite::NameExists {
-                        name: domain.clone(),
-                    });
-                }
-                _ => {}
+            if let DnsRecord::A { domain, .. } = record {
+                prereqs.push(Prerequisite::NameExists {
+                    name: domain.clone(),
+                });
             }
         }
 
