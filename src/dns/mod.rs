@@ -243,5 +243,11 @@ pub mod anomaly;
 /// Passive mDNS listener for local network device discovery
 pub mod mdns;
 
+/// DNS latency analytics: percentile tracking, upstream health, histograms
+pub mod latency_analytics;
+
+/// DNS benchmark tool for measuring query latency percentiles
+pub mod bench;
+
 #[cfg(test)]
 mod cache_test;

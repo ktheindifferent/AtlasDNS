@@ -468,6 +468,7 @@ impl DoqServer {
             timestamp: chrono::Utc::now(),
             client_ip: None,
             latency_ms: None,
+            response_time_us: 0,
         };
         context.logger.log_dns_query(&ctx, query_log);
         

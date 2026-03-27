@@ -19,6 +19,8 @@ use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, por
 use atlas::dns::security::{ThreatIntelManager, ThreatIntelConfig};
 use atlas::dns::mdns::{MdnsListener, MdnsRegistry};
 use atlas::dns::clustering::{ClusterConfig, ClusterRole, ZoneTransferPayload, ZoneTransferEntry, CLUSTER_GOSSIP_PORT, CLUSTER_ZONE_TRANSFER_PORT};
+use atlas::dns::bench::{BenchConfig, run_bench};
+use atlas::dns::protocol::QueryType;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -93,6 +95,12 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
+
+    // Handle "bench" subcommand: atlas bench [--count N] [--domain D] [--server S] [--port P] [--type T]
+    if args.len() >= 2 && args[1] == "bench" {
+        run_bench_subcommand(&args[1..]);
+        return;
+    }
 
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
@@ -943,4 +951,73 @@ fn get_rootservers() -> Vec<DnsRecord> {
     }
     
     rootservers
+}
+
+/// Handle the `atlas bench` subcommand.
+fn run_bench_subcommand(args: &[String]) {
+    let mut opts = getopts::Options::new();
+    opts.optopt("", "count", "Number of queries to send (default: 1000)", "N");
+    opts.optopt("", "domain", "Domain to query (default: google.com)", "DOMAIN");
+    opts.optopt("", "server", "DNS server to target (default: 127.0.0.1)", "IP");
+    opts.optopt("", "port", "DNS server port (default: 53)", "PORT");
+    opts.optopt("", "type", "Query type: A, AAAA, MX, etc. (default: A)", "TYPE");
+    opts.optopt("", "timeout", "Query timeout in ms (default: 2000)", "MS");
+    opts.optflag("h", "help", "Print bench help");
+
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            eprintln!("{}", opts.usage("Usage: atlas bench [options]"));
+            std::process::exit(1);
+        }
+    };
+
+    if matches.opt_present("h") {
+        println!("{}", opts.usage("Usage: atlas bench [options]"));
+        return;
+    }
+
+    let count = matches.opt_str("count")
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(1000);
+
+    let domain = matches.opt_str("domain")
+        .unwrap_or_else(|| "google.com".to_string());
+
+    let server = matches.opt_str("server")
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    let port = matches.opt_str("port")
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(53);
+
+    let timeout = matches.opt_str("timeout")
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(2000);
+
+    let qtype = match matches.opt_str("type").as_deref() {
+        Some("AAAA") | Some("aaaa") => QueryType::Aaaa,
+        Some("MX") | Some("mx") => QueryType::Mx,
+        Some("NS") | Some("ns") => QueryType::Ns,
+        Some("CNAME") | Some("cname") => QueryType::Cname,
+        Some("TXT") | Some("txt") => QueryType::Txt,
+        Some("SOA") | Some("soa") => QueryType::Soa,
+        Some("SRV") | Some("srv") => QueryType::Srv,
+        _ => QueryType::A,
+    };
+
+    let config = BenchConfig {
+        server,
+        port,
+        domain,
+        query_type: qtype,
+        count,
+        timeout_ms: timeout,
+    };
+
+    let results = run_bench(&config);
+    results.print_report();
+
+    std::process::exit(if results.failed == results.total { 1 } else { 0 });
 }

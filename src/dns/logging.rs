@@ -122,6 +122,9 @@ pub struct DnsQueryLog {
     /// Query latency in milliseconds
     #[serde(default)]
     pub latency_ms: Option<u64>,
+    /// Query latency in microseconds (high-precision)
+    #[serde(default)]
+    pub response_time_us: u64,
 }
 
 /// HTTP request logging details
@@ -515,6 +518,7 @@ macro_rules! log_dns_query {
             timestamp: chrono::Utc::now(),
             client_ip: None,
             latency_ms: None,
+            response_time_us: 0,
         };
         $logger.log_dns_query($ctx, query_log);
     }};
@@ -706,8 +710,9 @@ mod tests {
             timestamp: chrono::Utc::now(),
             client_ip: None,
             latency_ms: None,
+            response_time_us: 0,
         };
-        
+
         assert_eq!(query_log.domain, "example.com");
         assert_eq!(query_log.query_type, "A");
         assert!(query_log.cache_hit);

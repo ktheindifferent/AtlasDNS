@@ -483,6 +483,7 @@ impl DohServer {
             timestamp: chrono::Utc::now(),
             client_ip: None,
             latency_ms: None,
+            response_time_us: 0,
         };
         self.context.logger.log_dns_query(&ctx, query_log);
 

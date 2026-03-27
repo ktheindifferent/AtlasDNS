@@ -398,9 +398,10 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 timestamp: chrono::Utc::now(),
                 client_ip: client_ip.map(|ip| ip.to_string()),
                 latency_ms: Some(start_time.elapsed().as_millis() as u64),
+                response_time_us: start_time.elapsed().as_micros() as u64,
             };
             context.logger.log_dns_query(&ctx, query_log);
-            
+
             // Record metrics
             context.metrics.record_dns_query(&protocol, &query_type, &domain);
             context.metrics.record_dns_response(
@@ -567,6 +568,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             timestamp: chrono::Utc::now(),
             client_ip: client_ip.map(|ip| ip.to_string()),
             latency_ms: Some(start_time.elapsed().as_millis() as u64),
+            response_time_us: start_time.elapsed().as_micros() as u64,
         };
         context.logger.log_dns_query(&ctx, query_log);
     } else {
@@ -724,6 +726,7 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             timestamp: chrono::Utc::now(),
             client_ip: client_ip.map(|ip| ip.to_string()),
             latency_ms: Some(start_time.elapsed().as_millis() as u64),
+            response_time_us: start_time.elapsed().as_micros() as u64,
         };
         context.logger.log_dns_query(&ctx, query_log);
     }
@@ -747,6 +750,26 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         &query_type,
         cache_hit
     );
+
+    // Record latency analytics
+    {
+        let response_time_us = start_time.elapsed().as_micros() as u64;
+        let upstream_server_str = match &context.resolve_strategy {
+            crate::dns::context::ResolveStrategy::Forward { host, port } => {
+                if cache_hit { None } else { Some(format!("{}:{}", host, port)) }
+            }
+            crate::dns::context::ResolveStrategy::DohForward { doh_url, .. } => {
+                if cache_hit { None } else { Some(doh_url.clone()) }
+            }
+            crate::dns::context::ResolveStrategy::Recursive => None,
+        };
+        context.latency_tracker.record(
+            response_time_us,
+            &query_type,
+            cache_hit,
+            upstream_server_str.as_deref(),
+        );
+    }
 
     // Log to query log
     if let (Some(ref ql), Some(ip)) = (&context.query_log, client_ip) {
@@ -1815,6 +1838,7 @@ fn store_dns_query_log(
         timestamp: chrono::Utc::now(),
         client_ip,
         latency_ms: Some(latency_ms),
+        response_time_us: latency_ms * 1000,
     };
 
     // Store in query log storage

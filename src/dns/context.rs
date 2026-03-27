@@ -43,6 +43,7 @@ use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
 use crate::dns::split_horizon::SplitHorizonRuleManager;
 use crate::dns::dnssec::ValidationMode;
 use crate::dns::rpz::RpzEngine;
+use crate::dns::latency_analytics::LatencyTracker;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -195,6 +196,8 @@ pub struct ServerContext {
     pub split_horizon_manager: Arc<SplitHorizonRuleManager>,
     /// RPZ (Response Policy Zone) DNS firewall engine.
     pub rpz_engine: Arc<RpzEngine>,
+    /// Latency analytics tracker for percentile stats and upstream health.
+    pub latency_tracker: Arc<LatencyTracker>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -326,6 +329,7 @@ impl Default for ServerContext {
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
+            latency_tracker: Arc::new(LatencyTracker::new()),
         }
     }
 }
@@ -422,6 +426,7 @@ impl ServerContext {
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
+            latency_tracker: Arc::new(LatencyTracker::new()),
         })
     }
 
@@ -721,6 +726,7 @@ pub mod tests {
             anomaly_detector: Arc::new(DnsAnomalyDetector::new(AnomalyConfig::default())),
             split_horizon_manager: Arc::new(SplitHorizonRuleManager::new()),
             rpz_engine: Arc::new(RpzEngine::new()),
+            latency_tracker: Arc::new(LatencyTracker::new()),
         })
     }
 

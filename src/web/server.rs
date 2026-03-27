@@ -518,6 +518,11 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
             (Method::Get, ["api", "mdns", "devices"]) => self.devices_api(request),
 
+            // Latency analytics API
+            (Method::Get, ["api", "v1", "stats", "latency"]) => self.latency_stats(request),
+            (Method::Get, ["api", "v1", "stats", "upstream"]) => self.upstream_stats(request),
+            (Method::Get, ["api", "v1", "stats", "histogram"]) => self.latency_histogram(request),
+
             (Method::Get, ["healthz"]) => self.healthz(request),
             (Method::Get, ["health"]) => self.healthz(request),
             (Method::Get, ["dashboard"]) => self.dashboard_page(request),
@@ -1469,6 +1474,36 @@ impl<'a> WebServer<'a> {
     }
 
     /// Health check endpoint - returns basic server health status
+    /// GET /api/v1/stats/latency — p50/p95/p99 by query type and resolver source.
+    fn latency_stats(&self, _request: &Request) -> Result<ResponseBox> {
+        let stats = self.context.latency_tracker.get_latency_stats();
+        let body = serde_json::to_string(&stats).map_err(WebError::Serialization)?;
+        Ok(Response::from_string(body)
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// GET /api/v1/stats/upstream — per-upstream avg latency, success rate, last error.
+    fn upstream_stats(&self, _request: &Request) -> Result<ResponseBox> {
+        let stats = self.context.latency_tracker.get_upstream_stats();
+        let body = serde_json::to_string(&stats).map_err(WebError::Serialization)?;
+        Ok(Response::from_string(body)
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// GET /api/v1/stats/histogram — latency distribution buckets for the dashboard.
+    fn latency_histogram(&self, _request: &Request) -> Result<ResponseBox> {
+        let buckets = self.context.latency_tracker.get_histogram_buckets();
+        let body = serde_json::to_string(&buckets).map_err(WebError::Serialization)?;
+        Ok(Response::from_string(body)
+            .with_status_code(200)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
     fn healthz(&self, _request: &Request) -> Result<ResponseBox> {
         let health = serde_json::json!({
             "status": "ok",

@@ -660,6 +660,44 @@
         </div>
     </div>
 </div>
+
+<!-- Latency Analytics Row -->
+<div class="row g-3 mb-4 mt-2">
+    <div class="col-12 col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-speedometer2 me-2"></i>
+                    DNS Latency Histogram
+                </h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="refreshLatencyHistogram()" title="Refresh">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <pre id="latencyHistogram" style="font-family:monospace;font-size:0.85rem;line-height:1.6;margin:0;overflow-x:auto;"></pre>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up me-2"></i>
+                    Latency Percentiles
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                    <tbody id="latencyPercentilesBody">
+                        <tr><td colspan="2" class="text-muted text-center">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 {{/inline}}
 
 {{#*inline "header"}}
@@ -955,6 +993,73 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(el => new bootstrap.Tooltip(el));
+
+    /* ── Latency Histogram (ASCII bar chart) ── */
+    function refreshLatencyHistogram() {
+        fetch('/api/v1/stats/histogram')
+            .then(r => r.json())
+            .then(buckets => {
+                var el = document.getElementById('latencyHistogram');
+                if (!buckets || buckets.length === 0) { el.textContent = 'No latency data yet.'; return; }
+                var maxCount = 0;
+                for (var i = 0; i < buckets.length; i++) { if (buckets[i][1] > maxCount) maxCount = buckets[i][1]; }
+                var barWidth = 40;
+                var lines = [];
+                for (var i = 0; i < buckets.length; i++) {
+                    var label = buckets[i][0];
+                    var count = buckets[i][1];
+                    var barLen = maxCount > 0 ? Math.round((count / maxCount) * barWidth) : 0;
+                    var bar = '';
+                    for (var j = 0; j < barLen; j++) bar += '\u2588';
+                    var pad = '';
+                    for (var j = label.length; j < 12; j++) pad += ' ';
+                    var cpad = '';
+                    for (var j = String(count).length; j < 6; j++) cpad += ' ';
+                    lines.push(pad + label + ' |' + bar + ' ' + cpad + count);
+                }
+                el.textContent = lines.join('\n');
+            })
+            .catch(function() {
+                document.getElementById('latencyHistogram').textContent = 'Failed to load histogram data.';
+            });
+    }
+
+    function refreshLatencyPercentiles() {
+        fetch('/api/v1/stats/latency')
+            .then(r => r.json())
+            .then(data => {
+                var tbody = document.getElementById('latencyPercentilesBody');
+                if (!data || !data.overall || data.overall.count === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-muted text-center">No data yet</td></tr>';
+                    return;
+                }
+                var o = data.overall;
+                function us2ms(v) { return (v / 1000).toFixed(2) + ' ms'; }
+                var rows = [
+                    ['Total Queries', o.count],
+                    ['p50 Latency', us2ms(o.p50)],
+                    ['p95 Latency', us2ms(o.p95)],
+                    ['p99 Latency', us2ms(o.p99)],
+                    ['Min', us2ms(o.min)],
+                    ['Max', us2ms(o.max)],
+                    ['Avg', us2ms(o.avg)]
+                ];
+                var html = '';
+                for (var i = 0; i < rows.length; i++) {
+                    html += '<tr><td>' + rows[i][0] + '</td><td><strong>' + rows[i][1] + '</strong></td></tr>';
+                }
+                tbody.innerHTML = html;
+            })
+            .catch(function() {
+                document.getElementById('latencyPercentilesBody').innerHTML =
+                    '<tr><td colspan="2" class="text-muted text-center">Error loading data</td></tr>';
+            });
+    }
+
+    refreshLatencyHistogram();
+    refreshLatencyPercentiles();
+    setInterval(refreshLatencyHistogram, 5000);
+    setInterval(refreshLatencyPercentiles, 5000);
 
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
