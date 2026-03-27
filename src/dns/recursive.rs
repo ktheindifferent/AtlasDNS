@@ -94,8 +94,8 @@ impl ValidatedCache {
 
     /// Clear both partitions.
     pub fn clear(&self) {
-        self.validated.clear();
-        self.unvalidated.clear();
+        let _ = self.validated.clear();
+        let _ = self.unvalidated.clear();
     }
 
     /// Statistics: (validated_size, unvalidated_size).
