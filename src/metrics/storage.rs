@@ -2,6 +2,7 @@
 
 use super::{DnsQueryMetric, SystemMetric, SecurityEvent};
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions, Row};
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use crate::dns::sql_protection::{SqlProtectionManager, SqlProtectionConfig};
@@ -487,6 +488,31 @@ impl MetricsStorage {
         } else {
             None
         }
+    }
+
+    /// Get security event summary grouped by event type within a time range
+    pub async fn get_security_event_summary(&self, start: i64, end: i64) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT event_type, COUNT(*) as count
+            FROM security_events
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY event_type
+            ORDER BY count DESC
+            "#
+        )
+        .bind(start)
+        .bind(end)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut summary = HashMap::new();
+        for row in rows {
+            let event_type: String = row.get("event_type");
+            let count: i64 = row.get("count");
+            summary.insert(event_type, count as u64);
+        }
+        Ok(summary)
     }
 
     /// Validate and sanitize input for dynamic query construction

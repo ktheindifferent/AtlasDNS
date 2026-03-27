@@ -112,3 +112,7 @@ path = "src/bin/atlas-cli.rs"
 [[bin]]
 name = "atlas-admin"
 path = "src/bin/atlas-admin.rs"
+
+[[bin]]
+name = "atlasdns-check"
+path = "src/bin/atlasdns-check.rs"

@@ -40,7 +40,7 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         zone_summaries.push(json!({
             "domain": zone.domain,
             "record_count": record_count,
-            "last_modified": "Recently", // You could track actual modification time
+            "last_modified": chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
         }));
     }
     
@@ -117,7 +117,7 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         "active_sessions": user_manager.get_active_session_count(),
         "total_users": user_manager.get_total_user_count(),
         "active_zones": total_zones,
-        "last_update": "Just now",
+        "last_update": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         
         // Zone list for table
         "zones": zone_summaries,
@@ -243,7 +243,7 @@ fn build_fallback_response(
         "active_sessions": user_manager.get_active_session_count(),
         "total_users": user_manager.get_total_user_count(),
         "active_zones": total_zones,
-        "last_update": "Just now",
+        "last_update": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         "zones": zone_summaries,
         "cache_hit_rate": cache_hit_rate,
         "memory_usage": 0,

@@ -435,57 +435,131 @@ impl DynamicUpdateHandler {
     }
 
     /// Check if RRset exists
-    fn rrset_exists(&self, _zone: &str, _name: &str, _rtype: QueryType) -> bool {
-        // Would check authority
-        true
+    fn rrset_exists(&self, zone: &str, name: &str, rtype: QueryType) -> bool {
+        let zones = match self.authority.read() {
+            Ok(z) => z,
+            Err(_) => return false,
+        };
+        let z = match zones.get_zone(zone) {
+            Some(z) => z,
+            None => return false,
+        };
+        z.records.iter().any(|r| {
+            r.get_domain().as_deref() == Some(name) && r.get_querytype() == rtype
+        })
     }
 
     /// Check if name exists
-    fn name_exists(&self, _zone: &str, _name: &str) -> bool {
-        // Would check authority
-        true
+    fn name_exists(&self, zone: &str, name: &str) -> bool {
+        let zones = match self.authority.read() {
+            Ok(z) => z,
+            Err(_) => return false,
+        };
+        let z = match zones.get_zone(zone) {
+            Some(z) => z,
+            None => return false,
+        };
+        z.records.iter().any(|r| r.get_domain().as_deref() == Some(name))
     }
 
     /// Check if specific record exists
-    fn record_exists(&self, _zone: &str, _record: &DnsRecord) -> bool {
-        // Would check authority
-        true
+    fn record_exists(&self, zone: &str, record: &DnsRecord) -> bool {
+        let zones = match self.authority.read() {
+            Ok(z) => z,
+            Err(_) => return false,
+        };
+        let z = match zones.get_zone(zone) {
+            Some(z) => z,
+            None => return false,
+        };
+        z.records.contains(record)
     }
 
     /// Add record to zone
-    fn add_record(&self, _zone: &str, _record: &DnsRecord) -> Result<(), UpdateError> {
-        // Would add to authority
+    fn add_record(&self, zone: &str, record: &DnsRecord) -> Result<(), UpdateError> {
+        let mut zones = self.authority.write()
+            .map_err(|_| UpdateError::ServerFailure)?;
+        let z = zones.get_zone_mut(zone)
+            .ok_or(UpdateError::ZoneNotFound)?;
+        z.add_record(record);
+        log::info!("Dynamic update: added record to zone {}", zone);
         Ok(())
     }
 
     /// Delete all records at name
-    fn delete_name(&self, _zone: &str, _name: &str) -> Result<(), UpdateError> {
-        // Would delete from authority
+    fn delete_name(&self, zone: &str, name: &str) -> Result<(), UpdateError> {
+        let mut zones = self.authority.write()
+            .map_err(|_| UpdateError::ServerFailure)?;
+        let z = zones.get_zone_mut(zone)
+            .ok_or(UpdateError::ZoneNotFound)?;
+        let to_remove: Vec<DnsRecord> = z.records.iter()
+            .filter(|r| r.get_domain().as_deref() == Some(name))
+            .cloned()
+            .collect();
+        for rec in &to_remove {
+            z.delete_record(rec);
+        }
+        log::info!("Dynamic update: deleted {} records at name {} in zone {}", to_remove.len(), name, zone);
         Ok(())
     }
 
     /// Delete RRset
-    fn delete_rrset(&self, _zone: &str, _name: &str, _rtype: QueryType) -> Result<(), UpdateError> {
-        // Would delete from authority
+    fn delete_rrset(&self, zone: &str, name: &str, rtype: QueryType) -> Result<(), UpdateError> {
+        let mut zones = self.authority.write()
+            .map_err(|_| UpdateError::ServerFailure)?;
+        let z = zones.get_zone_mut(zone)
+            .ok_or(UpdateError::ZoneNotFound)?;
+        let to_remove: Vec<DnsRecord> = z.records.iter()
+            .filter(|r| r.get_domain().as_deref() == Some(name) && r.get_querytype() == rtype)
+            .cloned()
+            .collect();
+        for rec in &to_remove {
+            z.delete_record(rec);
+        }
+        log::info!("Dynamic update: deleted RRset {}/{:?} in zone {}", name, rtype, zone);
         Ok(())
     }
 
     /// Delete specific record
-    fn delete_record(&self, _zone: &str, _record: &DnsRecord) -> Result<(), UpdateError> {
-        // Would delete from authority
+    fn delete_record(&self, zone: &str, record: &DnsRecord) -> Result<(), UpdateError> {
+        let mut zones = self.authority.write()
+            .map_err(|_| UpdateError::ServerFailure)?;
+        let z = zones.get_zone_mut(zone)
+            .ok_or(UpdateError::ZoneNotFound)?;
+        z.delete_record(record);
+        log::info!("Dynamic update: deleted specific record from zone {}", zone);
         Ok(())
     }
 
     /// Increment zone serial number
-    fn increment_zone_serial(&self, _zone: &str) -> Result<(), UpdateError> {
-        // Would update SOA serial
+    fn increment_zone_serial(&self, zone: &str) -> Result<(), UpdateError> {
+        let mut zones = self.authority.write()
+            .map_err(|_| UpdateError::ServerFailure)?;
+        let z = zones.get_zone_mut(zone)
+            .ok_or(UpdateError::ZoneNotFound)?;
+        z.serial = z.serial.wrapping_add(1);
+        log::debug!("Dynamic update: zone {} serial incremented to {}", zone, z.serial);
         Ok(())
     }
 
     /// Save zone state for rollback
-    fn save_zone_state(&self, _zone: &str) -> Vec<SerializedRecord> {
-        // Would save current records
-        Vec::new()
+    fn save_zone_state(&self, zone: &str) -> Vec<SerializedRecord> {
+        let zones = match self.authority.read() {
+            Ok(z) => z,
+            Err(_) => return Vec::new(),
+        };
+        let z = match zones.get_zone(zone) {
+            Some(z) => z,
+            None => return Vec::new(),
+        };
+        z.records.iter().map(|r| {
+            SerializedRecord {
+                name: r.get_domain().unwrap_or_default(),
+                rtype: format!("{:?}", r.get_querytype()),
+                value: format!("{:?}", r),
+                ttl: r.get_ttl(),
+            }
+        }).collect()
     }
 
     /// Journal update transaction
@@ -631,6 +705,8 @@ pub enum UpdateError {
     UpdateFailed,
     ZoneLocked,
     TransactionNotFound,
+    ZoneNotFound,
+    ServerFailure,
 }
 
 impl From<UpdateError> for ResultCode {
@@ -640,6 +716,8 @@ impl From<UpdateError> for ResultCode {
             UpdateError::UpdateFailed => ResultCode::SERVFAIL,
             UpdateError::ZoneLocked => ResultCode::SERVFAIL,
             UpdateError::TransactionNotFound => ResultCode::NXDOMAIN,
+            UpdateError::ZoneNotFound => ResultCode::NXDOMAIN,
+            UpdateError::ServerFailure => ResultCode::SERVFAIL,
         }
     }
 }

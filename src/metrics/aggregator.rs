@@ -293,10 +293,12 @@ impl MetricsAggregator {
     /// Get geographic distribution of queries
     pub async fn get_geographic_distribution(
         &self,
-        _time_range: TimeRange,
+        time_range: TimeRange,
     ) -> Result<Vec<super::GeographicDistribution>, Box<dyn std::error::Error>> {
-        // This will be implemented when we add GeoIP support
-        Ok(Vec::new())
+        let queries = self.storage.get_query_analytics(time_range.start, time_range.end).await?;
+        let client_ips: Vec<String> = queries.iter().map(|q| q.client_ip.clone()).collect();
+        let geoip = super::GeoIpAnalyzer::new()?;
+        Ok(geoip.analyze_distribution(client_ips).await)
     }
 
     /// Get comprehensive aggregated metrics
@@ -374,10 +376,11 @@ impl MetricsAggregator {
     /// Get security events summary
     pub async fn get_security_summary(
         &self,
-        _time_range: TimeRange,
+        time_range: TimeRange,
     ) -> Result<HashMap<String, u64>, Box<dyn std::error::Error>> {
-        // This will be implemented when we have security event tracking
-        Ok(HashMap::new())
+        let start = time_range.start.duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
+        let end = time_range.end.duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64;
+        self.storage.get_security_event_summary(start, end).await
     }
 }
 

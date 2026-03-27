@@ -98,6 +98,10 @@ pub struct MetricsCollector {
     
     // Security events
     security_events: Arc<RwLock<Vec<SecurityEvent>>>,
+
+    // Connection and cache tracking
+    active_connections: Arc<RwLock<u32>>,
+    cache_entries: Arc<RwLock<u64>>,
 }
 
 impl MetricsCollector {
@@ -124,6 +128,8 @@ impl MetricsCollector {
             system: Arc::new(RwLock::new(system)),
             network_baseline: Arc::new(RwLock::new((rx, tx))),
             security_events: Arc::new(RwLock::new(Vec::new())),
+            active_connections: Arc::new(RwLock::new(0)),
+            cache_entries: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -224,8 +230,8 @@ impl MetricsCollector {
             memory_usage_mb,
             network_rx_bytes,
             network_tx_bytes,
-            active_connections: 0, // Will be updated from connection pool
-            cache_entries: 0, // Will be updated from cache
+            active_connections: *self.active_connections.read().await,
+            cache_entries: *self.cache_entries.read().await,
         }
     }
 
@@ -243,13 +249,13 @@ impl MetricsCollector {
     }
 
     /// Update active connection count
-    pub async fn update_active_connections(&self, _count: u32) {
-        // This will be called by the connection pool
+    pub async fn update_active_connections(&self, count: u32) {
+        *self.active_connections.write().await = count;
     }
 
     /// Update cache entry count
-    pub async fn update_cache_entries(&self, _count: u64) {
-        // This will be called by the cache manager
+    pub async fn update_cache_entries(&self, count: u64) {
+        *self.cache_entries.write().await = count;
     }
 
     /// Get percentile response times

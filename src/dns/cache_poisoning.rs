@@ -419,30 +419,50 @@ impl CachePoisonProtection {
         }
     }
 
-    /// Validate DNSSEC signatures (enhanced)
+    /// Validate DNSSEC signatures using the full cryptographic validator
     fn validate_dnssec_simple(&self, packet: &DnsPacket) -> bool {
-        // Enhanced DNSSEC validation with better logging
         if !packet.header.authed_data {
-            // If no DNSSEC data is present, this is not necessarily invalid
+            // No DNSSEC data claimed — nothing to validate
             return true;
         }
 
-        // Check for presence of DNSSEC records
         let has_rrsig = packet.answers.iter().any(|r| matches!(r, DnsRecord::Rrsig { .. }));
-        let has_dnskey = packet.answers.iter().any(|r| matches!(r, DnsRecord::Dnskey { .. }));
-        
         if packet.header.authed_data && !has_rrsig {
             log::warn!("DNSSEC: Authenticated data flag set but no RRSIG records present");
             return false;
         }
 
-        if has_rrsig && !has_dnskey {
-            log::debug!("DNSSEC: RRSIG present but no DNSKEY - may be valid if key is cached");
+        // Delegate to the real DNSSEC validator for cryptographic verification
+        let validator = crate::dnssec::DnssecValidator::new(
+            crate::dnssec::DnssecValidationMode::Opportunistic,
+        );
+        match validator.validate_response(packet) {
+            Ok(status) => {
+                use crate::dns::protocol::ValidationStatus;
+                match status {
+                    ValidationStatus::Secure => {
+                        log::debug!("DNSSEC: Response validated as Secure");
+                        true
+                    }
+                    ValidationStatus::Insecure | ValidationStatus::Indeterminate => {
+                        log::debug!("DNSSEC: Response status {:?} — accepting", status);
+                        true
+                    }
+                    ValidationStatus::Bogus => {
+                        log::warn!("DNSSEC: Response validated as Bogus — rejecting");
+                        let mut stats = self.stats.write();
+                        stats.dnssec_failures += 1;
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("DNSSEC: Validation error: {} — rejecting", e);
+                let mut stats = self.stats.write();
+                stats.dnssec_failures += 1;
+                false
+            }
         }
-
-        // TODO: Implement full cryptographic DNSSEC validation
-        // For now, accept if basic structural validation passes
-        true
     }
 
     /// Clean up old tracked queries
