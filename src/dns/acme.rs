@@ -577,7 +577,9 @@ impl AcmeCertificateManager {
         use sha2::{Digest, Sha256};
         let digest = Sha256::digest(key_auth.as_bytes());
         let txt_value = b64url(digest);
-        let txt_name = format!("_acme-challenge.{}", domain);
+        // For wildcard domains (*.example.com) the challenge is
+        // _acme-challenge.example.com (without the *. prefix).
+        let txt_name = challenge_domain(&domain);
 
         self.add_dns_record(&txt_name, &txt_value)?;
         log::info!("Installed DNS-01 challenge: {} = \"{}\"", txt_name, txt_value);
@@ -646,6 +648,7 @@ impl AcmeCertificateManager {
     fn generate_csr(&self) -> Result<(PKey<Private>, Vec<u8>), Box<dyn std::error::Error>> {
         use openssl::hash::MessageDigest;
         use openssl::rsa::Rsa;
+        use openssl::x509::extension::SubjectAlternativeName;
         use openssl::x509::{X509NameBuilder, X509ReqBuilder};
 
         let rsa = Rsa::generate(2048)?;
@@ -658,6 +661,20 @@ impl AcmeCertificateManager {
         name_builder.append_entry_by_text("CN", &self.config.domains[0])?;
         let name = name_builder.build();
         req_builder.set_subject_name(&name)?;
+
+        // Add Subject Alternative Names for all domains (including wildcards)
+        if !self.config.domains.is_empty() {
+            let mut san = SubjectAlternativeName::new();
+            for domain in &self.config.domains {
+                san.dns(domain);
+            }
+            let san_ext = san.build(&req_builder.x509v3_context(None))?;
+
+            let mut extensions = openssl::stack::Stack::new()?;
+            extensions.push(san_ext)?;
+            req_builder.add_extensions(&extensions)?;
+        }
+
         req_builder.sign(&domain_key, MessageDigest::sha256())?;
 
         let csr = req_builder.build();
@@ -836,6 +853,27 @@ impl AcmeCertificateManager {
 }
 
 // ---------------------------------------------------------------------------
+// Wildcard domain helpers
+// ---------------------------------------------------------------------------
+
+/// Check whether a domain is a wildcard (e.g. `*.example.com`).
+pub fn is_wildcard_domain(domain: &str) -> bool {
+    domain.starts_with("*.")
+}
+
+/// Return the base domain for ACME DNS-01 challenges.
+/// For wildcard `*.example.com` the challenge record is
+/// `_acme-challenge.example.com` (without the `*.` prefix).
+pub fn challenge_domain(domain: &str) -> String {
+    let base = if is_wildcard_domain(domain) {
+        &domain[2..] // strip "*."
+    } else {
+        domain
+    };
+    format!("_acme-challenge.{}", base)
+}
+
+// ---------------------------------------------------------------------------
 // SSL Config
 // ---------------------------------------------------------------------------
 
@@ -875,6 +913,13 @@ mod tests {
         assert!(AcmeProvider::ZeroSSL.get_directory_url().contains("zerossl"));
         let custom = AcmeProvider::Custom { url: "https://example.com/dir".to_string() };
         assert_eq!(custom.get_directory_url(), "https://example.com/dir");
+    }
+
+    #[test]
+    fn test_wildcard_domain_detection() {
+        assert!(is_wildcard_domain("*.example.com"));
+        assert!(!is_wildcard_domain("example.com"));
+        assert!(!is_wildcard_domain("www.example.com"));
     }
 
     #[test]

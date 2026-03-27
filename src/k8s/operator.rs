@@ -466,17 +466,94 @@ impl KubernetesOperator {
         }
 
         log::info!("Starting Kubernetes operator controllers");
-        
+
         // Start controllers for each resource type
         tokio::try_join!(
             self.start_zone_controller(),
-            self.start_record_controller(), 
+            self.start_record_controller(),
             self.start_policy_controller(),
             self.start_service_controller(),
             self.start_ingress_controller(),
         )?;
-        
+
+        // Start periodic reconciliation and lease renewal loops
+        self.start_reconciliation_loop();
+        self.start_lease_renewal_loop();
+
         Ok(())
+    }
+
+    /// Periodic reconciliation loop — re-syncs all CRDs at the configured interval.
+    fn start_reconciliation_loop(&self) {
+        let operator = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let interval = operator.config.read().await.reconcile_interval;
+                tokio::time::sleep(interval).await;
+
+                if !*operator.is_leader.read().await {
+                    log::debug!("Skipping reconciliation — not the leader");
+                    continue;
+                }
+
+                log::debug!("Running periodic reconciliation");
+                let start = std::time::Instant::now();
+
+                // Re-list all DnsZone CRDs and sync them
+                match operator.zones_api.list(&Default::default()).await {
+                    Ok(zone_list) => {
+                        for zone in zone_list {
+                            if let Err(e) = operator.sync_zone_to_dns(&zone).await {
+                                log::warn!("Reconcile zone {}: {}", zone.name_any(), e);
+                            }
+                        }
+                    }
+                    Err(e) => log::warn!("Reconcile zones list failed: {}", e),
+                }
+
+                // Re-list all DnsRecord CRDs
+                match operator.records_api.list(&Default::default()).await {
+                    Ok(record_list) => {
+                        for record in record_list {
+                            if let Err(e) = operator.sync_record_to_dns(&record).await {
+                                log::warn!("Reconcile record {}: {}", record.name_any(), e);
+                            }
+                        }
+                    }
+                    Err(e) => log::warn!("Reconcile records list failed: {}", e),
+                }
+
+                let elapsed = start.elapsed();
+                operator.update_stats(elapsed, true).await;
+                log::info!("Periodic reconciliation completed in {:?}", elapsed);
+            }
+        });
+    }
+
+    /// Renew the leader lease periodically (every 10 seconds) to maintain leadership.
+    fn start_lease_renewal_loop(&self) {
+        let operator = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+
+                if !operator.config.read().await.leader_election {
+                    continue;
+                }
+
+                if *operator.is_leader.read().await {
+                    if let Err(e) = operator.acquire_leadership().await {
+                        log::warn!("Lease renewal failed — losing leadership: {}", e);
+                        *operator.is_leader.write().await = false;
+                    }
+                } else {
+                    // Attempt to re-acquire leadership
+                    if operator.acquire_leadership().await.is_ok() {
+                        log::info!("Re-acquired leadership after loss");
+                    }
+                }
+            }
+        });
     }
 
     /// Acquire leadership using Kubernetes lease

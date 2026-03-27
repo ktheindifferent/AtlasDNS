@@ -60,6 +60,11 @@ pub struct QueryLogEntry {
     pub response_ms: i64,
     /// DNSSEC validation outcome: SECURE | BOGUS | INDETERMINATE | null
     pub dnssec_status: Option<String>,
+    /// GeoIP enrichment fields (populated when a MaxMind database is available)
+    pub geo_country: Option<String>,
+    pub geo_city: Option<String>,
+    pub geo_lat: Option<f64>,
+    pub geo_lon: Option<f64>,
 }
 
 /// Aggregate statistics for one client IP.
@@ -69,6 +74,15 @@ pub struct ClientStats {
     pub query_count: i64,
     pub blocked_count: i64,
     pub last_seen: i64,
+}
+
+/// GeoIP enrichment data attached to a query log entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeoEnrichment {
+    pub country: Option<String>,
+    pub city: Option<String>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
 }
 
 /// Per-client DNS policy stored in the database.
@@ -87,6 +101,26 @@ pub struct ClientPolicy {
 // ---------------------------------------------------------------------------
 // QueryLog
 // ---------------------------------------------------------------------------
+
+/// Convert a SQLite row to a [`QueryLogEntry`].
+fn row_to_entry(row: &sqlx::sqlite::SqliteRow) -> QueryLogEntry {
+    let blocked_i: i64 = row.get::<i64, _>(6);
+    QueryLogEntry {
+        id:            row.get::<i64, _>(0),
+        timestamp:     row.get::<i64, _>(1),
+        client_ip:     row.get::<String, _>(2),
+        domain:        row.get::<String, _>(3),
+        query_type:    row.get::<String, _>(4),
+        resolved_ip:   row.get::<Option<String>, _>(5),
+        blocked:       blocked_i != 0,
+        response_ms:   row.get::<i64, _>(7),
+        dnssec_status: row.get::<Option<String>, _>(8),
+        geo_country:   row.try_get::<Option<String>, _>(9).unwrap_or(None),
+        geo_city:      row.try_get::<Option<String>, _>(10).unwrap_or(None),
+        geo_lat:       row.try_get::<Option<f64>, _>(11).unwrap_or(None),
+        geo_lon:       row.try_get::<Option<f64>, _>(12).unwrap_or(None),
+    }
+}
 
 /// Synchronous-wrapper SQLite query log.
 ///
@@ -182,9 +216,21 @@ impl QueryLog {
     fn migrate_schema(&self) -> Result<()> {
         let rt = self.rt.lock().expect("query_log runtime mutex poisoned");
         rt.block_on(async {
-            // Ignore error – column already exists on fresh DBs.
+            // Ignore errors – columns already exist on fresh DBs.
             let _ = sqlx::query(
                 "ALTER TABLE query_log ADD COLUMN dnssec_status TEXT"
+            ).execute(&self.pool).await;
+            let _ = sqlx::query(
+                "ALTER TABLE query_log ADD COLUMN geo_country TEXT"
+            ).execute(&self.pool).await;
+            let _ = sqlx::query(
+                "ALTER TABLE query_log ADD COLUMN geo_city TEXT"
+            ).execute(&self.pool).await;
+            let _ = sqlx::query(
+                "ALTER TABLE query_log ADD COLUMN geo_lat REAL"
+            ).execute(&self.pool).await;
+            let _ = sqlx::query(
+                "ALTER TABLE query_log ADD COLUMN geo_lon REAL"
             ).execute(&self.pool).await;
             Ok::<_, sqlx::Error>(())
         })?;
@@ -220,6 +266,21 @@ impl QueryLog {
         response_ms: i64,
         dnssec_status: Option<&str>,
     ) {
+        self.log_query_full(client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status, None);
+    }
+
+    /// Full query log entry including optional GeoIP enrichment data.
+    pub fn log_query_full(
+        &self,
+        client_ip: &str,
+        domain: &str,
+        query_type: &str,
+        resolved_ip: Option<&str>,
+        blocked: bool,
+        response_ms: i64,
+        dnssec_status: Option<&str>,
+        geo: Option<&GeoEnrichment>,
+    ) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -232,6 +293,7 @@ impl QueryLog {
         let query_type = query_type.to_string();
         let resolved_ip = resolved_ip.map(|s| s.to_string());
         let dnssec_status = dnssec_status.map(|s| s.to_string());
+        let geo = geo.cloned();
 
         let rt = match self.rt.lock() {
             Ok(r) => r,
@@ -241,8 +303,9 @@ impl QueryLog {
         rt.block_on(async {
             let _ = sqlx::query(
                 "INSERT INTO query_log \
-                 (timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status) \
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                 (timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, \
+                  dnssec_status, geo_country, geo_city, geo_lat, geo_lon) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
             .bind(now)
             .bind(&client_ip)
@@ -252,6 +315,10 @@ impl QueryLog {
             .bind(blocked_i)
             .bind(response_ms)
             .bind(dnssec_status.as_deref())
+            .bind(geo.as_ref().and_then(|g| g.country.as_deref()))
+            .bind(geo.as_ref().and_then(|g| g.city.as_deref()))
+            .bind(geo.as_ref().and_then(|g| g.lat))
+            .bind(geo.as_ref().and_then(|g| g.lon))
             .execute(&self.pool)
             .await;
 
@@ -285,7 +352,8 @@ impl QueryLog {
         rt.block_on(async {
             // Build query dynamically based on filters
             let mut query_str = String::from(
-                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status \
+                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status, \
+                        geo_country, geo_city, geo_lat, geo_lon \
                  FROM query_log WHERE 1=1"
             );
             if client_filter.is_some() {
@@ -307,18 +375,7 @@ impl QueryLog {
 
             let rows = q.fetch_all(&self.pool).await.unwrap_or_default();
             rows.iter().map(|row| {
-                let blocked_i: i64 = row.get::<i64, _>(6);
-                QueryLogEntry {
-                    id:            row.get::<i64, _>(0),
-                    timestamp:     row.get::<i64, _>(1),
-                    client_ip:     row.get::<String, _>(2),
-                    domain:        row.get::<String, _>(3),
-                    query_type:    row.get::<String, _>(4),
-                    resolved_ip:   row.get::<Option<String>, _>(5),
-                    blocked:       blocked_i != 0,
-                    response_ms:   row.get::<i64, _>(7),
-                    dnssec_status: row.get::<Option<String>, _>(8),
-                }
+                row_to_entry(row)
             }).collect()
         })
     }
@@ -332,7 +389,8 @@ impl QueryLog {
 
         rt.block_on(async {
             let rows = sqlx::query(
-                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, dnssec_status \
+                "SELECT id, timestamp, client_ip, domain, query_type, resolved_ip, blocked, response_ms, \
+                        dnssec_status, geo_country, geo_city, geo_lat, geo_lon \
                  FROM query_log WHERE timestamp >= ? ORDER BY timestamp DESC"
             )
             .bind(since)
@@ -341,18 +399,7 @@ impl QueryLog {
             .unwrap_or_default();
 
             rows.iter().map(|row| {
-                let blocked_i: i64 = row.get::<i64, _>(6);
-                QueryLogEntry {
-                    id:            row.get::<i64, _>(0),
-                    timestamp:     row.get::<i64, _>(1),
-                    client_ip:     row.get::<String, _>(2),
-                    domain:        row.get::<String, _>(3),
-                    query_type:    row.get::<String, _>(4),
-                    resolved_ip:   row.get::<Option<String>, _>(5),
-                    blocked:       blocked_i != 0,
-                    response_ms:   row.get::<i64, _>(7),
-                    dnssec_status: row.get::<Option<String>, _>(8),
-                }
+                row_to_entry(row)
             }).collect()
         })
     }
