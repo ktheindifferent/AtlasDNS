@@ -518,6 +518,11 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
             (Method::Get, ["api", "mdns", "devices"]) => self.devices_api(request),
 
+            // Load Balancer pool API
+            (Method::Get, ["api", "v1", "lb", "pools"]) => self.lb_pools_api(request),
+            (Method::Post, ["api", "v1", "lb", "pools"]) => self.lb_add_pool_api(request),
+            (Method::Delete, ["api", "v1", "lb", "pools", domain]) => self.lb_delete_pool_api(request, domain),
+
             // Latency analytics API
             (Method::Get, ["api", "v1", "stats", "latency"]) => self.latency_stats(request),
             (Method::Get, ["api", "v1", "stats", "upstream"]) => self.upstream_stats(request),
@@ -2812,7 +2817,14 @@ impl<'a> WebServer<'a> {
     fn load_balancing_page(&self, request: &Request) -> Result<ResponseBox> {
         // Get real load balancing statistics
         let stats = self.context.geo_load_balancer.get_stats();
-        
+
+        // Get DNS LB pool snapshots
+        let lb_snapshots = self.context.load_balancer.get_all_snapshots();
+        let lb_pool_count = lb_snapshots.len();
+        let lb_total_requests: u64 = lb_snapshots.iter().map(|s| s.total_requests).sum();
+        let lb_healthy: usize = lb_snapshots.iter().map(|s| s.healthy_backends).sum();
+        let lb_total: usize = lb_snapshots.iter().map(|s| s.total_backends).sum();
+
         let data = serde_json::json!({
             "title": "Load Balancing",
             "enabled": true,
@@ -2821,12 +2833,18 @@ impl<'a> WebServer<'a> {
             "total_endpoints": stats.queries_by_dc.len(),
             "failovers": stats.failovers,
             "avg_routing_time_us": stats.avg_routing_time_us,
-            "requests_per_sec": if stats.avg_routing_time_us > 0 { 
-                1_000_000 / stats.avg_routing_time_us 
+            "requests_per_sec": if stats.avg_routing_time_us > 0 {
+                1_000_000 / stats.avg_routing_time_us
             } else { 0 },
             "queries_by_region": stats.queries_by_region,
             "queries_by_datacenter": stats.queries_by_dc,
             "health_check_interval": 30,
+            // DNS LB pool data
+            "lb_pools": lb_snapshots,
+            "lb_pool_count": lb_pool_count,
+            "lb_total_requests": lb_total_requests,
+            "lb_healthy_backends": lb_healthy,
+            "lb_total_backends": lb_total,
         });
         self.response_from_media_type(request, "load_balancing", data)
     }
@@ -3827,6 +3845,77 @@ impl<'a> WebServer<'a> {
                 .with_header(Self::safe_location_header("/load-balancing"))
                 .boxed())
         }
+    }
+
+    // ── DNS Load Balancer Pool API ─────────────────────────────────────────
+
+    /// GET /api/v1/lb/pools — list all LB pools with backend health and request counts
+    fn lb_pools_api(&self, request: &Request) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_auth(request)
+            .map_err(WebError::AuthorizationError)?;
+
+        let snapshots = self.context.load_balancer.get_all_snapshots();
+
+        let data = serde_json::json!({
+            "success": true,
+            "pool_count": snapshots.len(),
+            "pools": snapshots,
+        });
+
+        Ok(Response::from_string(Self::safe_json_string(&data))
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// POST /api/v1/lb/pools — add a new pool at runtime
+    fn lb_add_pool_api(&self, request: &mut Request) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_role(request, vec![UserRole::Admin])
+            .map_err(WebError::AuthorizationError)?;
+
+        let pool_cfg: crate::dns::load_balancer::PoolConfig = if request.json_input() {
+            serde_json::from_reader(request.as_reader())?
+        } else {
+            return Err(WebError::InvalidRequest);
+        };
+
+        log::info!("[LB] Adding pool '{}' via API with {} backends", pool_cfg.name, pool_cfg.backends.len());
+        self.context.load_balancer.add_pool(&pool_cfg);
+
+        let data = serde_json::json!({
+            "success": true,
+            "message": format!("Pool '{}' added", pool_cfg.name),
+        });
+
+        Ok(Response::from_string(Self::safe_json_string(&data))
+            .with_status_code(201)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// DELETE /api/v1/lb/pools/:domain — remove a pool
+    fn lb_delete_pool_api(&self, request: &Request, domain: &str) -> Result<ResponseBox> {
+        let _ = self.session_middleware
+            .require_role(request, vec![UserRole::Admin])
+            .map_err(WebError::AuthorizationError)?;
+
+        let removed = self.context.load_balancer.remove_pool(domain);
+
+        let data = serde_json::json!({
+            "success": removed,
+            "message": if removed {
+                format!("Pool '{}' removed", domain)
+            } else {
+                format!("Pool '{}' not found", domain)
+            },
+        });
+
+        let status = if removed { 200 } else { 404 };
+        Ok(Response::from_string(Self::safe_json_string(&data))
+            .with_status_code(status)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
     }
 
     // ── mDNS Device Discovery handlers ───────────────────────────────────────
