@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Serialize, Deserialize};
 use bloomfilter::Bloom;
@@ -1208,6 +1209,324 @@ pub type PolicyAction = RpzAction;
 pub type PolicyEntry = RpzRule;
 /// Alias for backward compatibility.
 pub type RpzConfig = ();
+
+// ─── HTTP Feed Source ────────────────────────────────────────────────────────
+
+/// Configuration for an HTTP-sourced RPZ feed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpzHttpFeed {
+    /// Human-readable feed name
+    pub name: String,
+    /// URL to fetch the feed from (hosts-file or RPZ zone format)
+    pub url: String,
+    /// RPZ zone priority (higher = evaluated first)
+    pub priority: u32,
+    /// Refresh interval in seconds (default 3600 = 1 hour)
+    pub refresh_interval_secs: u64,
+    /// Whether this feed is enabled
+    pub enabled: bool,
+}
+
+/// Per-feed runtime statistics.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RpzFeedStats {
+    /// Total blocks since last refresh
+    pub blocks_since_refresh: u64,
+    /// Blocks in the current hour window
+    pub blocks_this_hour: u64,
+    /// Hour-window start (Unix timestamp)
+    pub hour_window_start: u64,
+    /// Top blocked domains (domain -> count), capped at 100
+    pub top_blocked: HashMap<String, u64>,
+    /// Last successful refresh (Unix timestamp)
+    pub last_refresh: u64,
+    /// Last ETag received from the server
+    pub last_etag: Option<String>,
+    /// Last-Modified header from the server
+    pub last_modified: Option<String>,
+    /// Number of rules loaded from this feed
+    pub rule_count: usize,
+    /// Total refresh attempts
+    pub refresh_attempts: u64,
+    /// Total successful refreshes
+    pub refresh_successes: u64,
+    /// Last error message (if any)
+    pub last_error: Option<String>,
+}
+
+/// HTTP-based RPZ feed auto-updater.
+///
+/// Periodically fetches RPZ feeds from HTTP(S) URLs using ETag / If-Modified-Since
+/// caching to avoid unnecessary downloads.  Each feed is loaded into the
+/// [`RpzEngine`] as an independent zone with its own priority.
+pub struct RpzFeedUpdater {
+    engine: Arc<RpzEngine>,
+    feeds: RwLock<Vec<RpzHttpFeed>>,
+    feed_stats: RwLock<HashMap<String, RpzFeedStats>>,
+    running: std::sync::atomic::AtomicBool,
+}
+
+impl RpzFeedUpdater {
+    pub fn new(engine: Arc<RpzEngine>) -> Self {
+        Self {
+            engine,
+            feeds: RwLock::new(Vec::new()),
+            feed_stats: RwLock::new(HashMap::new()),
+            running: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// Register an HTTP feed.
+    pub fn add_feed(&self, feed: RpzHttpFeed) {
+        let name = feed.name.clone();
+        self.feeds.write().push(feed);
+        self.feed_stats.write().entry(name).or_default();
+    }
+
+    /// Remove a feed by name.
+    pub fn remove_feed(&self, name: &str) -> bool {
+        let mut feeds = self.feeds.write();
+        let before = feeds.len();
+        feeds.retain(|f| f.name != name);
+        self.feed_stats.write().remove(name);
+        feeds.len() < before
+    }
+
+    /// List registered feeds with their stats.
+    pub fn list_feeds(&self) -> Vec<(RpzHttpFeed, RpzFeedStats)> {
+        let feeds = self.feeds.read();
+        let stats = self.feed_stats.read();
+        feeds.iter().map(|f| {
+            let s = stats.get(&f.name).cloned().unwrap_or_default();
+            (f.clone(), s)
+        }).collect()
+    }
+
+    /// Get stats for a specific feed.
+    pub fn get_feed_stats(&self, name: &str) -> Option<RpzFeedStats> {
+        self.feed_stats.read().get(name).cloned()
+    }
+
+    /// Record a block event for a feed (called by the RPZ engine on match).
+    pub fn record_block(&self, zone_name: &str, domain: &str) {
+        let mut stats = self.feed_stats.write();
+        if let Some(s) = stats.get_mut(zone_name) {
+            s.blocks_since_refresh += 1;
+
+            // Rotate hour window
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            if now - s.hour_window_start >= 3600 {
+                s.blocks_this_hour = 0;
+                s.hour_window_start = now;
+            }
+            s.blocks_this_hour += 1;
+
+            // Top blocked (cap at 100 entries)
+            let count = s.top_blocked.entry(domain.to_string()).or_insert(0);
+            *count += 1;
+            if s.top_blocked.len() > 100 {
+                // Evict the entry with the lowest count
+                if let Some(min_key) = s.top_blocked.iter()
+                    .min_by_key(|(_, v)| **v)
+                    .map(|(k, _)| k.clone())
+                {
+                    s.top_blocked.remove(&min_key);
+                }
+            }
+        }
+    }
+
+    /// Fetch a single feed from its URL with ETag/If-Modified-Since caching.
+    /// Returns `Ok(Some(content))` if new content was received, `Ok(None)` if
+    /// the server returned 304 Not Modified, or `Err` on failure.
+    pub fn fetch_feed(&self, feed: &RpzHttpFeed) -> Result<Option<String>, String> {
+        let stats = self.feed_stats.read();
+        let cached = stats.get(&feed.name);
+        let etag = cached.and_then(|s| s.last_etag.clone());
+        let last_modified = cached.and_then(|s| s.last_modified.clone());
+        drop(stats);
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .user_agent("AtlasDNS/1.0 rpz-feed-updater")
+            .build()
+            .map_err(|e| format!("HTTP client error: {}", e))?;
+
+        let mut req = client.get(&feed.url);
+        if let Some(ref etag) = etag {
+            req = req.header("If-None-Match", etag.as_str());
+        }
+        if let Some(ref lm) = last_modified {
+            req = req.header("If-Modified-Since", lm.as_str());
+        }
+
+        let response = req.send().map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+            log::info!("RPZ feed '{}': 304 Not Modified", feed.name);
+            return Ok(None);
+        }
+
+        if !response.status().is_success() {
+            return Err(format!("HTTP {}: {}", response.status(), feed.url));
+        }
+
+        // Capture caching headers
+        let new_etag = response.headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+        let new_lm = response.headers()
+            .get("last-modified")
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
+
+        let body = response.text().map_err(|e| format!("Read body failed: {}", e))?;
+
+        // Update caching headers in stats
+        {
+            let mut stats = self.feed_stats.write();
+            if let Some(s) = stats.get_mut(&feed.name) {
+                s.last_etag = new_etag;
+                s.last_modified = new_lm;
+            }
+        }
+
+        Ok(Some(body))
+    }
+
+    /// Refresh a single feed: fetch, parse, and reload into the RPZ engine.
+    pub fn refresh_feed(&self, feed: &RpzHttpFeed) -> Result<usize, String> {
+        {
+            let mut stats = self.feed_stats.write();
+            stats.entry(feed.name.clone()).or_default().refresh_attempts += 1;
+        }
+
+        match self.fetch_feed(feed) {
+            Ok(Some(content)) => {
+                // Remove old zone and load new one
+                self.engine.remove_zone(&feed.name);
+                let mut zone = RpzZone::new(
+                    feed.name.clone(),
+                    feed.priority,
+                    RpzZoneSource::File { path: feed.url.clone() },
+                );
+                let count = RpzEngine::parse_zone_content(&mut zone, &content);
+                self.engine.add_zone(zone);
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                {
+                    let mut stats = self.feed_stats.write();
+                    if let Some(s) = stats.get_mut(&feed.name) {
+                        s.last_refresh = now;
+                        s.refresh_successes += 1;
+                        s.rule_count = count;
+                        s.last_error = None;
+                        s.blocks_since_refresh = 0;
+                    }
+                }
+
+                log::info!("RPZ feed '{}': loaded {} rules from {}", feed.name, count, feed.url);
+                Ok(count)
+            }
+            Ok(None) => {
+                // 304 Not Modified — no changes
+                let mut stats = self.feed_stats.write();
+                if let Some(s) = stats.get_mut(&feed.name) {
+                    s.refresh_successes += 1;
+                    s.last_error = None;
+                }
+                Ok(0)
+            }
+            Err(e) => {
+                let mut stats = self.feed_stats.write();
+                if let Some(s) = stats.get_mut(&feed.name) {
+                    s.last_error = Some(e.clone());
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// Refresh all enabled feeds.
+    pub fn refresh_all(&self) -> Vec<(String, Result<usize, String>)> {
+        let feeds: Vec<_> = self.feeds.read().clone();
+        feeds.iter()
+            .filter(|f| f.enabled)
+            .map(|f| (f.name.clone(), self.refresh_feed(f)))
+            .collect()
+    }
+
+    /// Start the background auto-update loop.  Runs in a new thread and
+    /// refreshes feeds at their configured intervals.
+    pub fn start_background_loop(self: &Arc<Self>) {
+        if self.running.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            log::warn!("RPZ feed updater already running");
+            return;
+        }
+
+        let updater = Arc::clone(self);
+        std::thread::Builder::new()
+            .name("rpz-feed-updater".into())
+            .spawn(move || {
+                log::info!("RPZ feed auto-updater started");
+
+                // Initial fetch of all feeds
+                let results = updater.refresh_all();
+                for (name, result) in &results {
+                    match result {
+                        Ok(count) => log::info!("RPZ feed '{}': initial load {} rules", name, count),
+                        Err(e) => log::warn!("RPZ feed '{}': initial load failed: {}", name, e),
+                    }
+                }
+
+                // Periodic refresh loop — check every 60s, refresh feeds whose
+                // interval has elapsed.
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+
+                    if !updater.running.load(std::sync::atomic::Ordering::SeqCst) {
+                        log::info!("RPZ feed auto-updater stopping");
+                        break;
+                    }
+
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    let feeds: Vec<_> = updater.feeds.read().clone();
+                    for feed in &feeds {
+                        if !feed.enabled { continue; }
+
+                        let last = updater.feed_stats.read()
+                            .get(&feed.name)
+                            .map(|s| s.last_refresh)
+                            .unwrap_or(0);
+
+                        if now - last >= feed.refresh_interval_secs {
+                            match updater.refresh_feed(feed) {
+                                Ok(n) => log::info!("RPZ feed '{}': refreshed ({} rules)", feed.name, n),
+                                Err(e) => log::warn!("RPZ feed '{}': refresh failed: {}", feed.name, e),
+                            }
+                        }
+                    }
+                }
+            })
+            .expect("failed to spawn RPZ feed updater thread");
+    }
+
+    /// Stop the background auto-update loop.
+    pub fn stop(&self) {
+        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 

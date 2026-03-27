@@ -127,6 +127,19 @@ enum Commands {
         #[command(subcommand)]
         action: DevicesCommands,
     },
+
+    /// Manage blocklists (RPZ feeds)
+    Blocklist {
+        #[command(subcommand)]
+        action: BlocklistCommands,
+    },
+
+    /// Flush the DNS cache
+    FlushCache {
+        /// Only flush entries for a specific domain
+        #[arg(short, long)]
+        domain: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

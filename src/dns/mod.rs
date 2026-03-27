@@ -252,5 +252,11 @@ pub mod bench;
 /// DNS-based load balancing with health checking
 pub mod load_balancer;
 
+/// Standalone DNS-over-HTTPS (DoH) server — async, per-IP rate limiting, Prometheus metrics
+pub mod doh_server;
+
+/// Full iterative DNS resolver with DNSSEC chain validation and validated cache
+pub mod recursive;
+
 #[cfg(test)]
 mod cache_test;
