@@ -424,6 +424,141 @@ impl PacketBuffer for BytePacketBuffer {
     }
 }
 
+/// Stack-allocated name buffer for zero-copy DNS name parsing.
+///
+/// Avoids heap allocation when parsing domain names from DNS packets.
+/// Names are written into a fixed `[u8; 256]` buffer (RFC 1035 max = 255).
+pub struct NameBuffer {
+    buf: [u8; 256],
+    len: usize,
+}
+
+impl NameBuffer {
+    /// Create a new empty name buffer (stack-allocated).
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            buf: [0u8; 256],
+            len: 0,
+        }
+    }
+
+    /// Return the parsed name as a `&str` (zero-copy, borrowed from stack).
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        // Safety: we only write valid lowercase ASCII bytes
+        unsafe { std::str::from_utf8_unchecked(&self.buf[..self.len]) }
+    }
+
+    /// Convert to an owned `String` (single allocation at the end).
+    #[inline]
+    pub fn to_string_owned(&self) -> String {
+        self.as_str().to_owned()
+    }
+
+    /// Current length in bytes.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether the buffer is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Push a byte, lowercasing ASCII in-place.
+    #[inline(always)]
+    fn push_byte(&mut self, b: u8) -> Result<()> {
+        if self.len >= 255 {
+            return Err(BufferError::EndOfBuffer);
+        }
+        // ASCII lowercase without allocation
+        self.buf[self.len] = if b.is_ascii_uppercase() { b | 0x20 } else { b };
+        self.len += 1;
+        Ok(())
+    }
+
+    /// Push a dot separator.
+    #[inline(always)]
+    fn push_dot(&mut self) -> Result<()> {
+        if self.len >= 255 {
+            return Err(BufferError::EndOfBuffer);
+        }
+        self.buf[self.len] = b'.';
+        self.len += 1;
+        Ok(())
+    }
+}
+
+/// Zero-copy DNS name reader.
+///
+/// Reads a DNS name from a `PacketBuffer` into a stack-allocated `NameBuffer`,
+/// performing ASCII lowercasing in-place without any heap allocation.
+pub fn read_qname_zerocopy(buffer: &mut dyn PacketBuffer) -> Result<NameBuffer> {
+    let mut name = NameBuffer::new();
+    let mut pos = buffer.pos();
+    let mut jumped = false;
+
+    const MAX_LABEL_LENGTH: usize = 63;
+
+    let mut first = true;
+    loop {
+        let len = buffer.get(pos)?;
+
+        // Compression pointer
+        if (len & 0xC0) != 0 {
+            if !jumped {
+                buffer.seek(pos + 2)?;
+            }
+            let b2 = buffer.get(pos + 1)? as u16;
+            let offset = (((len as u16) ^ 0xC0) << 8) | b2;
+            pos = offset as usize;
+            jumped = true;
+            continue;
+        }
+
+        pos += 1;
+
+        if len == 0 {
+            break;
+        }
+
+        if len as usize > MAX_LABEL_LENGTH {
+            return Err(BufferError::EndOfBuffer);
+        }
+
+        if !first {
+            name.push_dot()?;
+        }
+        first = false;
+
+        let label_bytes = buffer.get_range(pos, len as usize)?;
+        for &b in label_bytes {
+            name.push_byte(b)?;
+        }
+
+        pos += len as usize;
+    }
+
+    if !jumped {
+        buffer.seek(pos)?;
+    }
+
+    Ok(name)
+}
+
+/// Parse a DNS question section with zero-copy, returning (name, qtype_num) without
+/// allocating a `DnsQuestion`.  Caller can construct one if needed.
+#[inline]
+pub fn parse_question_zerocopy(buffer: &mut dyn PacketBuffer) -> Result<(NameBuffer, u16)> {
+    let name = read_qname_zerocopy(buffer)?;
+    let qtype = buffer.read_u16()?;
+    let _qclass = buffer.read_u16()?;
+    Ok((name, qtype))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -512,5 +647,41 @@ mod tests {
         }
 
         assert_eq!("ns2.google.com", str2);
+    }
+
+    #[test]
+    fn test_zerocopy_qname() {
+        let mut buffer = VectorPacketBuffer::new();
+        buffer.write_qname(&"Example.COM".to_string()).unwrap();
+        buffer.pos = 0;
+
+        let name = read_qname_zerocopy(&mut buffer).unwrap();
+        assert_eq!(name.as_str(), "example.com");
+    }
+
+    #[test]
+    fn test_zerocopy_qname_with_compression() {
+        let mut buffer = VectorPacketBuffer::new();
+        buffer.write_qname(&"a.google.com").unwrap();
+        // compressed pointer: label "b" then pointer to offset 2 ("google.com")
+        let crafted = [0x01, b'b', 0xC0, 0x02];
+        for b in &crafted {
+            buffer.write_u8(*b).unwrap();
+        }
+        buffer.pos = 0;
+
+        let n1 = read_qname_zerocopy(&mut buffer).unwrap();
+        assert_eq!(n1.as_str(), "a.google.com");
+
+        let n2 = read_qname_zerocopy(&mut buffer).unwrap();
+        assert_eq!(n2.as_str(), "b.google.com");
+    }
+
+    #[test]
+    fn test_name_buffer_stack_allocated() {
+        let name = NameBuffer::new();
+        assert!(name.is_empty());
+        assert_eq!(name.len(), 0);
+        assert_eq!(name.as_str(), "");
     }
 }

@@ -55,3 +55,6 @@ pub mod mdns;
 
 /// GeoIP enrichment for DNS query logs using MaxMind databases
 pub mod geoip;
+
+/// Structured DNS query logging with daily file rotation and 7-day retention
+pub mod logging;

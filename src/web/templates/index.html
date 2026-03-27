@@ -171,6 +171,60 @@
     </div>
 </div>
 
+<!-- Real-Time Performance Charts -->
+<div class="row g-3 mb-4">
+    <!-- QPS Sparkline (last 60 seconds) -->
+    <div class="col-12 col-lg-5">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up-arrow me-2"></i>
+                    Queries / sec
+                    <span id="qpsCurrent" class="badge bg-primary ms-2">0</span>
+                </h5>
+                <small class="text-muted" id="qpsRange">last 60 s</small>
+            </div>
+            <div class="card-body d-flex align-items-end" style="height:140px;padding:8px 12px 4px;">
+                <canvas id="qpsSparkline" style="width:100%;height:100%;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cache Hit Rate Gauge -->
+    <div class="col-12 col-lg-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-speedometer me-2"></i>
+                    Cache Hit Rate
+                </h5>
+            </div>
+            <div class="card-body d-flex flex-column align-items-center justify-content-center" style="height:140px;">
+                <div style="position:relative;width:120px;height:120px;">
+                    <canvas id="cacheGauge" width="120" height="120"></canvas>
+                    <div id="cacheGaugeLabel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:1.4rem;font-weight:700;">0%</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top-10 Queried Domains (auto-refresh) -->
+    <div class="col-12 col-lg-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-trophy me-2"></i>
+                    Top 10 Domains
+                </h5>
+                <small class="text-muted" id="topDomainsUpdated"></small>
+            </div>
+            <div class="card-body p-0" id="topDomainsLive" style="max-height:180px;overflow-y:auto;">
+                <div class="text-center text-muted py-3 small">Loading…</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-3">
     <!-- Recent DNS Zones -->
     <div class="col-12 col-lg-8">
@@ -969,6 +1023,161 @@ function removeAllowlistDomain(domain) {
         .catch(() => {});
 }
 
+/* ── 6. QPS Sparkline (canvas, last 60 s, 1 s tick) ── */
+var qpsHistory = new Array(60).fill(0);
+var prevTotalQueries = null;
+
+function drawSparkline() {
+    var canvas = document.getElementById('qpsSparkline');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+    var H = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
+    ctx.clearRect(0, 0, W, H);
+
+    var max = Math.max.apply(null, qpsHistory) || 1;
+    var step = W / (qpsHistory.length - 1);
+
+    // gradient fill
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(13,110,253,0.35)');
+    grad.addColorStop(1, 'rgba(13,110,253,0.02)');
+
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (var i = 0; i < qpsHistory.length; i++) {
+        var x = i * step;
+        var y = H - (qpsHistory[i] / max) * (H - 4);
+        if (i === 0) ctx.lineTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // line
+    ctx.beginPath();
+    for (var i = 0; i < qpsHistory.length; i++) {
+        var x = i * step;
+        var y = H - (qpsHistory[i] / max) * (H - 4);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#0d6efd';
+    ctx.lineWidth = 2 * (window.devicePixelRatio || 1);
+    ctx.stroke();
+}
+
+function tickQps() {
+    // Fetch current total queries from the stats endpoint
+    fetch('/api/query-log')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var total = (data.data || []).length;
+            if (prevTotalQueries !== null) {
+                var delta = Math.max(0, total - prevTotalQueries);
+                qpsHistory.push(delta);
+                if (qpsHistory.length > 60) qpsHistory.shift();
+            }
+            prevTotalQueries = total;
+            var current = qpsHistory[qpsHistory.length - 1] || 0;
+            var badge = document.getElementById('qpsCurrent');
+            if (badge) badge.textContent = current;
+            drawSparkline();
+        })
+        .catch(function() {});
+}
+
+/* ── 7. Cache Hit Rate Gauge (arc canvas) ── */
+function drawCacheGauge(pct) {
+    var canvas = document.getElementById('cacheGauge');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var size = 120;
+    canvas.width = size; canvas.height = size;
+    var cx = size / 2, cy = size / 2, r = 48, lw = 12;
+
+    ctx.clearRect(0, 0, size, size);
+
+    // background arc
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0.75 * Math.PI, 2.25 * Math.PI);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // value arc
+    var range = 1.5 * Math.PI; // from 0.75π to 2.25π
+    var end = 0.75 * Math.PI + range * (pct / 100);
+    var color = pct >= 80 ? '#198754' : pct >= 50 ? '#ffc107' : '#dc3545';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0.75 * Math.PI, end);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    var label = document.getElementById('cacheGaugeLabel');
+    if (label) { label.textContent = pct + '%'; label.style.color = color; }
+}
+
+function refreshCacheGauge() {
+    // Reuse the data already on the page from server-side render, or fetch fresh
+    var el = document.querySelector('[data-metric="cache-hit-rate"]');
+    if (el) {
+        var txt = el.textContent.replace('%', '').trim();
+        drawCacheGauge(parseInt(txt) || 0);
+    }
+    // Also fetch from API for live update
+    fetch('/api/query-log')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var entries = data.data || [];
+            if (entries.length === 0) { drawCacheGauge(0); return; }
+            var hits = entries.filter(function(e) { return e.result === 'CACHED' || e.cache_hit; }).length;
+            var pct = Math.round((hits / entries.length) * 100);
+            drawCacheGauge(pct);
+        })
+        .catch(function() {});
+}
+
+/* ── 8. Top-10 Domains Live Panel (5 s) ── */
+function refreshTopDomainsLive() {
+    fetch('/api/query-log')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var el = document.getElementById('topDomainsLive');
+            var tsEl = document.getElementById('topDomainsUpdated');
+            if (!el) return;
+            var entries = data.data || [];
+            var counts = {};
+            entries.forEach(function(e) { counts[e.domain] = (counts[e.domain] || 0) + 1; });
+            var sorted = Object.entries(counts).sort(function(a,b) { return b[1]-a[1]; }).slice(0, 10);
+            if (tsEl) tsEl.textContent = new Date().toLocaleTimeString();
+            if (sorted.length === 0) {
+                el.innerHTML = '<div class="text-center text-muted py-3 small">No queries yet</div>';
+                return;
+            }
+            var maxC = sorted[0][1];
+            el.innerHTML = sorted.map(function(pair, idx) {
+                var d = pair[0], c = pair[1];
+                var pct = Math.round((c / maxC) * 100);
+                var rankBg = idx < 3 ? 'bg-warning text-dark' : 'bg-secondary';
+                return '<div class="px-3 py-1 border-bottom d-flex align-items-center gap-2" style="font-size:.8rem;">' +
+                    '<span class="badge ' + rankBg + '" style="min-width:22px;">' + (idx+1) + '</span>' +
+                    '<div class="flex-grow-1 text-truncate">' +
+                        '<span class="font-monospace" title="' + esc(d) + '">' + esc(d.length > 30 ? d.substring(0,27)+'…' : d) + '</span>' +
+                        '<div class="progress mt-1" style="height:3px;">' +
+                            '<div class="progress-bar bg-primary" style="width:' + pct + '%"></div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<span class="badge bg-primary rounded-pill">' + c + '</span>' +
+                '</div>';
+            }).join('');
+        })
+        .catch(function() {});
+}
+
 /* ── Global refresh ── */
 function refreshDashboardData() {
     loadQueryLog();
@@ -976,6 +1185,9 @@ function refreshDashboardData() {
     loadBlocklistStats();
     loadProtocolStatus();
     loadAllowlist();
+    tickQps();
+    refreshCacheGauge();
+    refreshTopDomainsLive();
 }
 
 /* ── Boot ── */
@@ -985,11 +1197,17 @@ document.addEventListener('DOMContentLoaded', function() {
     loadBlocklistStats();
     loadProtocolStatus();
     loadAllowlist();
+    tickQps();
+    refreshCacheGauge();
+    refreshTopDomainsLive();
 
     setInterval(loadQueryLog,      2000);
     setInterval(loadAnomalies,     2000);
     setInterval(loadBlocklistStats,5000);
     setInterval(loadProtocolStatus,10000);
+    setInterval(tickQps,           1000);
+    setInterval(refreshCacheGauge, 5000);
+    setInterval(refreshTopDomainsLive, 5000);
 
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(el => new bootstrap.Tooltip(el));

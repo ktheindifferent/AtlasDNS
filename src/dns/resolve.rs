@@ -385,6 +385,23 @@ pub struct DohForwardingDnsResolver {
     context: Arc<ServerContext>,
     doh_url: String,
     fallback: (String, u16),
+    /// Shared HTTP client with built-in connection pool.
+    /// `reqwest::blocking::Client` maintains an internal pool of keep-alive
+    /// connections per host, bounded by `pool_max_idle_per_host`.
+    http_client: Arc<reqwest::blocking::Client>,
+}
+
+/// Build a shared, pooled `reqwest::blocking::Client` for DoH upstream.
+fn build_doh_pool() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(std::time::Duration::from_secs(30))
+        .tcp_keepalive(std::time::Duration::from_secs(30))
+        .user_agent("AtlasDNS/1.0 doh-upstream")
+        .build()
+        .expect("failed to build DoH HTTP client")
 }
 
 impl DohForwardingDnsResolver {
@@ -393,7 +410,12 @@ impl DohForwardingDnsResolver {
         doh_url: String,
         fallback: (String, u16),
     ) -> Self {
-        Self { context, doh_url, fallback }
+        Self {
+            context,
+            doh_url,
+            fallback,
+            http_client: Arc::new(build_doh_pool()),
+        }
     }
 
     /// Attempt a single DNS-over-HTTPS POST query.  Returns `None` on any
@@ -413,21 +435,18 @@ impl DohForwardingDnsResolver {
         let body = buffer.buf[..buffer.pos].to_vec();
 
         let url = self.doh_url.clone();
+        let client = self.http_client.clone();
 
         // Run the blocking HTTP call on a dedicated thread so it is safe to
-        // call from both sync and async contexts.
+        // call from both sync and async contexts.  The shared client reuses
+        // pooled keep-alive connections (max 10 per upstream, 30 s idle timeout).
         let bytes = std::thread::spawn(move || {
-            reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(5))
-                .user_agent("AtlasDNS/1.0 doh-upstream")
-                .build()
-                .and_then(|c| {
-                    c.post(&url)
-                        .header("Content-Type", "application/dns-message")
-                        .header("Accept", "application/dns-message")
-                        .body(body)
-                        .send()
-                })
+            client
+                .post(&url)
+                .header("Content-Type", "application/dns-message")
+                .header("Accept", "application/dns-message")
+                .body(body)
+                .send()
                 .and_then(|r| r.bytes())
         })
         .join()
