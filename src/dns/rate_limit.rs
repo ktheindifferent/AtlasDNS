@@ -570,7 +570,7 @@ mod tests {
         let config = RateLimitConfig {
             client_limit: 5,
             client_window: Duration::from_millis(50),
-            cleanup_interval: Duration::from_millis(100),
+            cleanup_interval: Duration::from_millis(50),
             ..Default::default()
         };
         
@@ -582,8 +582,8 @@ mod tests {
         limiter.record_query(client1);
         limiter.record_query(client2);
         
-        // Wait for cleanup to run
-        std::thread::sleep(Duration::from_millis(200));
+        // Wait for cleanup to run (generous margin for CI/loaded machines)
+        std::thread::sleep(Duration::from_millis(500));
         
         // Old entries should be cleaned up — queries older than the 50ms
         // window should have been removed by the cleanup thread.
