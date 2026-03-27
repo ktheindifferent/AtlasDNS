@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Source IP Validation Implementation
 //!
 //! Provides strict validation of DNS query sources to prevent spoofing,

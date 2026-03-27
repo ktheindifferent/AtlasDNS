@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Passive mDNS (Multicast DNS, RFC 6762) listener for local device discovery.
 //!
 //! Joins the link-local multicast group `224.0.0.251:5353` and silently

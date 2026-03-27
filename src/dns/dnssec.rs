@@ -819,6 +819,7 @@ impl DnssecSigner {
     }
     
     /// Extract zone name from domain
+    #[allow(dead_code)]
     fn extract_zone_from_domain(&self, domain: &str) -> String {
         // Simple zone extraction - take last two parts of domain
         let parts: Vec<&str> = domain.split('.').collect();
@@ -830,6 +831,7 @@ impl DnssecSigner {
     }
     
     /// Validate signature for a single record
+    #[allow(dead_code)]
     fn validate_signature_for_record(
         &self, 
         _rrsig_record: &DnsRecord, 

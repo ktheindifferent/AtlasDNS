@@ -371,7 +371,7 @@ impl DnsViewsHandler {
             tags: HashMap::new(),
         };
         
-        self.add_view(default_view);
+        let _ = self.add_view(default_view);
     }
 
     /// Add view

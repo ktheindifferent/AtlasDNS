@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Cache Poisoning Protection Implementation
 //!
 //! Prevents DNS cache poisoning attacks through multiple defense mechanisms

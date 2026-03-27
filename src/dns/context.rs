@@ -37,7 +37,7 @@ use crate::dns::captive_portal::CaptivePortal;
 use crate::dns::device_tracker::DeviceTracker;
 use crate::dns::mdns::MdnsRegistry;
 use crate::dns::query_log::QueryLog;
-use crate::dns::security::{ThreatIntelManager, ThreatIntelConfig};
+use crate::dns::security::ThreatIntelManager;
 use crate::dns::clustering::{ClusterManager, ClusterConfig};
 use crate::dns::anomaly::{DnsAnomalyDetector, AnomalyConfig};
 use crate::dns::split_horizon::SplitHorizonRuleManager;

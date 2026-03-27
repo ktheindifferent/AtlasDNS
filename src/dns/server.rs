@@ -70,6 +70,7 @@ pub struct ConnectionInfo {
     bytes_transferred: u64,
 }
 
+#[allow(dead_code)]
 impl ConnectionInfo {
     fn new(id: u64, remote_addr: SocketAddr) -> Self {
         let now = Instant::now();
@@ -1222,14 +1223,15 @@ impl DnsUdpServer {
         
         Ok(())
     }
-    
+
     /// Update socket metrics with activity
+    #[allow(dead_code)]
     fn update_socket_metrics(&self, bytes_received: u64, bytes_sent: u64, had_error: bool) {
         if let Ok(mut metrics) = self.socket_metrics.lock() {
             metrics.bytes_received += bytes_received;
             metrics.bytes_sent += bytes_sent;
             metrics.last_activity = Instant::now();
-            
+
             if had_error {
                 metrics.socket_errors += 1;
                 metrics.last_error = Some(Instant::now());
@@ -1418,6 +1420,7 @@ impl DnsTcpServer {
     }
     
     /// Track a new TCP connection
+    #[allow(dead_code)]
     fn track_connection(&self, stream: &TcpStream) -> Option<u64> {
         let connection_id = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1441,6 +1444,7 @@ impl DnsTcpServer {
     }
     
     /// Update connection activity
+    #[allow(dead_code)]
     fn update_connection_activity(&self, connection_id: u64, bytes_transferred: u64) {
         if let Ok(mut connections) = self.active_connections.lock() {
             if let Some(conn_info) = connections.get_mut(&connection_id) {
@@ -1450,6 +1454,7 @@ impl DnsTcpServer {
     }
     
     /// Clean up a finished connection
+    #[allow(dead_code)]
     fn cleanup_connection(&self, connection_id: Option<u64>) {
         if let Some(id) = connection_id {
             if let Ok(mut connections) = self.active_connections.lock() {
@@ -1473,8 +1478,9 @@ impl DnsTcpServer {
             }
         }
     }
-    
+
     /// Update socket metrics with activity
+    #[allow(dead_code)]
     fn update_socket_metrics(&self, bytes_received: u64, bytes_sent: u64, had_error: bool) {
         if let Ok(mut metrics) = self.socket_metrics.lock() {
             metrics.bytes_received += bytes_received;

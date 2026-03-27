@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Intelligent Failover Implementation
 //!
 //! Provides automatic endpoint health monitoring and intelligent failover

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Memory Pool Management Implementation
 //!
 //! Provides pre-allocated memory pools for hot paths to reduce allocation

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SQL Injection Protection Framework
 //!
 //! Provides comprehensive protection against SQL injection attacks through:

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Enhanced Rate Limiter with multiple algorithms
 
 use std::collections::{HashMap, VecDeque};

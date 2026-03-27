@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Advanced DDoS Protection with intelligent attack detection
 
 use std::collections::{HashMap, HashSet, VecDeque};

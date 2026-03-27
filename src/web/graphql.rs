@@ -84,6 +84,7 @@ fn require_admin(ctx: &Context<'_>) -> Result<GraphQLUserContext> {
 }
 
 /// Get authenticated user with write privileges
+#[allow(dead_code)]
 fn require_write_access(ctx: &Context<'_>) -> Result<GraphQLUserContext> {
     let user_ctx = require_auth(ctx)?;
     if !user_ctx.can_write() {
@@ -1759,7 +1760,7 @@ impl MutationRoot {
             }
             Some("cache") => {
                 // Clear cache statistics by clearing the cache
-                self.context.cache.clear();
+                let _ = self.context.cache.clear();
                 log::info!("Cache cleared and statistics reset");
             }
             Some("metrics") => {
@@ -1772,7 +1773,7 @@ impl MutationRoot {
                 self.context.statistics.tcp_query_count.store(0, std::sync::atomic::Ordering::Release);
                 self.context.statistics.udp_query_count.store(0, std::sync::atomic::Ordering::Release);
                 self.context.health_monitor.reset_counters();
-                self.context.cache.clear();
+                let _ = self.context.cache.clear();
                 log::info!("All statistics reset");
             }
             Some(unknown) => {

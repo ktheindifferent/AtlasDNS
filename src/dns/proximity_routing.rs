@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Proximity-Based Routing
 //!
 //! Dynamic closest-server selection based on network latency, geographic

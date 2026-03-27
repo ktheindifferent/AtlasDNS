@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Traffic Steering Implementation
 //!
 //! Percentage-based traffic distribution with A/B testing support,

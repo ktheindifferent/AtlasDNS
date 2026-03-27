@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Connection Pool for DNS Queries
 //!
 //! Manages a pool of persistent TCP/TLS connections to upstream DNS servers

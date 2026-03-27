@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Performance Optimizer Implementation
 //!
 //! Achieves sub-10ms response times through various optimization techniques

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Enhanced DNS Firewall with advanced filtering capabilities
 
 use std::collections::{HashMap, HashSet};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Alert Management System
 //!
 //! Smart alerting with anomaly detection, intelligent routing, and

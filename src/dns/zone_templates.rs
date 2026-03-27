@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Zone Templates
 //!
 //! Predefined DNS zone templates for rapid deployment and consistent configuration

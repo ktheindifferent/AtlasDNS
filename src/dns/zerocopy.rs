@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Zero-Copy Networking Implementation
 //!
 //! High-performance packet processing with minimal memory allocations and copies.

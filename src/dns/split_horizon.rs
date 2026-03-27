@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Split-Horizon DNS Implementation
 //!
 //! Provides different DNS responses based on the source of the query,

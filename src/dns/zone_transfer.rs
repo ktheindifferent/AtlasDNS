@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Zone Transfer Implementation (AXFR/IXFR)
 //!
 //! Provides DNS zone transfer capabilities for secondary DNS servers,

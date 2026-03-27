@@ -812,6 +812,7 @@ impl<'a> WebServer<'a> {
     }
     
     /// Send the response back to the client with proper error handling
+    #[allow(dead_code)]
     fn send_response(
         &self,
         request: tiny_http::Request,
@@ -1130,6 +1131,7 @@ impl<'a> WebServer<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn index(&self, request: &Request) -> Result<ResponseBox> {
         let mut index_result = index::index(&self.context, &self.user_manager, &self.activity_logger)?;
         self.add_user_context(request, &mut index_result)?;
@@ -1323,6 +1325,7 @@ impl<'a> WebServer<'a> {
     }
 
     /// Public Prometheus scrape endpoint at `/metrics` (no authentication required).
+    #[allow(dead_code)]
     fn metrics_public(&self, _request: &Request) -> Result<ResponseBox> {
         self.update_prometheus_metrics();
         let output = self.metrics_collector.export_metrics()
@@ -3394,7 +3397,7 @@ impl<'a> WebServer<'a> {
             .boxed())
     }
 
-    fn threat_intel_status(&self, request: &Request) -> Result<ResponseBox> {
+    fn threat_intel_status(&self, _request: &Request) -> Result<ResponseBox> {
         let data = match &self.context.threat_intel {
             Some(ti) => ti.get_stats(),
             None => serde_json::json!({
@@ -3599,6 +3602,7 @@ impl<'a> WebServer<'a> {
             .map_err(|e| WebError::AuthorizationError(e))?;
 
         #[derive(serde::Deserialize)]
+        #[allow(dead_code)]
         struct CreateGeoZoneRequest {
             id: String,
             name: String,
@@ -3907,7 +3911,6 @@ impl<'a> WebServer<'a> {
     }
 
     fn split_horizon_add(&self, request: &mut tiny_http::Request) -> Result<ResponseBox> {
-        use std::io::Read;
         let mut body = String::new();
         request.as_reader().read_to_string(&mut body)
             .map_err(|e| crate::web::WebError::InternalError(e.to_string()))?;

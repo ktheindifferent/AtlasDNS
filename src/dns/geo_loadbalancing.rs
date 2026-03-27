@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Geographic Load Balancing Implementation
 //!
 //! Routes DNS queries to the nearest or best-performing servers based on

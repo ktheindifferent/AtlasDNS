@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! DNS Firewall Implementation
 //!
 //! Provides advanced DNS query filtering for security and content control.

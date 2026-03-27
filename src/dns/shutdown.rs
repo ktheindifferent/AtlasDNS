@@ -1,5 +1,6 @@
+#![allow(dead_code)]
 /// Graceful Shutdown Handler for DNS Server
-/// 
+///
 /// Provides coordinated shutdown of all server components with
 /// connection draining and resource cleanup.
 

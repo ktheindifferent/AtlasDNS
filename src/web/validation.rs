@@ -1,5 +1,6 @@
+#![allow(dead_code, unused_comparisons)]
 /// Input validation module for web endpoints
-/// 
+///
 /// Provides comprehensive input validation and sanitization for all web handlers
 /// to prevent injection attacks, ensure data integrity, and enforce business rules.
 

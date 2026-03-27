@@ -271,7 +271,6 @@ fn parse_category(s: &str) -> Result<ThreatCategory, WebError> {
 fn parse_json_body<T: serde::de::DeserializeOwned>(
     request: &mut Request,
 ) -> Result<T, WebError> {
-    use std::io::Read;
     let mut body = String::new();
     request
         .as_reader()

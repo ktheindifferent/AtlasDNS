@@ -2081,8 +2081,6 @@ impl ApiV2Handler {
     // -------------------------------------------------------------------------
 
     fn import_pihole(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        use std::io::Read;
-
         let mut body = Vec::new();
         request.as_reader().read_to_end(&mut body)
             .map_err(|e| WebError::InternalError(e.to_string()))?;
@@ -2141,8 +2139,6 @@ impl ApiV2Handler {
     // -------------------------------------------------------------------------
 
     fn import_adguard(&self, request: &mut Request) -> Result<Response<std::io::Cursor<Vec<u8>>>, WebError> {
-        use std::io::Read;
-
         let mut body = Vec::new();
         request.as_reader().read_to_end(&mut body)
             .map_err(|e| WebError::InternalError(e.to_string()))?;

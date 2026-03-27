@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Enhanced DDoS Protection Implementation
 //!
 //! Advanced protection against Distributed Denial of Service attacks with

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Health Check Analytics
 //!
 //! Comprehensive health monitoring with uptime tracking, latency analysis,

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Adaptive DNS Caching with ML-driven TTL Optimization
 //!
 //! Implements intelligent caching strategies that learn from query patterns

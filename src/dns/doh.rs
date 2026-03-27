@@ -23,7 +23,6 @@ use parking_lot::RwLock;
 use crate::dns::context::ServerContext;
 use crate::dns::protocol::{DnsPacket, QueryType, ResultCode};
 use crate::dns::buffer::BytePacketBuffer;
-use crate::dns::resolve::DnsResolver;
 use crate::dns::logging::{CorrelationContext, DnsQueryLog};
 use crate::web::{Result, WebError};
 

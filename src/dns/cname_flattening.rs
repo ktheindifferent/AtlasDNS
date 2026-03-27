@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! CNAME Flattening Implementation
 //!
 //! Provides CNAME flattening at the apex domain level, allowing CNAME-like

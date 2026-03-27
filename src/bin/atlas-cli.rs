@@ -756,6 +756,7 @@ impl AtlasClient {
 }
 
 /// Output formatter
+#[allow(dead_code)]
 struct OutputFormatter {
     format: OutputFormat,
     no_color: bool,
@@ -1261,7 +1262,7 @@ async fn handle_traffic_commands(
         TrafficCommands::Delete { id } => {
             let pb = show_progress(&format!("Deleting traffic policy {}...", id));
             let path = format!("/api/v2/traffic/policies/{}", id);
-            let result = client.delete(&path).await?;
+            let _result = client.delete(&path).await?;
             pb.finish_and_clear();
             formatter.print_success(&format!("Traffic policy {} deleted successfully", id));
         },
@@ -1929,7 +1930,7 @@ async fn handle_transfer_commands(
 }
 
 async fn handle_interactive_shell(
-    client: &AtlasClient,
+    _client: &AtlasClient,
     formatter: &OutputFormatter,
 ) -> Result<(), Box<dyn std::error::Error>> {
     formatter.print_info("Entering interactive shell. Type 'help' for commands, 'exit' to quit.");

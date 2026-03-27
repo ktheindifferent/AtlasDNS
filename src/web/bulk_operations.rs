@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Bulk Operations API
 //!
 //! Batch DNS record management with transaction support, rollback capabilities,

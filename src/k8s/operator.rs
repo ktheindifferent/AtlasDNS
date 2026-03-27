@@ -991,6 +991,7 @@ impl KubernetesOperator {
     }
 
     /// Update statistics
+    #[allow(dead_code)]
     async fn update_stats(&self, duration: Duration, success: bool) {
         let mut stats = self.stats.write().await;
         
@@ -1026,6 +1027,7 @@ impl KubernetesOperator {
     }
 
     /// Get current timestamp
+    #[allow(dead_code)]
     fn current_timestamp() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

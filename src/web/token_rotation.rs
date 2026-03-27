@@ -1,5 +1,6 @@
+#![allow(dead_code)]
 /// Secure Session Token Rotation System
-/// 
+///
 /// Provides automatic token rotation for enhanced security,
 /// preventing session fixation attacks and limiting token exposure.
 

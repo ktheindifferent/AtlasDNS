@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Dynamic DNS Updates Implementation (RFC 2136)
 //!
 //! Provides secure dynamic DNS update capabilities allowing clients to

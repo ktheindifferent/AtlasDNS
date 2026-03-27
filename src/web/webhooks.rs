@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Webhook Notifications
 //!
 //! Real-time event streaming for DNS changes with retry logic, event filtering,
