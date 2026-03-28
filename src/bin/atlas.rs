@@ -22,6 +22,9 @@ use atlas::dns::clustering::{ClusterConfig, ClusterRole, ZoneTransferPayload, Zo
 use atlas::dns::bench::{BenchConfig, run_bench};
 use atlas::dns::protocol::QueryType;
 
+#[cfg(feature = "k8s")]
+use atlas::k8s::operator::{KubernetesOperator, OperatorConfig as K8sOperatorConfig};
+
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
     print!("{}", opts.usage(&brief));
@@ -295,6 +298,25 @@ fn main() {
         "cluster-node-id",
         "Unique node ID for this cluster member (default: auto-generated UUID)",
         "ID",
+    );
+    #[cfg(feature = "k8s")]
+    opts.optflag(
+        "",
+        "k8s",
+        "Enable Kubernetes operator for native DNS resource management",
+    );
+    #[cfg(feature = "k8s")]
+    opts.optopt(
+        "",
+        "k8s-namespace",
+        "Kubernetes namespace to watch (default: all namespaces)",
+        "NAMESPACE",
+    );
+    #[cfg(feature = "k8s")]
+    opts.optflag(
+        "",
+        "k8s-leader-election",
+        "Enable leader election for HA deployments (default: enabled)",
     );
 
     let opt_matches = match opts.parse(&args[1..]) {
@@ -733,6 +755,46 @@ fn main() {
                 node_id, role, peers.len(), CLUSTER_GOSSIP_PORT, CLUSTER_ZONE_TRANSFER_PORT
             );
         }
+    }
+
+    // Initialize Kubernetes operator if enabled
+    #[cfg(feature = "k8s")]
+    if opt_matches.opt_present("k8s") {
+        let namespace = opt_matches.opt_str("k8s-namespace").unwrap_or_else(|| "".to_string());
+        let watch_all = namespace.is_empty();
+        let leader_election = !opt_matches.opt_present("k8s-leader-election");
+
+        let k8s_config = K8sOperatorConfig {
+            namespace: if watch_all { "default".to_string() } else { namespace },
+            watch_all_namespaces: watch_all,
+            reconcile_interval: std::time::Duration::from_secs(30),
+            dns_server: format!("http://localhost:{}", context.api_port),
+            api_token: None,
+            service_discovery: true,
+            ingress_integration: true,
+            default_ttl: 300,
+            leader_election,
+        };
+
+        // K8s operator requires async runtime, spawn in tokio context
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for K8s operator");
+        let operator = rt.block_on(async {
+            Arc::new(KubernetesOperator::new(k8s_config).await.expect("Failed to initialize K8s operator"))
+        });
+        let op_clone = operator.clone();
+        
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime for K8s operator");
+            rt.block_on(async {
+                if let Err(e) = op_clone.start().await {
+                    log::error!("[k8s] Operator error: {}", e);
+                } else {
+                    log::info!("[k8s] Operator exited gracefully");
+                }
+            });
+        });
+
+        log::info!("[k8s] Kubernetes operator enabled — watching for DNS resources");
     }
 
     log::info!("Listening on port {}", context.dns_port);
