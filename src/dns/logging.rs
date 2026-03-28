@@ -125,6 +125,15 @@ pub struct DnsQueryLog {
     /// Query latency in microseconds (high-precision)
     #[serde(default)]
     pub response_time_us: u64,
+    /// GeoIP: two-letter country code of the querying client (e.g. "US")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geo_country_code: Option<String>,
+    /// GeoIP: country name of the querying client
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geo_country_name: Option<String>,
+    /// GeoIP: city of the querying client
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geo_city: Option<String>,
 }
 
 /// HTTP request logging details
@@ -519,6 +528,9 @@ macro_rules! log_dns_query {
             client_ip: None,
             latency_ms: None,
             response_time_us: 0,
+            geo_country_code: None,
+            geo_country_name: None,
+            geo_city: None,
         };
         $logger.log_dns_query($ctx, query_log);
     }};
@@ -711,6 +723,9 @@ mod tests {
             client_ip: None,
             latency_ms: None,
             response_time_us: 0,
+            geo_country_code: None,
+            geo_country_name: None,
+            geo_city: None,
         };
 
         assert_eq!(query_log.domain, "example.com");

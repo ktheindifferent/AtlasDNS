@@ -45,6 +45,7 @@ use crate::dns::dnssec::ValidationMode;
 use crate::dns::rpz::RpzEngine;
 use crate::dns::latency_analytics::LatencyTracker;
 use crate::dns::load_balancer::LoadBalancerManager;
+use crate::geoip::SharedGeoIp;
 
 #[derive(Debug, Display, From, Error)]
 /// Errors that can occur while building or initializing a [`ServerContext`].
@@ -201,6 +202,8 @@ pub struct ServerContext {
     pub latency_tracker: Arc<LatencyTracker>,
     /// DNS-based load balancer with health-checked backend pools.
     pub load_balancer: Arc<LoadBalancerManager>,
+    /// Optional GeoIP database for enriching query logs with geographic data.
+    pub geoip: Option<SharedGeoIp>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -334,6 +337,7 @@ impl Default for ServerContext {
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
+            geoip: None,
         }
     }
 }
@@ -432,6 +436,7 @@ impl ServerContext {
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
+            geoip: None,
         })
     }
 
@@ -740,6 +745,7 @@ pub mod tests {
             rpz_engine: Arc::new(RpzEngine::new()),
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
+            geoip: None,
         })
     }
 

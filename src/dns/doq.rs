@@ -469,9 +469,12 @@ impl DoqServer {
             client_ip: None,
             latency_ms: None,
             response_time_us: 0,
+            geo_country_code: None,
+            geo_country_name: None,
+            geo_city: None,
         };
         context.logger.log_dns_query(&ctx, query_log);
-        
+
         // Check cache first
         if let Some(cached_packet) = context.cache.lookup(domain, qtype) {
             // Update metrics

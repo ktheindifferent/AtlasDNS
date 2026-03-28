@@ -399,6 +399,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
                 client_ip: client_ip.map(|ip| ip.to_string()),
                 latency_ms: Some(start_time.elapsed().as_millis() as u64),
                 response_time_us: start_time.elapsed().as_micros() as u64,
+                geo_country_code: None,
+                geo_country_name: None,
+                geo_city: None,
             };
             context.logger.log_dns_query(&ctx, query_log);
 
@@ -569,6 +572,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             client_ip: client_ip.map(|ip| ip.to_string()),
             latency_ms: Some(start_time.elapsed().as_millis() as u64),
             response_time_us: start_time.elapsed().as_micros() as u64,
+            geo_country_code: None,
+            geo_country_name: None,
+            geo_city: None,
         };
         context.logger.log_dns_query(&ctx, query_log);
     } else {
@@ -727,6 +733,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
             client_ip: client_ip.map(|ip| ip.to_string()),
             latency_ms: Some(start_time.elapsed().as_millis() as u64),
             response_time_us: start_time.elapsed().as_micros() as u64,
+            geo_country_code: None,
+            geo_country_name: None,
+            geo_city: None,
         };
         context.logger.log_dns_query(&ctx, query_log);
     }
@@ -1825,6 +1834,18 @@ fn store_dns_query_log(
         crate::dns::context::ResolveStrategy::Recursive => None,
     };
 
+    // Perform GeoIP enrichment if available
+    let (geo_country_code, geo_country_name, geo_city) = if let (Some(ref geoip), Some(ref cip)) = (&context.geoip, &client_ip) {
+        if let Ok(ip) = cip.parse::<std::net::IpAddr>() {
+            let info = geoip.lookup(ip);
+            (info.country_code, info.country_name, info.city)
+        } else {
+            (None, None, None)
+        }
+    } else {
+        (None, None, None)
+    };
+
     // Create query log entry
     let query_log = DnsQueryLog {
         domain: question.name.clone(),
@@ -1839,6 +1860,9 @@ fn store_dns_query_log(
         client_ip,
         latency_ms: Some(latency_ms),
         response_time_us: latency_ms * 1000,
+        geo_country_code,
+        geo_country_name,
+        geo_city,
     };
 
     // Store in query log storage

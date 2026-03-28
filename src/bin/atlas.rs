@@ -264,6 +264,17 @@ fn main() {
     );
     opts.optflag(
         "",
+        "geoip",
+        "Enable GeoIP enrichment for DNS query logs (requires MaxMind .mmdb)",
+    );
+    opts.optopt(
+        "",
+        "geoip-db",
+        "Path to MaxMind GeoLite2-City.mmdb database (default: /opt/atlas/geoip/GeoLite2-City.mmdb)",
+        "PATH",
+    );
+    opts.optflag(
+        "",
         "cluster",
         "Enable HA clustering with gossip heartbeat and zone transfer",
     );
@@ -584,6 +595,27 @@ fn main() {
         let acme_context = context.clone();
         atlas::dns::acme::AcmeCertificateManager::start_renewal_thread(acme_cfg, acme_context);
         log::info!("ACME certificate renewal thread started (checks daily)");
+    }
+
+    // Initialize GeoIP enrichment if requested
+    if opt_matches.opt_present("geoip") {
+        let db_path = opt_matches.opt_str("geoip-db")
+            .unwrap_or_else(|| "/opt/atlas/geoip/GeoLite2-City.mmdb".to_string());
+        let geoip_config = atlas::geoip::GeoIpConfig {
+            enabled: true,
+            database_path: std::path::PathBuf::from(&db_path),
+        };
+        match atlas::geoip::try_load(&geoip_config) {
+            Some(db) => {
+                if let Some(ctx) = Arc::get_mut(&mut context) {
+                    ctx.geoip = Some(db);
+                }
+                log::info!("[GeoIP] Query log enrichment enabled (db: {})", db_path);
+            }
+            None => {
+                log::warn!("[GeoIP] Failed to load database from {}; enrichment disabled", db_path);
+            }
+        }
     }
 
     // Start passive mDNS listener if requested

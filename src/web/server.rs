@@ -518,6 +518,9 @@ impl<'a> WebServer<'a> {
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
             (Method::Get, ["api", "mdns", "devices"]) => self.devices_api(request),
 
+            // GeoIP lookup
+            (Method::Get, ["api", "geoip", "lookup", ip]) => self.geoip_lookup(request, ip),
+
             // Load Balancer pool API
             (Method::Get, ["api", "v1", "lb", "pools"]) => self.lb_pools_api(request),
             (Method::Post, ["api", "v1", "lb", "pools"]) => self.lb_add_pool_api(request),
@@ -4046,6 +4049,34 @@ impl<'a> WebServer<'a> {
     fn devices_api(&self, _request: &Request) -> Result<ResponseBox> {
         let json = crate::web::devices::get_devices(&self.context);
         Ok(Response::from_string(serde_json::to_string(&json)?)
+            .with_header(Self::safe_header("Content-Type: application/json"))
+            .boxed())
+    }
+
+    /// GET /api/geoip/lookup/:ip — look up geographic info for an IP address.
+    fn geoip_lookup(&self, _request: &Request, ip: &str) -> Result<ResponseBox> {
+        let geoip = match &self.context.geoip {
+            Some(db) => db,
+            None => {
+                let body = serde_json::json!({"error": "GeoIP not enabled"});
+                return Ok(Response::from_string(serde_json::to_string(&body)?)
+                    .with_status_code(503)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed());
+            }
+        };
+        let addr: std::net::IpAddr = match ip.parse() {
+            Ok(a) => a,
+            Err(_) => {
+                let body = serde_json::json!({"error": "Invalid IP address"});
+                return Ok(Response::from_string(serde_json::to_string(&body)?)
+                    .with_status_code(400)
+                    .with_header(Self::safe_header("Content-Type: application/json"))
+                    .boxed());
+            }
+        };
+        let info = geoip.lookup(addr);
+        Ok(Response::from_string(serde_json::to_string(&info)?)
             .with_header(Self::safe_header("Content-Type: application/json"))
             .boxed())
     }
