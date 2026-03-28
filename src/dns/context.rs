@@ -10,7 +10,7 @@ use crate::dns::authority::Authority;
 use crate::dns::cache::SynchronizedCache;
 use crate::dns::client::{DnsClient, DnsNetworkClient, ClientError};
 use crate::dns::resolve::{DnsResolver, DohForwardingDnsResolver, ForwardingDnsResolver, RecursiveDnsResolver};
-use crate::dns::acme::SslConfig;
+use crate::dns::acme::{AcmeHttpChallengeStore, SslConfig};
 use crate::dns::metrics::MetricsCollector;
 use crate::dns::logging::{StructuredLogger, LoggerConfig, QueryLogStorage};
 use crate::dns::connection_pool::{ConnectionPoolManager, PoolConfig};
@@ -204,6 +204,8 @@ pub struct ServerContext {
     pub load_balancer: Arc<LoadBalancerManager>,
     /// Optional GeoIP database for enriching query logs with geographic data.
     pub geoip: Option<SharedGeoIp>,
+    /// Shared ACME HTTP-01 challenge token store for `/.well-known/acme-challenge/` serving.
+    pub acme_http_challenge_store: Arc<AcmeHttpChallengeStore>,
 }
 
 /// A dummy DNS client that returns errors for all operations
@@ -338,6 +340,7 @@ impl Default for ServerContext {
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
             geoip: None,
+            acme_http_challenge_store: Arc::new(AcmeHttpChallengeStore::new()),
         }
     }
 }
@@ -437,6 +440,7 @@ impl ServerContext {
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
             geoip: None,
+            acme_http_challenge_store: Arc::new(AcmeHttpChallengeStore::new()),
         })
     }
 
@@ -746,6 +750,7 @@ pub mod tests {
             latency_tracker: Arc::new(LatencyTracker::new()),
             load_balancer: Arc::new(LoadBalancerManager::new()),
             geoip: None,
+            acme_http_challenge_store: Arc::new(AcmeHttpChallengeStore::new()),
         })
     }
 

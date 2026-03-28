@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -5,6 +6,7 @@ use std::time::Duration;
 
 use openssl::pkey::{PKey, Private};
 use openssl::x509::X509;
+use parking_lot::RwLock;
 use serde_derive::{Deserialize, Serialize};
 extern crate sentry;
 
@@ -478,6 +480,315 @@ impl Default for SslConfig {
 }
 
 // ---------------------------------------------------------------------------
+// ACME HTTP-01 challenge store
+// ---------------------------------------------------------------------------
+
+/// Thread-safe store for pending ACME HTTP-01 challenge tokens.
+///
+/// When the ACME server issues an HTTP-01 challenge the client must serve
+/// the key authorization string at:
+///
+/// ```text
+/// GET http://<domain>/.well-known/acme-challenge/<token>
+/// ```
+///
+/// This store maps `token -> key_authorization` so the web server can
+/// respond to validation requests from the CA.
+#[derive(Debug)]
+pub struct AcmeHttpChallengeStore {
+    /// Map of token → key_authorization for pending HTTP-01 challenges.
+    tokens: RwLock<HashMap<String, String>>,
+}
+
+impl AcmeHttpChallengeStore {
+    /// Create an empty challenge store.
+    pub fn new() -> Self {
+        Self {
+            tokens: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// Insert a challenge token and its key authorization.
+    pub fn set(&self, token: &str, key_authorization: &str) {
+        self.tokens
+            .write()
+            .insert(token.to_string(), key_authorization.to_string());
+        log::info!("[ACME HTTP-01] Stored challenge token {}", token);
+    }
+
+    /// Look up the key authorization for a given token.
+    /// Returns `None` if the token is not present.
+    pub fn get(&self, token: &str) -> Option<String> {
+        self.tokens.read().get(token).cloned()
+    }
+
+    /// Remove a token after validation is complete.
+    pub fn remove(&self, token: &str) {
+        self.tokens.write().remove(token);
+        log::debug!("[ACME HTTP-01] Removed challenge token {}", token);
+    }
+
+    /// Number of pending challenges.
+    pub fn len(&self) -> usize {
+        self.tokens.read().len()
+    }
+
+    /// Whether the store is empty.
+    pub fn is_empty(&self) -> bool {
+        self.tokens.read().is_empty()
+    }
+
+    /// Remove all pending tokens.
+    pub fn clear(&self) {
+        self.tokens.write().clear();
+    }
+}
+
+impl Default for AcmeHttpChallengeStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ACME HTTP-01 challenge flow
+// ---------------------------------------------------------------------------
+
+impl AcmeCertificateManager {
+    /// Obtain or renew the certificate via ACME v2 HTTP-01 challenge.
+    ///
+    /// Requires `http_store` to be shared with the web server so that
+    /// `GET /.well-known/acme-challenge/<token>` requests are served.
+    pub fn obtain_certificate_http01(
+        &mut self,
+        http_store: &Arc<AcmeHttpChallengeStore>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!(
+            "Starting ACME HTTP-01 certificate issuance for {:?} via {:?}",
+            self.config.domains,
+            self.config.provider,
+        );
+
+        match self.run_http01_flow(http_store) {
+            Ok(()) => {
+                log::info!("ACME HTTP-01 certificate obtained successfully");
+                Ok(())
+            }
+            Err(e) => {
+                sentry::capture_message(
+                    &format!("ACME HTTP-01 certificate obtainment failed: {e}"),
+                    sentry::Level::Error,
+                );
+                log::error!("ACME HTTP-01 failed ({}); falling back to self-signed certificate", e);
+                self.create_self_signed_certificate()
+            }
+        }
+    }
+
+    fn run_http01_flow(
+        &mut self,
+        http_store: &Arc<AcmeHttpChallengeStore>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+
+        let config = self.config.clone();
+        let store = http_store.clone();
+
+        rt.block_on(async move {
+            Self::run_http01_flow_async(&config, &store).await
+        })
+    }
+
+    async fn run_http01_flow_async(
+        config: &AcmeConfig,
+        http_store: &Arc<AcmeHttpChallengeStore>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Wildcard domains cannot use HTTP-01
+        for d in &config.domains {
+            if is_wildcard_domain(d) {
+                return Err(format!(
+                    "HTTP-01 challenge does not support wildcard domains ({}); use DNS-01 instead",
+                    d
+                )
+                .into());
+            }
+        }
+
+        // 1. Connect to ACME directory
+        let dir = acme2::DirectoryBuilder::new(config.provider.get_directory_url().to_string())
+            .build()
+            .await?;
+
+        // 2. Create or retrieve ACME account
+        let mut account_builder = acme2::AccountBuilder::new(dir.clone());
+        account_builder.contact(vec![format!("mailto:{}", config.email)]);
+        account_builder.terms_of_service_agreed(true);
+
+        if config.account_key_path.exists() {
+            let pem = fs::read(&config.account_key_path)?;
+            let pkey = PKey::private_key_from_pem(&pem)?;
+            account_builder.private_key(pkey);
+        }
+
+        let account = account_builder.build().await?;
+
+        if let Some(parent) = config.account_key_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let account_key = account.private_key();
+        fs::write(
+            &config.account_key_path,
+            account_key.private_key_to_pem_pkcs8()?,
+        )?;
+        log::info!("[ACME HTTP-01] Account registered/loaded");
+
+        // 3. Create order
+        let mut order_builder = acme2::OrderBuilder::new(account.clone());
+        for domain in &config.domains {
+            order_builder.add_dns_identifier(domain.clone());
+        }
+        let order = order_builder.build().await?;
+        log::info!("[ACME HTTP-01] Order created");
+
+        // 4. Process authorizations — use http-01 challenges
+        let authorizations = order.authorizations().await?;
+        let mut pending_tokens: Vec<String> = Vec::new();
+
+        for auth in authorizations {
+            let http_challenge = auth
+                .get_challenge("http-01")
+                .ok_or("No http-01 challenge found for authorization")?;
+
+            let token = http_challenge
+                .token
+                .as_ref()
+                .ok_or("HTTP-01 challenge has no token")?
+                .clone();
+
+            let key_auth = http_challenge
+                .key_authorization()?
+                .ok_or("No key authorization available")?;
+
+            // Store the token so the web server can serve it
+            http_store.set(&token, &key_auth);
+            pending_tokens.push(token.clone());
+
+            let domain = &auth.identifier.value;
+            log::info!(
+                "[ACME HTTP-01] Challenge for {}: token={}, serving at /.well-known/acme-challenge/{}",
+                domain,
+                token,
+                token
+            );
+
+            // Brief delay for the store write to propagate
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            // Tell ACME server to validate
+            let challenge = http_challenge.validate().await?;
+
+            // Poll until challenge is valid
+            challenge.wait_done(Duration::from_secs(5), 20).await?;
+            log::info!("[ACME HTTP-01] Challenge validated for {}", domain);
+
+            auth.wait_done(Duration::from_secs(5), 20).await?;
+        }
+
+        // 5. Wait for order to be ready
+        let order = order.wait_ready(Duration::from_secs(5), 20).await?;
+        log::info!("[ACME HTTP-01] Order ready for finalization");
+
+        // 6. Finalize with CSR
+        let domain_key = acme2::gen_rsa_private_key(2048)?;
+        let order = order
+            .finalize(acme2::Csr::Automatic(domain_key.clone()))
+            .await?;
+
+        // 7. Wait for order to be done
+        let order = order.wait_done(Duration::from_secs(5), 20).await?;
+
+        // 8. Download certificate chain
+        let certs = order
+            .certificate()
+            .await?
+            .ok_or("Order has no certificate")?;
+
+        let mut cert_pem = Vec::new();
+        for cert in &certs {
+            cert_pem.extend_from_slice(&cert.to_pem()?);
+        }
+
+        if let Some(parent) = config.cert_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&config.cert_path, &cert_pem)?;
+        fs::write(&config.key_path, domain_key.private_key_to_pem_pkcs8()?)?;
+
+        log::info!(
+            "[ACME HTTP-01] Certificate saved to {}",
+            config.cert_path.display()
+        );
+
+        // 9. Clean up challenge tokens
+        for token in &pending_tokens {
+            http_store.remove(token);
+        }
+
+        Ok(())
+    }
+
+    /// Obtain certificate using the configured challenge type (DNS-01 or HTTP-01).
+    ///
+    /// Checks `config.use_dns_challenge`; if false and an `http_store` is
+    /// provided, uses HTTP-01. Falls back to DNS-01 when HTTP-01 is unavailable.
+    pub fn obtain_certificate_auto(
+        &mut self,
+        http_store: Option<&Arc<AcmeHttpChallengeStore>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.config.use_dns_challenge {
+            if let Some(store) = http_store {
+                // Wildcard domains must use DNS-01
+                let has_wildcard = self.config.domains.iter().any(|d| is_wildcard_domain(d));
+                if !has_wildcard {
+                    return self.obtain_certificate_http01(store);
+                }
+                log::info!("[ACME] Wildcard domains detected, falling back to DNS-01");
+            }
+        }
+        self.obtain_certificate()
+    }
+
+    /// Spawn a background renewal thread that supports both DNS-01 and HTTP-01.
+    pub fn start_renewal_thread_with_http(
+        config: AcmeConfig,
+        context: Arc<ServerContext>,
+        http_store: Arc<AcmeHttpChallengeStore>,
+    ) {
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(Duration::from_secs(86_400));
+                match AcmeCertificateManager::new(config.clone(), context.clone()) {
+                    Ok(mut mgr) => {
+                        if mgr.needs_renewal() {
+                            log::info!("[ACME renewal] Certificate needs renewal; starting process");
+                            if let Err(e) = mgr.obtain_certificate_auto(Some(&http_store)) {
+                                log::error!("[ACME renewal] Renewal failed: {}", e);
+                            }
+                        } else {
+                            let days = mgr.days_until_expiry().unwrap_or(999);
+                            log::debug!("[ACME renewal] Certificate OK ({} days remaining)", days);
+                        }
+                    }
+                    Err(e) => log::error!("[ACME renewal] Could not create manager: {}", e),
+                }
+            }
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -522,5 +833,111 @@ mod tests {
         assert!(!cfg.enabled);
         assert_eq!(cfg.port, 5343);
         assert!(cfg.acme.is_none());
+    }
+
+    // ── HTTP-01 challenge store tests ──────────────────────────────────────
+
+    #[test]
+    fn test_http_challenge_store_new_is_empty() {
+        let store = AcmeHttpChallengeStore::new();
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn test_http_challenge_store_set_and_get() {
+        let store = AcmeHttpChallengeStore::new();
+        store.set("tok123", "key-auth-abc");
+        assert_eq!(store.get("tok123"), Some("key-auth-abc".to_string()));
+        assert_eq!(store.len(), 1);
+        assert!(!store.is_empty());
+    }
+
+    #[test]
+    fn test_http_challenge_store_get_missing() {
+        let store = AcmeHttpChallengeStore::new();
+        assert_eq!(store.get("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_http_challenge_store_remove() {
+        let store = AcmeHttpChallengeStore::new();
+        store.set("tok1", "auth1");
+        store.set("tok2", "auth2");
+        assert_eq!(store.len(), 2);
+
+        store.remove("tok1");
+        assert_eq!(store.get("tok1"), None);
+        assert_eq!(store.get("tok2"), Some("auth2".to_string()));
+        assert_eq!(store.len(), 1);
+    }
+
+    #[test]
+    fn test_http_challenge_store_clear() {
+        let store = AcmeHttpChallengeStore::new();
+        store.set("a", "1");
+        store.set("b", "2");
+        store.set("c", "3");
+        assert_eq!(store.len(), 3);
+
+        store.clear();
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn test_http_challenge_store_overwrite() {
+        let store = AcmeHttpChallengeStore::new();
+        store.set("tok", "old-auth");
+        store.set("tok", "new-auth");
+        assert_eq!(store.get("tok"), Some("new-auth".to_string()));
+        assert_eq!(store.len(), 1);
+    }
+
+    #[test]
+    fn test_http_challenge_store_default() {
+        let store = AcmeHttpChallengeStore::default();
+        assert!(store.is_empty());
+    }
+
+    #[test]
+    fn test_http_challenge_store_concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let store = Arc::new(AcmeHttpChallengeStore::new());
+        let mut handles = Vec::new();
+
+        // Spawn writers
+        for i in 0..10 {
+            let s = store.clone();
+            handles.push(thread::spawn(move || {
+                s.set(&format!("token-{}", i), &format!("auth-{}", i));
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        assert_eq!(store.len(), 10);
+        for i in 0..10 {
+            assert_eq!(
+                store.get(&format!("token-{}", i)),
+                Some(format!("auth-{}", i))
+            );
+        }
+    }
+
+    #[test]
+    fn test_wildcard_domains_rejected_for_http01() {
+        // Verify the wildcard check logic used in obtain_certificate_auto
+        let domains = vec!["*.example.com".to_string(), "example.com".to_string()];
+        let has_wildcard = domains.iter().any(|d| is_wildcard_domain(d));
+        assert!(has_wildcard, "Should detect wildcard domains");
+
+        let domains_no_wildcard = vec!["www.example.com".to_string(), "example.com".to_string()];
+        let has_wildcard = domains_no_wildcard.iter().any(|d| is_wildcard_domain(d));
+        assert!(!has_wildcard, "Should not detect wildcard in non-wildcard domains");
     }
 }

@@ -332,7 +332,13 @@ impl<'a> WebServer<'a> {
         let is_admin_pihole = url_parts.first().map(|s| *s == "admin").unwrap_or(false);
         let is_metrics_endpoint = url_parts.as_slice() == ["metrics"];
 
-        let is_public_route = is_admin_pihole || is_metrics_endpoint || matches!(
+        // ACME HTTP-01 challenge path: /.well-known/acme-challenge/<token>
+        let is_acme_challenge = matches!(
+            (method, url_parts.as_slice()),
+            (Method::Get, [".well-known", "acme-challenge", _])
+        );
+
+        let is_public_route = is_admin_pihole || is_metrics_endpoint || is_acme_challenge || matches!(
             (method, url_parts.as_slice()),
             (Method::Get, ["auth", "login"]) |
             (Method::Post, ["auth", "login"]) |
@@ -363,6 +369,11 @@ impl<'a> WebServer<'a> {
         }
 
         match (method, url_parts.as_slice()) {
+            // ACME HTTP-01 challenge response (must be before auth routes)
+            (Method::Get, [".well-known", "acme-challenge", token]) => {
+                self.acme_http01_challenge(token)
+            }
+
             (Method::Post, ["auth", "login"]) => self.login(request),
             (Method::Post, ["auth", "logout"]) => self.logout(request),
             (Method::Get, ["auth", "login"]) => self.login_page(request),
@@ -2044,6 +2055,36 @@ impl<'a> WebServer<'a> {
         Ok(response)
     }
     
+    /// Serve ACME HTTP-01 challenge responses at `/.well-known/acme-challenge/<token>`.
+    ///
+    /// The ACME CA will make a GET request to this path during certificate
+    /// issuance. We look up the token in the shared challenge store and
+    /// return the key authorization string with `Content-Type: text/plain`.
+    fn acme_http01_challenge(&self, token: &str) -> Result<ResponseBox> {
+        match self.context.acme_http_challenge_store.get(token) {
+            Some(key_authorization) => {
+                log::info!(
+                    "[ACME HTTP-01] Served challenge response for token {}",
+                    token
+                );
+                Ok(Response::from_string(key_authorization)
+                    .with_header(Self::safe_header("Content-Type: text/plain"))
+                    .with_status_code(200)
+                    .boxed())
+            }
+            None => {
+                log::warn!(
+                    "[ACME HTTP-01] Unknown challenge token requested: {}",
+                    token
+                );
+                Ok(Response::from_string("Token not found")
+                    .with_status_code(404)
+                    .with_header(Self::safe_header("Content-Type: text/plain"))
+                    .boxed())
+            }
+        }
+    }
+
     fn version_handler(&self, _request: &mut Request) -> Result<ResponseBox> {
         // Get package version from Cargo.toml
         let package_version = env!("CARGO_PKG_VERSION");
