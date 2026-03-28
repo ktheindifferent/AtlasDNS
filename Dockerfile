@@ -1,110 +1,100 @@
-# Build stage
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
 FROM rust:bookworm AS builder
 
-# Code version argument - automatically updated by atlas_bug_fix command
-ARG CODE_VERSION=20250905_144624
+ARG CODE_VERSION=20260327_000000
 ENV CODE_VERSION=${CODE_VERSION}
-RUN echo "Code version: ${CODE_VERSION}"
-
-# Cache bust: 2025-01-03-v3
-ARG CACHE_BUST=3
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
 WORKDIR /usr/src/atlas
 
-# Copy manifests
+# Cache dependency builds: copy manifests first, create dummy src
 COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src/bin && \
+    echo 'fn main() {}' > src/bin/atlas.rs && \
+    echo 'fn main() {}' > src/bin/atlas-cli.rs && \
+    echo 'fn main() {}' > src/bin/atlas-admin.rs && \
+    echo 'fn main() {}' > src/bin/atlasdns-check.rs && \
+    echo 'fn main() {}' > src/bin/atlasdns-backup.rs && \
+    echo 'fn main() {}' > src/bin/atlasdns-feeder.rs && \
+    echo '' > src/lib.rs && \
+    cargo build --release 2>/dev/null || true && \
+    rm -rf src
 
-# Copy source code
+# Copy real source and build
 COPY src ./src
+RUN cargo build --release --bin atlas --bin atlasdns-feeder
 
-# Build release binary
-RUN cargo build --release
+# =============================================================================
+# Stage 2: Runtime (Alpine for minimal image size)
+# =============================================================================
+FROM alpine:3.19 AS runtime
 
-# Runtime stage
-FROM debian:bookworm-slim
-
-# Code version for runtime
-ARG CODE_VERSION=20250905_144624
-ENV CODE_VERSION=${CODE_VERSION}
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     ca-certificates \
-    libssl3 \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
+    libgcc \
+    libstdc++ \
+    curl \
+    tini
 
-# Create user for running the server
-RUN useradd -m -u 1001 atlas
+# Create unprivileged user
+RUN addgroup -S atlasdns && adduser -S -G atlasdns -u 1001 atlasdns
 
-# Create necessary directories
-RUN mkdir -p /opt/atlas/certs /opt/atlas/zones \
-    && chown -R atlas:atlas /opt/atlas
+# Create directories
+RUN mkdir -p /opt/atlas/certs /opt/atlas/zones /opt/atlas/data \
+    && chown -R atlasdns:atlasdns /opt/atlas
 
-# Copy binary from builder
+# Copy binaries from builder
 COPY --from=builder /usr/src/atlas/target/release/atlas /usr/local/bin/atlas
+COPY --from=builder /usr/src/atlas/target/release/atlasdns-feeder /usr/local/bin/atlasdns-feeder
 
-# Create entrypoint script while still root
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Set default RUST_LOG if not provided\n\
-RUST_LOG=${RUST_LOG:-debug}\n\
-export RUST_LOG\n\
-\n\
-# Build command arguments\n\
-ARGS=""\n\
-\n\
-# Add zones directory (default if not set)\n\
-ZONES_DIR=${ZONES_DIR:-/opt/atlas/zones}\n\
-ARGS="$ARGS --zones-dir $ZONES_DIR"\n\
-\n\
-# Add forward address if provided\n\
-if [ ! -z "$FORWARD_ADDRESS" ]; then\n\
-    ARGS="$ARGS --forward-address $FORWARD_ADDRESS"\n\
-fi\n\
-\n\
-# Add SSL configuration if enabled\n\
-if [ "$SSL_ENABLED" = "true" ]; then\n\
-    ARGS="$ARGS --ssl"\n\
-    \n\
-    # Add ACME configuration if provided\n\
-    if [ ! -z "$ACME_PROVIDER" ]; then\n\
-        ARGS="$ARGS --acme-provider $ACME_PROVIDER"\n\
-    fi\n\
-    \n\
-    if [ ! -z "$ACME_EMAIL" ]; then\n\
-        ARGS="$ARGS --acme-email $ACME_EMAIL"\n\
-    fi\n\
-    \n\
-    if [ ! -z "$ACME_DOMAINS" ]; then\n\
-        ARGS="$ARGS --acme-domains $ACME_DOMAINS"\n\
-    fi\n\
-fi\n\
-\n\
-# Execute atlas with arguments\n\
-echo "Starting Atlas DNS Server with arguments: $ARGS"\n\
-exec /usr/local/bin/atlas $ARGS' > /usr/local/bin/docker-entrypoint.sh \
-    && chmod +x /usr/local/bin/docker-entrypoint.sh
+# Entrypoint script
+COPY <<'ENTRYPOINT' /usr/local/bin/docker-entrypoint.sh
+#!/bin/sh
+set -e
 
-# Set working directory
+RUST_LOG=${RUST_LOG:-info}
+export RUST_LOG
+
+ARGS=""
+
+ZONES_DIR=${ZONES_DIR:-/opt/atlas/zones}
+ARGS="$ARGS --zones-dir $ZONES_DIR"
+
+[ -n "$FORWARD_ADDRESS" ] && ARGS="$ARGS --forward-address $FORWARD_ADDRESS"
+
+if [ "$SSL_ENABLED" = "true" ]; then
+    ARGS="$ARGS --ssl"
+    [ -n "$ACME_PROVIDER" ]  && ARGS="$ARGS --acme-provider $ACME_PROVIDER"
+    [ -n "$ACME_EMAIL" ]     && ARGS="$ARGS --acme-email $ACME_EMAIL"
+    [ -n "$ACME_DOMAINS" ]   && ARGS="$ARGS --acme-domains $ACME_DOMAINS"
+fi
+
+[ -n "$EXTRA_ARGS" ] && ARGS="$ARGS $EXTRA_ARGS"
+
+echo "Starting Atlas DNS Server"
+exec /usr/local/bin/atlas $ARGS
+ENTRYPOINT
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 WORKDIR /opt/atlas
 
-# Note: Running as root is required for binding to port 53
-# In a container environment, this is acceptable as the container provides isolation
-
-# Expose DNS ports (TCP and UDP) and web interface ports
-EXPOSE 53/tcp
+# DNS (UDP+TCP), HTTP API, DoH
 EXPOSE 53/udp
-EXPOSE 5380
-EXPOSE 5343
+EXPOSE 53/tcp
+EXPOSE 5353/tcp
+EXPOSE 8080/tcp
 
-# Set entrypoint
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Health check every 30s, allow 5s startup grace
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -sf http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["tini", "--"]
+CMD ["/usr/local/bin/docker-entrypoint.sh"]

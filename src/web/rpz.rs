@@ -262,6 +262,14 @@ pub fn load_from_file(
     context: &Arc<ServerContext>, request: &mut Request,
 ) -> Result<ResponseBox> {
     let req: LoadFileRequest = read_json_body(request)?;
+
+    // Reject path traversal attempts
+    let path = std::path::Path::new(&req.path);
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        let data = json!({"error": "Path traversal not allowed"});
+        return Ok(handle_json_response(&data, tiny_http::StatusCode(400))?.boxed());
+    }
+
     match context.rpz_engine.load_zone_from_file(&req.name, req.priority, &req.path) {
         Ok(count) => {
             let data = json!({"status": "ok", "zone": req.name, "rules_loaded": count});

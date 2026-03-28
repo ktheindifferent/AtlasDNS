@@ -129,3 +129,7 @@ path = "src/bin/atlasdns-check.rs"
 [[bin]]
 name = "atlasdns-backup"
 path = "src/bin/atlasdns-backup.rs"
+
+[[bin]]
+name = "atlasdns-feeder"
+path = "src/bin/atlasdns-feeder.rs"

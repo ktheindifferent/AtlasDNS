@@ -409,6 +409,14 @@ impl UserManager {
     ///
     /// On bcrypt failure (extremely unlikely), falls back to a SHA-256 hex
     /// hash to avoid a panic; a warning is logged in that case.
+    /// Generate a cryptographically secure session token (64 hex chars = 256 bits).
+    fn generate_secure_token() -> String {
+        use rand::Rng;
+        let mut bytes = [0u8; 32];
+        rand::thread_rng().fill(&mut bytes);
+        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+
     pub fn hash_password(password: &str) -> String {
         match hash(password, DEFAULT_COST) {
             Ok(hashed) => hashed,
@@ -708,7 +716,7 @@ impl UserManager {
         let session = Session {
             id: Uuid::new_v4().to_string(),
             user_id: user_id.clone(),
-            token: Uuid::new_v4().to_string(),
+            token: Self::generate_secure_token(),
             created_at: Utc::now(),
             expires_at: Utc::now() + Duration::hours(24),
             ip_address: ip_address.clone(),
@@ -1027,9 +1035,8 @@ impl UserManager {
             .sample_iter(&Alphanumeric)
             .take(48).collect();
 
-        let mut hasher = Sha256::new();
-        hasher.update(raw_key.as_bytes());
-        let key_hash = format!("{:x}", hasher.finalize());
+        let key_hash = hash(&raw_key, DEFAULT_COST)
+            .map_err(|e| WebError::InternalError(format!("API key hash failed: {}", e)))?;
 
         let api_key = UserApiKey {
             id: Uuid::new_v4().to_string(),
@@ -1057,17 +1064,26 @@ impl UserManager {
 
     /// Validate a raw API key. Returns (user_id, key_id) if valid.
     pub fn validate_user_api_key(&self, raw_key: &str) -> Option<(String, String)> {
-        let mut hasher = Sha256::new();
-        hasher.update(raw_key.as_bytes());
-        let key_hash = format!("{:x}", hasher.finalize());
-
         let users = self.users.read().ok()?;
         for user in users.values() {
             if !user.is_active {
                 continue;
             }
             for api_key in &user.api_keys {
-                if api_key.is_active && api_key.key_hash == key_hash {
+                if !api_key.is_active {
+                    continue;
+                }
+                // Support both bcrypt hashes (new) and legacy SHA-256 hex hashes
+                let matches = if api_key.key_hash.starts_with("$2") {
+                    verify(raw_key, &api_key.key_hash).unwrap_or(false)
+                } else {
+                    // Legacy SHA-256 path (migration)
+                    let mut hasher = Sha256::new();
+                    hasher.update(raw_key.as_bytes());
+                    let legacy = format!("{:x}", hasher.finalize());
+                    legacy == api_key.key_hash
+                };
+                if matches {
                     return Some((user.id.clone(), api_key.id.clone()));
                 }
             }
