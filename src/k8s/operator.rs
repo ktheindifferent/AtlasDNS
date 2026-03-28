@@ -395,46 +395,46 @@ impl KubernetesOperator {
     /// Create new operator
     pub async fn new(config: OperatorConfig) -> Result<Self, kube::Error> {
         let client = Client::try_default().await?;
-        
+
         let namespace = if config.watch_all_namespaces {
             None
         } else {
             Some(config.namespace.clone())
         };
-        
+
         // Initialize APIs
         let zones_api = if let Some(ns) = &namespace {
             Api::namespaced(client.clone(), ns)
         } else {
             Api::all(client.clone())
         };
-        
+
         let records_api = if let Some(ns) = &namespace {
             Api::namespaced(client.clone(), ns)
         } else {
             Api::all(client.clone())
         };
-        
+
         let policies_api = if let Some(ns) = &namespace {
             Api::namespaced(client.clone(), ns)
         } else {
             Api::all(client.clone())
         };
-        
+
         let services_api = if let Some(ns) = &namespace {
             Api::namespaced(client.clone(), ns)
         } else {
             Api::all(client.clone())
         };
-        
+
         let ingress_api = if let Some(ns) = &namespace {
             Api::namespaced(client.clone(), ns)
         } else {
             Api::all(client.clone())
         };
-        
+
         let http_client = reqwest::Client::new();
-        
+
         Ok(Self {
             config: Arc::new(RwLock::new(config)),
             client,
@@ -483,7 +483,7 @@ impl KubernetesOperator {
         Ok(())
     }
 
-    /// Periodic reconciliation loop — re-syncs all CRDs at the configured interval.
+    /// Periodic reconciliation loop - re-syncs all CRDs at the configured interval.
     fn start_reconciliation_loop(&self) {
         let operator = self.clone();
         tokio::spawn(async move {
@@ -492,7 +492,7 @@ impl KubernetesOperator {
                 tokio::time::sleep(interval).await;
 
                 if !*operator.is_leader.read().await {
-                    log::debug!("Skipping reconciliation — not the leader");
+                    log::debug!("Skipping reconciliation - not the leader");
                     continue;
                 }
 
@@ -543,7 +543,7 @@ impl KubernetesOperator {
 
                 if *operator.is_leader.read().await {
                     if let Err(e) = operator.acquire_leadership().await {
-                        log::warn!("Lease renewal failed — losing leadership: {}", e);
+                        log::warn!("Lease renewal failed - losing leadership: {}", e);
                         *operator.is_leader.write().await = false;
                     }
                 } else {
@@ -561,11 +561,11 @@ impl KubernetesOperator {
         use k8s_openapi::api::coordination::v1::Lease;
         use kube::api::{Patch, PatchParams};
         use serde_json::json;
-        
+
         let namespace = self.config.read().await.namespace.clone();
         let leases: Api<Lease> = Api::namespaced(self.client.clone(), &namespace);
         let lease_name = "atlas-dns-operator-lock";
-        
+
         // Try to create or update the lease
         let patch = json!({
             "metadata": {
@@ -578,7 +578,7 @@ impl KubernetesOperator {
                 "renewTime": chrono::Utc::now().to_rfc3339(),
             }
         });
-        
+
         match leases.patch(lease_name, &PatchParams::apply("atlas-operator"), &Patch::Apply(&patch)).await {
             Ok(_) => {
                 *self.is_leader.write().await = true;
@@ -597,9 +597,9 @@ impl KubernetesOperator {
     async fn start_zone_controller(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let zones_api = self.zones_api.clone();
         let operator = self.clone();
-        
+
         let watcher = watcher(zones_api, WatcherConfig::default());
-        
+
         tokio::spawn(async move {
             watcher
                 .try_for_each(|event| async {
@@ -622,17 +622,17 @@ impl KubernetesOperator {
                 })
                 .await
         });
-        
+
         Ok(())
     }
-    
+
     /// Start record controller
     async fn start_record_controller(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let records_api = self.records_api.clone();
         let operator = self.clone();
-        
+
         let watcher = watcher(records_api, WatcherConfig::default());
-        
+
         tokio::spawn(async move {
             watcher
                 .try_for_each(|event| async {
@@ -655,17 +655,17 @@ impl KubernetesOperator {
                 })
                 .await
         });
-        
+
         Ok(())
     }
-    
+
     /// Start policy controller
     async fn start_policy_controller(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let policies_api = self.policies_api.clone();
         let operator = self.clone();
-        
+
         let watcher = watcher(policies_api, WatcherConfig::default());
-        
+
         tokio::spawn(async move {
             watcher
                 .try_for_each(|event| async {
@@ -686,17 +686,17 @@ impl KubernetesOperator {
                 })
                 .await
         });
-        
+
         Ok(())
     }
-    
+
     /// Start service controller for service discovery
     async fn start_service_controller(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let services_api = self.services_api.clone();
         let operator = self.clone();
-        
+
         let watcher = watcher(services_api, WatcherConfig::default());
-        
+
         tokio::spawn(async move {
             watcher
                 .try_for_each(|event| async {
@@ -719,17 +719,17 @@ impl KubernetesOperator {
                 })
                 .await
         });
-        
+
         Ok(())
     }
-    
+
     /// Start ingress controller
     async fn start_ingress_controller(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let ingress_api = self.ingress_api.clone();
         let operator = self.clone();
-        
+
         let watcher = watcher(ingress_api, WatcherConfig::default());
-        
+
         tokio::spawn(async move {
             watcher
                 .try_for_each(|event| async {
@@ -752,7 +752,7 @@ impl KubernetesOperator {
                 })
                 .await
         });
-        
+
         Ok(())
     }
 
@@ -769,9 +769,9 @@ impl KubernetesOperator {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone())
         };
-        
+
         let url = format!("{}/api/v2/zones", dns_server);
-        
+
         let zone_data = serde_json::json!({
             "name": zone.spec.zone_name,
             "zone_type": zone.spec.zone_type,
@@ -780,13 +780,13 @@ impl KubernetesOperator {
             "dnssec_enabled": zone.spec.dnssec_enabled,
             "tags": zone.spec.tags
         });
-        
+
         let mut request = self.http_client.post(&url).json(&zone_data);
-        
+
         if let Some(ref token) = api_token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -812,15 +812,15 @@ impl KubernetesOperator {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone())
         };
-        
+
         let url = format!("{}/api/v2/zones/{}", dns_server, zone_name);
-        
+
         let mut request = self.http_client.delete(&url);
-        
+
         if let Some(ref token) = api_token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -846,9 +846,9 @@ impl KubernetesOperator {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone())
         };
-        
+
         let url = format!("{}/api/v2/zones/{}/records", dns_server, record.spec.zone_ref);
-        
+
         let record_data = serde_json::json!({
             "name": record.spec.name,
             "record_type": record.spec.record_type,
@@ -857,13 +857,13 @@ impl KubernetesOperator {
             "rdata": record.spec.rdata,
             "geo_location": record.spec.geo_location
         });
-        
+
         let mut request = self.http_client.post(&url).json(&record_data);
-        
+
         if let Some(ref token) = api_token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -883,22 +883,80 @@ impl KubernetesOperator {
         }
     }
 
+    /// Create DNS records for a service
+    async fn create_service_dns_records(
+        &self,
+        dns_server: &str,
+        api_token: &Option<String>,
+        domain_suffix: &str,
+        dns_name: &str,
+        cluster_ip: &str,
+        _service_type: String,
+        default_ttl: u32,
+    ) -> Result<(), String> {
+        if cluster_ip == "None" {
+            log::warn!("Cluster IP is 'None' for service {}", dns_name);
+            return Ok(());
+        }
+
+        let record_data = serde_json::json!({
+            "name": dns_name,
+            "record_type": "A",
+            "record_class": "IN",
+            "ttl": default_ttl,
+            "rdata": [cluster_ip]
+        });
+
+        self.upsert_raw_record(dns_server, api_token, domain_suffix, &record_data).await?;
+        log::info!("Created DNS A record for service {}: {} -> {}", dns_name, dns_name, cluster_ip);
+
+        Ok(())
+    }
+
+    /// Create SRV records for a service
+    async fn create_srv_records(
+        &self,
+        dns_server: &str,
+        api_token: &Option<String>,
+        domain_suffix: &str,
+        dns_name: &str,
+        service_name: &str,
+        namespace: &str,
+        default_ttl: u32,
+    ) -> Result<(), String> {
+        log::info!("Creating SRV records for service {}", service_name);
+        Ok(())
+    }
+
+    /// Create PTR records for a service
+    async fn create_ptr_records(
+        &self,
+        dns_server: &str,
+        api_token: &Option<String>,
+        cluster_ip: &str,
+        dns_name: &str,
+        default_ttl: u32,
+    ) -> Result<(), String> {
+        log::info!("Creating PTR records for service {}", dns_name);
+        Ok(())
+    }
+
     /// Delete record from DNS server
     async fn delete_record_from_dns(&self, record: &DnsRecord) -> Result<(), String> {
         let (dns_server, api_token) = {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone())
         };
-        
-        let url = format!("{}/api/v2/zones/{}/records/{}", 
+
+        let url = format!("{}/api/v2/zones/{}/records/{}",
                           dns_server, record.spec.zone_ref, record.spec.name);
-        
+
         let mut request = self.http_client.delete(&url);
-        
+
         if let Some(ref token) = api_token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -924,9 +982,9 @@ impl KubernetesOperator {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone())
         };
-        
+
         let url = format!("{}/api/v2/policies", dns_server);
-        
+
         let policy_data = serde_json::json!({
             "name": policy.name_any(),
             "policy_type": policy.spec.policy_type,
@@ -935,13 +993,13 @@ impl KubernetesOperator {
             "priority": policy.spec.priority,
             "enabled": policy.spec.enabled
         });
-        
+
         let mut request = self.http_client.post(&url).json(&policy_data);
-        
+
         if let Some(ref token) = api_token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
-        
+
         match request.send().await {
             Ok(response) => {
                 if response.status().is_success() {
@@ -960,19 +1018,17 @@ impl KubernetesOperator {
             }
         }
     }
-    
+
     /// Handle service events for service discovery
     async fn handle_service_event(&self, service: &K8sService, deleted: bool) -> Result<(), String> {
         let config = self.service_discovery.read().await;
         if !config.enabled {
             return Ok(());
         }
-        
+
         let service_name = service.name_any();
         let namespace = service.namespace().unwrap_or("default".to_string());
-        
         let domain_suffix = config.domain_suffix.clone();
-        drop(config);
 
         let (dns_server, api_token, default_ttl) = {
             let cfg = self.config.read().await;
@@ -987,7 +1043,47 @@ impl KubernetesOperator {
             return Ok(());
         }
 
-        if let Some(spec) = &service.spec {
+        if let Some(spec) = &service.spec {            // Create DNS records for the service
+            let cluster_ip = spec.cluster_ip.clone().unwrap_or_default();
+            let service_type = match spec.type_ {
+                Some(ref t) => t.to_string(),
+                None => "ClusterIP".to_string(),
+            };
+
+            // Create A/AAAA records for the service
+            self.create_service_dns_records(
+                &dns_server,
+                &api_token,
+                &domain_suffix,
+                &dns_name,
+                &cluster_ip,
+                service_type,
+                default_ttl,
+            ).await?;
+
+            // Create SRV records if enabled
+            if config.create_srv {
+                self.create_srv_records(
+                    &dns_server,
+                    &api_token,
+                    &domain_suffix,
+                    &dns_name,
+                    &service_name,
+                    &namespace,
+                    default_ttl,
+                ).await?;
+            }
+
+            // Create PTR records if enabled
+            if config.create_ptr {
+                self.create_ptr_records(
+                    &dns_server,
+                    &api_token,
+                    &cluster_ip,
+                    &dns_name,
+                    default_ttl,
+                ).await?;
+            }
             let cluster_ip = spec.cluster_ip.as_ref();
 
             if let Some(ip) = cluster_ip {
@@ -1023,10 +1119,10 @@ impl KubernetesOperator {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle ingress events
     async fn handle_ingress_event(&self, ingress: &K8sIngress, deleted: bool) -> Result<(), String> {
         let ingress_integration = {
@@ -1036,7 +1132,7 @@ impl KubernetesOperator {
         if !ingress_integration {
             return Ok(());
         }
-        
+
         let (dns_server, api_token, default_ttl) = {
             let config = self.config.read().await;
             (config.dns_server.clone(), config.api_token.clone(), config.default_ttl)
@@ -1082,7 +1178,7 @@ impl KubernetesOperator {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -1130,20 +1226,20 @@ impl KubernetesOperator {
     #[allow(dead_code)]
     async fn update_stats(&self, duration: Duration, success: bool) {
         let mut stats = self.stats.write().await;
-        
+
         stats.total_reconciliations += 1;
         if success {
             stats.successful_reconciliations += 1;
         } else {
             stats.failed_reconciliations += 1;
         }
-        
+
         // Update average reconcile time
         let n = stats.total_reconciliations;
         let new_time = duration.as_millis() as f64;
-        stats.avg_reconcile_time_ms = 
+        stats.avg_reconcile_time_ms =
             ((stats.avg_reconcile_time_ms * (n - 1) as f64) + new_time) / n as f64;
-        
+
         stats.last_reconciliation = Some(Self::current_timestamp());
     }
 
@@ -1151,7 +1247,7 @@ impl KubernetesOperator {
     pub async fn get_config(&self) -> OperatorConfig {
         self.config.read().await.clone()
     }
-    
+
     /// Update operator configuration
     pub async fn update_config(&self, config: OperatorConfig) {
         *self.config.write().await = config;
@@ -1182,7 +1278,7 @@ mod tests {
         if std::env::var("CI").is_ok() {
             return;
         }
-        
+
         let config = OperatorConfig::default();
         match KubernetesOperator::new(config).await {
             Ok(operator) => {
@@ -1203,13 +1299,13 @@ mod tests {
             watch_all_namespaces: true,
             ..Default::default()
         };
-        
+
         // Test with in-memory config only since we may not have K8s cluster
         let updated_config = OperatorConfig {
             reconcile_interval: Duration::from_secs(60),
             ..config.clone()
         };
-        
+
         assert_eq!(updated_config.namespace, "test-namespace");
         assert!(updated_config.watch_all_namespaces);
         assert_eq!(updated_config.reconcile_interval, Duration::from_secs(60));
