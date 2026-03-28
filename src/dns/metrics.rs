@@ -561,6 +561,59 @@ lazy_static! {
         IntGaugeVec::new(prometheus::Opts::new("dummy_adbi", "dummy"), &["dummy"]).expect("dummy")
     });
 
+    // -----------------------------------------------------------------------
+    // Standard short-name metrics for Prometheus scraping (`GET /metrics`)
+    //
+    // These use the exact names requested by monitoring dashboards:
+    //   dns_queries_total, dns_query_latency_ms, dns_cache_hits_total,
+    //   dns_cache_misses_total, dns_upstream_latency_ms
+    // -----------------------------------------------------------------------
+
+    /// Total DNS queries — standard Prometheus name for `/metrics` scraping
+    pub static ref STD_DNS_QUERIES_TOTAL: IntCounterVec = prometheus::register_int_counter_vec!(
+        "dns_queries_total",
+        "Total DNS queries processed",
+        &["protocol", "query_type"]
+    ).unwrap_or_else(|_| {
+        IntCounterVec::new(prometheus::Opts::new("dummy_dqt", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// DNS query latency in milliseconds (histogram) — standard name
+    pub static ref STD_DNS_QUERY_LATENCY_MS: HistogramVec = register_histogram_vec!(
+        "dns_query_latency_ms",
+        "DNS query processing latency in milliseconds",
+        &["protocol", "query_type"],
+        vec![0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0]
+    ).unwrap_or_else(|_| {
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy_dqlm", "dummy"), &["dummy"]).expect("dummy")
+    });
+
+    /// Total DNS cache hits — standard name
+    pub static ref STD_DNS_CACHE_HITS_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "dns_cache_hits_total",
+        "Total DNS cache hits"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_dcht", "dummy").expect("dummy")
+    });
+
+    /// Total DNS cache misses — standard name
+    pub static ref STD_DNS_CACHE_MISSES_TOTAL: prometheus::IntCounter = prometheus::register_int_counter!(
+        "dns_cache_misses_total",
+        "Total DNS cache misses"
+    ).unwrap_or_else(|_| {
+        prometheus::IntCounter::new("dummy_dcmt", "dummy").expect("dummy")
+    });
+
+    /// Upstream DNS query latency in milliseconds (histogram) — standard name
+    pub static ref STD_DNS_UPSTREAM_LATENCY_MS: HistogramVec = register_histogram_vec!(
+        "dns_upstream_latency_ms",
+        "Upstream DNS query latency in milliseconds",
+        &["upstream"],
+        vec![1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0]
+    ).unwrap_or_else(|_| {
+        HistogramVec::new(prometheus::HistogramOpts::new("dummy_dulm", "dummy"), &["dummy"]).expect("dummy")
+    });
+
 }
 
 /// Comprehensive metrics summary structure
@@ -648,6 +701,9 @@ impl MetricsTracker {
             *hits += 1;
         }
         DNS_CACHE_OPERATIONS.with_label_values(&["hit", record_type]).inc();
+        STD_DNS_CACHE_HITS_TOTAL.inc();
+        ATLAS_CACHE_HITS_TOTAL.inc();
+        ATLASDNS_CACHE_HITS_TOTAL.inc();
         self.update_cache_hit_rate();
     }
 
@@ -657,6 +713,9 @@ impl MetricsTracker {
             *misses += 1;
         }
         DNS_CACHE_OPERATIONS.with_label_values(&["miss", record_type]).inc();
+        STD_DNS_CACHE_MISSES_TOTAL.inc();
+        ATLAS_CACHE_MISSES_TOTAL.inc();
+        ATLASDNS_CACHE_MISSES_TOTAL.inc();
         self.update_cache_hit_rate();
     }
 
@@ -691,6 +750,19 @@ impl MetricsTracker {
             *usage.entry(protocol.to_string()).or_insert(0) += 1;
         }
         PROTOCOL_USAGE.with_label_values(&[protocol]).inc();
+    }
+
+    /// Track a DNS query for the standard Prometheus metrics.
+    ///
+    /// Increments `dns_queries_total` and observes `dns_query_latency_ms`.
+    pub fn track_dns_query(&self, protocol: &str, query_type: &str, latency_ms: f64) {
+        STD_DNS_QUERIES_TOTAL.with_label_values(&[protocol, query_type]).inc();
+        STD_DNS_QUERY_LATENCY_MS.with_label_values(&[protocol, query_type]).observe(latency_ms);
+    }
+
+    /// Track upstream DNS query latency for `dns_upstream_latency_ms`.
+    pub fn track_upstream_latency(&self, upstream: &str, latency_ms: f64) {
+        STD_DNS_UPSTREAM_LATENCY_MS.with_label_values(&[upstream]).observe(latency_ms);
     }
 
     /// Calculate response time percentiles

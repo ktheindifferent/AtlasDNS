@@ -623,6 +623,36 @@ impl Authority {
         Ok(())
     }
 
+    /// Insert or replace a zone (used by cluster sync replication).
+    pub fn upsert_zone(&self, zone: Zone) -> Result<()> {
+        let zone_name = zone.domain.clone();
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
+        zones.zones.insert(zone_name.clone(), zone);
+        drop(zones);
+
+        self.persist_zone(&zone_name);
+        Ok(())
+    }
+
+    /// Return a cloned copy of a zone (used by backup/export).
+    pub fn get_zone_clone(&self, zone_name: &str) -> Result<Zone> {
+        let zones = self.zones.read().map_err(|_| AuthorityError::PoisonedLock)?;
+        zones.zones.get(zone_name)
+            .cloned()
+            .ok_or_else(|| AuthorityError::NoSuchZone(zone_name.to_string()))
+    }
+
+    /// Return the total number of zones.
+    pub fn zone_count(&self) -> usize {
+        self.zones.read().map(|z| z.zones.len()).unwrap_or(0)
+    }
+
+    /// Save all zones to binary files in `zones_dir`.
+    pub fn save(&self, zones_dir: &str) -> Result<()> {
+        let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;
+        zones.save(zones_dir)
+    }
+
     /// Add SOA record to a zone
     pub fn add_soa_record(&self, zone_name: &str, m_name: &str, r_name: &str, serial: u32, refresh: u32, retry: u32, expire: u32, minimum: u32) -> Result<()> {
         let mut zones = self.zones.write().map_err(|_| AuthorityError::PoisonedLock)?;

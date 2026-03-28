@@ -58,3 +58,9 @@ pub mod geoip;
 
 /// Structured DNS query logging with daily file rotation and 7-day retention
 pub mod logging;
+
+/// HA cluster zone synchronization via gRPC (primary → replica)
+pub mod cluster;
+
+/// Load balancer health check endpoint (`GET /health`)
+pub mod health;

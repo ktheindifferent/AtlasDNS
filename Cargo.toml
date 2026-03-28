@@ -79,6 +79,11 @@ flate2 = "1.0"
 bloomfilter = "1"
 zip = "0.6"
 
+# gRPC for cluster zone sync
+tonic = "0.11"
+prost = "0.12"
+prost-types = "0.12"
+
 # DNSSEC resolver with built-in chain-of-trust validation
 hickory-resolver = { version = "0.24", features = ["dnssec-openssl"] }
 
@@ -120,3 +125,7 @@ path = "src/bin/atlas-admin.rs"
 [[bin]]
 name = "atlasdns-check"
 path = "src/bin/atlasdns-check.rs"
+
+[[bin]]
+name = "atlasdns-backup"
+path = "src/bin/atlasdns-backup.rs"
