@@ -383,7 +383,7 @@ async fn test_data_retention() {
     let collector = manager.collector();
     
     // Record old and new queries
-    let old_time = SystemTime::now() - Duration::from_secs(31 * 24 * 3600); // 31 days ago
+    let _old_time = SystemTime::now() - Duration::from_secs(31 * 24 * 3600); // 31 days ago
     let new_time = SystemTime::now();
     
     // This test just verifies the cleanup method exists and doesn't crash

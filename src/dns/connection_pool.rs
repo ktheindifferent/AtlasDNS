@@ -563,7 +563,7 @@ impl ConnectionPoolManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
+
 
     #[test]
     fn test_pool_config_default() {

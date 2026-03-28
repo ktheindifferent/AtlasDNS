@@ -624,7 +624,7 @@ impl rustls::client::ServerCertVerifier for SkipServerVerification {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::{IpAddr, Ipv4Addr};
+
     
     #[test]
     fn test_doq_config_default() {

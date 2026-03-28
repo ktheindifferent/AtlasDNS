@@ -40,7 +40,7 @@ fn authoritative_zone_roundtrip() {
 
     assert!(
         !packet.answers.is_empty(),
-        "Authority should return at least one answer for {domain}"
+        "{}", "Authority should return at least one answer for {domain}"
     );
 
     match &packet.answers[0] {

@@ -176,7 +176,7 @@ pub fn try_load(config: &GeoIpConfig) -> Option<SharedGeoIp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::Ipv4Addr;
+
 
     #[test]
     fn test_geoip_config_default() {

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::web::users::{UserManager, XSSProtection, SecurityEventType};
-    use chrono::Utc;
+
     
     #[test]
     fn test_account_lockout_after_failed_attempts() {

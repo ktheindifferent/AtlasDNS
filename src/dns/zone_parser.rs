@@ -848,7 +848,7 @@ ftp IN  CNAME www
 
     #[test]
     fn test_parse_ttl_units() {
-        let mut parser = ZoneParser::new("test.com");
+        let parser = ZoneParser::new("test.com");
         
         assert_eq!(parser.parse_ttl("300").unwrap(), 300);
         assert_eq!(parser.parse_ttl("5m").unwrap(), 300);
