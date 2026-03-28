@@ -227,6 +227,7 @@ fn relative_name(domain: &str, origin: &str) -> String {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+    use atlas::dns::protocol::TransientTtl;
 
     #[test]
     fn test_relative_name() {
