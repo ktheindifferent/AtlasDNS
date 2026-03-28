@@ -558,7 +558,7 @@ impl MdnsResponder {
     }
 
     /// If the packet is an mDNS query for one of our hostnames, build and return a response.
-    fn maybe_respond(&self, data: &[u8]) -> Option<Vec<u8>> {
+    pub fn maybe_respond(&self, data: &[u8]) -> Option<Vec<u8>> {
         if data.len() < 12 {
             return None;
         }
