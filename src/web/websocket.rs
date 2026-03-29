@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use serde::{Serialize, Deserialize};
 use tokio::sync::broadcast;
 use tiny_http::{Request, Response, ResponseBox, Header};
@@ -16,6 +17,40 @@ use crate::web::Result;
 // Import WebSocket functionality
 use base64;
 use sha1::{Sha1, Digest};
+use std::io::{Read, Write, BufReader, BufWriter};
+use std::net::TcpStream;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::thread::JoinHandle;
+
+/// Unique identifier for WebSocket connections
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConnectionId(usize);
+
+/// WebSocket frame opcodes
+#[derive(Debug, Clone, Copy)]
+enum OpCode {
+    Continue = 0x0,
+    Text = 0x1,
+    Binary = 0x2,
+    Close = 0x8,
+    Ping = 0x9,
+    Pong = 0xA,
+}
+
+impl From<u8> for OpCode {
+    fn from(value: u8) -> Self {
+        match value {
+            0x0 => OpCode::Continue,
+            0x1 => OpCode::Text,
+            0x2 => OpCode::Binary,
+            0x8 => OpCode::Close,
+            0x9 => OpCode::Ping,
+            0xA => OpCode::Pong,
+            _ => panic!("Invalid opcode: {}", value),
+        }
+    }
+}
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +83,10 @@ pub enum WebSocketMessage {
         memory_usage_mb: u64,
         active_connections: usize,
         uptime_seconds: u64,
+    },
+    #[serde(rename = "subscription_update")]
+    SubscriptionUpdate {
+        filter: SubscriptionFilter,
     },
 }
 
@@ -84,11 +123,20 @@ impl Default for SubscriptionFilter {
     }
 }
 
+/// WebSocket connection state
+#[derive(Debug, Clone)]
+pub struct ConnectionState {
+    pub id: ConnectionId,
+    pub subscribed_filters: SubscriptionFilter,
+}
+
 /// WebSocket connection manager
 pub struct WebSocketManager {
     context: Arc<ServerContext>,
     sender: broadcast::Sender<WebSocketMessage>,
-    _background_task: thread::JoinHandle<()>,
+    connections: Arc<Mutex<HashMap<ConnectionId, ConnectionState>>>,
+    next_connection_id: AtomicUsize,
+    _background_task: JoinHandle<()>,
 }
 
 impl WebSocketManager {
@@ -106,6 +154,8 @@ impl WebSocketManager {
         Self {
             context,
             sender,
+            connections: Arc::new(Mutex::new(HashMap::new())),
+            next_connection_id: AtomicUsize::new(0),
             _background_task: background_task,
         }
     }
@@ -142,9 +192,22 @@ impl WebSocketManager {
                 value
             });
 
-        if upgrade_header.is_some() && connection_header.is_some() && ws_key.is_some() {
+        let ws_version = request.headers().iter()
+            .find(|h| h.field.as_str().to_ascii_lowercase() == "sec-websocket-version")
+            .map(|h| {
+                let value: String = h.value.clone().into();
+                value
+            });
+
+        if let (Some(_), Some(_), Some(key), Some(version)) = (upgrade_header, connection_header, ws_key, ws_version) {
+            // Check WebSocket version (we support version 13)
+            if version != "13" {
+                return Ok(Response::from_string("Unsupported WebSocket version")
+                    .with_status_code(400)
+                    .boxed());
+            }
+
             // Perform WebSocket handshake
-            let key = ws_key.unwrap();
             let accept_key = Self::generate_websocket_accept_key(&key);
             
             // Create WebSocket response
@@ -171,7 +234,7 @@ impl WebSocketManager {
         let mut hasher = Sha1::new();
         hasher.update(concat.as_bytes());
         let result = hasher.finalize();
-        base64::encode(&result)
+        base64::encode(result)
     }
 
     /// Create Server-Sent Events stream as WebSocket fallback
@@ -252,7 +315,7 @@ impl WebSocketManager {
             }
 
             // System status updates (every 5 seconds)
-            if now.duration_since(last_update).unwrap_or_default().as_secs().is_multiple_of(5) {
+            if now.duration_since(last_update).unwrap_or_default().as_secs() % 5 == 0 {
                 // Get system metrics
                 let mut system_info = System::new_all();
                 system_info.refresh_all();
@@ -308,7 +371,6 @@ impl WebSocketManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[tokio::test]
     async fn test_websocket_message_serialization() {

@@ -19,11 +19,7 @@ impl SessionMiddleware {
             .find(|h| h.field.as_str() == "Authorization")
             .and_then(|h| {
                 let value: String = h.value.clone().into();
-                if let Some(stripped) = value.strip_prefix("Bearer ") {
-                    Some(stripped.to_string())
-                } else {
-                    None
-                }
+                value.strip_prefix("Bearer ").map(|stripped| stripped.to_string())
             });
         
         if auth_result.is_some() {

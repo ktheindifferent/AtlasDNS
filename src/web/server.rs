@@ -1193,7 +1193,9 @@ impl<'a> WebServer<'a> {
                 (0u64, 0u64, vec![], vec![])
             };
 
-        let block_rate_pct = if queries_today > 0 { blocked_today * 100 / queries_today } else { 0 };
+        let block_rate_pct = if queries_today > 0 { 
+            blocked_today.checked_mul(100).unwrap_or(0).checked_div(queries_today).unwrap_or(0) 
+        } else { 0 };
 
         let max_count = top_domains_raw.first().map(|(_, c)| *c).unwrap_or(1).max(1);
         let top_domains: Vec<serde_json::Value> = top_domains_raw.iter().map(|(d, c)| {
@@ -1572,11 +1574,11 @@ impl<'a> WebServer<'a> {
                 let idx = boundaries.partition_point(|&b| ms >= b);
                 buckets[idx] += 1;
             }
-            let avg_ms = if lat_n > 0 { lat_sum / lat_n } else { 0 };
+            let avg_ms = if lat_n > 0 { lat_sum.checked_div(lat_n).unwrap_or(0) } else { 0 };
 
             // Recent queries for the table (last 20, newest first)
             let mut recent_sorted = recent;
-            recent_sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            recent_sorted.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
             let rq: Vec<serde_json::Value> = recent_sorted.iter().take(20).map(|e| {
                 let ts = chrono::DateTime::from_timestamp(e.timestamp, 0)
                     .map(|dt| dt.format("%H:%M:%S").to_string())
@@ -1611,7 +1613,7 @@ impl<'a> WebServer<'a> {
             }
 
             let mut recent_sorted = recent;
-            recent_sorted.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            recent_sorted.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
             let rq: Vec<serde_json::Value> = recent_sorted.iter().take(20).map(|e| {
                 let ts = chrono::DateTime::from_timestamp(e.timestamp as i64, 0)
                     .map(|dt| dt.format("%H:%M:%S").to_string())
@@ -1633,7 +1635,9 @@ impl<'a> WebServer<'a> {
             (0u64, 0u64, vec![], empty_map, vec![0u64; 9], 0u64, vec![])
         };
 
-        let block_rate_pct = if queries_today > 0 { blocked_today * 100 / queries_today } else { 0 };
+        let block_rate_pct = if queries_today > 0 { 
+            blocked_today.checked_mul(100).unwrap_or(0).checked_div(queries_today).unwrap_or(0) 
+        } else { 0 };
 
         // ── Queries/sec (rolling 60 s) ──────────────────────────────────────
         let last_minute = if let Some(ql) = &self.context.query_log {
@@ -2443,7 +2447,18 @@ impl<'a> WebServer<'a> {
 
     /// Handle WebSocket upgrade requests for real-time updates
     fn websocket_upgrade(&self, request: &Request) -> Result<ResponseBox> {
-        self.websocket_manager.handle_websocket_upgrade(request)
+        // First perform the handshake
+        let response = self.websocket_manager.handle_websocket_upgrade(request)?;
+        
+        // If handshake was successful (status 101), we need to handle the actual WebSocket connection
+        if response.status_code().0 == 101 {
+            // TODO: Actually handle the WebSocket connection
+            // This would involve taking ownership of the underlying TCP connection
+            // and processing WebSocket frames in a loop
+            log::warn!("WebSocket connection established but not fully implemented");
+        }
+        
+        Ok(response)
     }
     
     // New page handlers

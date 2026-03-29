@@ -124,7 +124,7 @@ mod tests {
             ttl: TransientTtl(3600),
         };
         
-        assert!(cache.store(&vec![record]).is_ok());
+        assert!(cache.store(&[record]).is_ok());
         
         // Should now have one domain
         let domains = cache.list().unwrap();

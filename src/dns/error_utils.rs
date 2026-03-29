@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn test_error_response_builder_different_types() {
         // Test with different error types
-        let responses = vec![
+        let responses = [
             ErrorResponseBuilder::build_error_response("AUTH", "Unauthorized", None),
             ErrorResponseBuilder::build_error_response("DB", "Connection lost", Some("Check database status")),
             ErrorResponseBuilder::build_error_response("PARSE", "Invalid JSON", Some("Line 5, column 12")),

@@ -510,8 +510,10 @@ mod tests {
     #[test]
     fn test_ip_change_rotation() {
         let user_manager = Arc::new(UserManager::new());
-        let mut config = TokenRotationConfig::default();
-        config.rotate_on_ip_change = true;
+        let config = TokenRotationConfig {
+            rotate_on_ip_change: true,
+            ..Default::default()
+        };
         
         let manager = TokenRotationManager::new(config, user_manager);
         let token = manager.generate_secure_token("user", "salt");

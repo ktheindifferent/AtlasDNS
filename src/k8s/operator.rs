@@ -916,13 +916,13 @@ impl KubernetesOperator {
     /// Create SRV records for a service
     async fn create_srv_records(
         &self,
-        dns_server: &str,
-        api_token: &Option<String>,
-        domain_suffix: &str,
-        dns_name: &str,
+        _dns_server: &str,
+        _api_token: &Option<String>,
+        _domain_suffix: &str,
+        _dns_name: &str,
         service_name: &str,
-        namespace: &str,
-        default_ttl: u32,
+        _namespace: &str,
+        _default_ttl: u32,
     ) -> Result<(), String> {
         log::info!("Creating SRV records for service {}", service_name);
         Ok(())
@@ -931,11 +931,11 @@ impl KubernetesOperator {
     /// Create PTR records for a service
     async fn create_ptr_records(
         &self,
-        dns_server: &str,
-        api_token: &Option<String>,
-        cluster_ip: &str,
+        _dns_server: &str,
+        _api_token: &Option<String>,
+        _cluster_ip: &str,
         dns_name: &str,
-        default_ttl: u32,
+        _default_ttl: u32,
     ) -> Result<(), String> {
         log::info!("Creating PTR records for service {}", dns_name);
         Ok(())

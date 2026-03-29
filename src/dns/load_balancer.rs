@@ -29,19 +29,14 @@ use crate::dns::protocol::{DnsPacket, DnsRecord, QueryType, TransientTtl, Result
 // ---------------------------------------------------------------------------
 
 /// Load balancing strategy for a pool.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum LbStrategy {
+    #[default]
     RoundRobin,
     Weighted,
     LeastConnections,
     Random,
-}
-
-impl Default for LbStrategy {
-    fn default() -> Self {
-        LbStrategy::RoundRobin
-    }
 }
 
 impl std::fmt::Display for LbStrategy {
@@ -56,25 +51,20 @@ impl std::fmt::Display for LbStrategy {
 }
 
 /// Health-check specification, e.g. `"tcp:80"` or `"icmp"`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum HealthCheckKind {
     /// TCP connect to the given port
     Tcp(u16),
     /// ICMP ping (best-effort; falls back to TCP:80 if raw sockets unavailable)
     Icmp,
     /// No health checking
+    #[default]
     None,
-}
-
-impl Default for HealthCheckKind {
-    fn default() -> Self {
-        HealthCheckKind::None
-    }
 }
 
 impl HealthCheckKind {
     /// Parse from a config string like `"tcp:80"` or `"icmp"`.
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         let s = s.trim().to_lowercase();
         if s == "icmp" || s == "ping" {
             return HealthCheckKind::Icmp;
@@ -231,7 +221,7 @@ impl LbPool {
     /// Build a pool from a TOML config entry.
     pub fn from_config(cfg: &PoolConfig) -> Self {
         let health_check = cfg.health_check.as_deref()
-            .map(HealthCheckKind::from_str)
+            .map(HealthCheckKind::parse)
             .unwrap_or(HealthCheckKind::None);
 
         let backends: Vec<Arc<Backend>> = cfg.backends.iter().enumerate().map(|(i, addr_str)| {
@@ -490,7 +480,15 @@ impl LoadBalancerManager {
             pools: RwLock::new(HashMap::new()),
         }
     }
+}
 
+impl Default for LoadBalancerManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LoadBalancerManager {
     /// Load pools from a parsed TOML config.
     pub fn load_config(&self, config: &LbConfig) {
         let mut pools = self.pools.write();
@@ -707,12 +705,12 @@ mod tests {
 
     #[test]
     fn test_health_check_kind_parsing() {
-        assert!(matches!(HealthCheckKind::from_str("tcp:80"), HealthCheckKind::Tcp(80)));
-        assert!(matches!(HealthCheckKind::from_str("tcp:443"), HealthCheckKind::Tcp(443)));
-        assert!(matches!(HealthCheckKind::from_str("icmp"), HealthCheckKind::Icmp));
-        assert!(matches!(HealthCheckKind::from_str("ping"), HealthCheckKind::Icmp));
-        assert!(matches!(HealthCheckKind::from_str("none"), HealthCheckKind::None));
-        assert!(matches!(HealthCheckKind::from_str(""), HealthCheckKind::None));
+        assert!(matches!(HealthCheckKind::parse("tcp:80"), HealthCheckKind::Tcp(80)));
+        assert!(matches!(HealthCheckKind::parse("tcp:443"), HealthCheckKind::Tcp(443)));
+        assert!(matches!(HealthCheckKind::parse("icmp"), HealthCheckKind::Icmp));
+        assert!(matches!(HealthCheckKind::parse("ping"), HealthCheckKind::Icmp));
+        assert!(matches!(HealthCheckKind::parse("none"), HealthCheckKind::None));
+        assert!(matches!(HealthCheckKind::parse(""), HealthCheckKind::None));
     }
 
     #[test]

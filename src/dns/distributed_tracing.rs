@@ -215,15 +215,15 @@ impl TraceContext {
     }
 
     /// Generate trace ID
-    fn generate_trace_id() -> String {
+    pub fn generate_trace_id() -> String {
         format!("{:032x}", SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
+            .unwrap()
             .as_nanos())
     }
 
     /// Generate span ID
-    fn generate_span_id() -> String {
+    pub fn generate_span_id() -> String {
         format!("{:016x}", SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
@@ -292,7 +292,7 @@ impl DistributedTracingHandler {
         }
 
         let span = Span {
-            trace_id: trace_id.clone(),
+            trace_id: trace_id.to_string(),
             span_id: TraceContext::generate_span_id(),
             parent_span_id,
             operation_name: operation.to_string(),

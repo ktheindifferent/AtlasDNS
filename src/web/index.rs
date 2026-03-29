@@ -77,7 +77,7 @@ pub fn index(context: &ServerContext, user_manager: &UserManager, activity_logge
         *domain_counts.entry(entry.domain.clone()).or_insert(0) += 1;
     }
     let mut top_domains_vec: Vec<(String, usize)> = domain_counts.into_iter().collect();
-    top_domains_vec.sort_by(|a, b| b.1.cmp(&a.1));
+    top_domains_vec.sort_by_key(|b| std::cmp::Reverse(b.1));
     let top_domains: Vec<serde_json::Value> = top_domains_vec.iter().take(10).map(|(domain, count)| {
         json!({ "domain": domain, "count": count })
     }).collect();

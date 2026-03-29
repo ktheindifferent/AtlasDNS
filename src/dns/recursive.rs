@@ -61,7 +61,15 @@ impl ValidatedCache {
             unvalidated: Arc::new(SynchronizedCache::new()),
         }
     }
+}
 
+impl Default for ValidatedCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ValidatedCache {
     /// Look up in validated cache first, then unvalidated.
     pub fn lookup(&self, domain: &str, qtype: QueryType) -> Option<DnsPacket> {
         self.validated.lookup(domain, qtype)

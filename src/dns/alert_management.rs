@@ -721,6 +721,6 @@ mod tests {
         handler.route_alert(&alert);
         
         // Check notification queue
-        assert!(handler.notification_queue.read().len() > 0);
+        assert!(!handler.notification_queue.read().is_empty());
     }
 }

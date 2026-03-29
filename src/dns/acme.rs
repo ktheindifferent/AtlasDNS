@@ -932,11 +932,11 @@ mod tests {
     #[test]
     fn test_wildcard_domains_rejected_for_http01() {
         // Verify the wildcard check logic used in obtain_certificate_auto
-        let domains = vec!["*.example.com".to_string(), "example.com".to_string()];
+        let domains = ["*.example.com".to_string(), "example.com".to_string()];
         let has_wildcard = domains.iter().any(|d| is_wildcard_domain(d));
         assert!(has_wildcard, "Should detect wildcard domains");
 
-        let domains_no_wildcard = vec!["www.example.com".to_string(), "example.com".to_string()];
+        let domains_no_wildcard = ["www.example.com".to_string(), "example.com".to_string()];
         let has_wildcard = domains_no_wildcard.iter().any(|d| is_wildcard_domain(d));
         assert!(!has_wildcard, "Should not detect wildcard in non-wildcard domains");
     }

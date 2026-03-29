@@ -321,9 +321,9 @@ pub fn execute_query_with_ip(context: Arc<ServerContext>, request: &DnsPacket, c
         ("unknown".to_string(), "UNKNOWN".to_string(), "UDP".to_string())
     };
     
-    ctx = ctx.with_metadata("domain", &domain)
-           .with_metadata("query_type", &query_type)
-           .with_metadata("query_id", &request.header.id.to_string());
+    ctx = ctx.with_metadata("domain", &domain);
+    ctx = ctx.with_metadata("query_type", &query_type);
+    ctx = ctx.with_metadata("query_id", &request.header.id.to_string());
 
     // Add Sentry breadcrumb for DNS query processing
     let mut data = std::collections::BTreeMap::new();

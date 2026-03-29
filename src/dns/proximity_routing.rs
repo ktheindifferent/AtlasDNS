@@ -466,7 +466,7 @@ impl ProximityRoutingHandler {
         let health_weight_score = health_score * weights.health;
         score *= health_weight_score / 100.0;
 
-        score.max(0.0).min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Route by lowest latency

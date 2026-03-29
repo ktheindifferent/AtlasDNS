@@ -410,8 +410,10 @@ mod tests {
     
     #[test]
     fn test_doq_manager_creation() {
-        let mut config = DoqConfig::default();
-        config.enable_0rtt = true;
+        let config = DoqConfig {
+            enable_0rtt: true,
+            ..Default::default()
+        };
         let manager = DoqManager::new(config);
         
         assert_eq!(manager.get_config().port, 853);
@@ -424,10 +426,12 @@ mod tests {
         let config = DoqConfig::default();
         let mut manager = DoqManager::new(config);
         
-        let mut new_config = DoqConfig::default();
-        new_config.enabled = true;
-        new_config.port = 8853;
-        new_config.enable_0rtt = false;
+        let new_config = DoqConfig {
+            enabled: true,
+            port: 8853,
+            enable_0rtt: false,
+            ..Default::default()
+        };
         
         manager.update_config(new_config);
         

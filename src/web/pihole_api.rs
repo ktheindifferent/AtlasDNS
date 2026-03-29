@@ -225,11 +225,11 @@ impl PiholeApiHandler {
                 }
             }
             let mut top: Vec<(String, u64)> = domain_counts.into_iter().collect();
-            top.sort_by(|a, b| b.1.cmp(&a.1));
+            top.sort_by_key(|b| std::cmp::Reverse(b.1));
             top.truncate(count);
 
             let mut blocked: Vec<(String, u64)> = blocked_counts.into_iter().collect();
-            blocked.sort_by(|a, b| b.1.cmp(&a.1));
+            blocked.sort_by_key(|b| std::cmp::Reverse(b.1));
             blocked.truncate(count);
 
             (top, blocked)
@@ -256,7 +256,7 @@ impl PiholeApiHandler {
         let top_sources: serde_json::Map<String, Value> =
             if let Some(ref tracker) = self.context.device_tracker {
                 let mut clients = tracker.get_clients();
-                clients.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+                clients.sort_by_key(|b| std::cmp::Reverse(b.query_count));
                 clients.truncate(count);
                 clients
                     .into_iter()
@@ -304,7 +304,7 @@ impl PiholeApiHandler {
         self.context
             .security_manager
             .add_domains_to_blocklist(
-                &[domain.clone()],
+                std::slice::from_ref(&domain),
                 crate::dns::security::firewall::ThreatCategory::Custom,
             )
             .map_err(|e| WebError::InternalError(e.to_string()))?;
@@ -325,7 +325,7 @@ impl PiholeApiHandler {
         }
         self.context
             .security_manager
-            .remove_from_blocklist(&[domain.clone()])
+            .remove_from_blocklist(std::slice::from_ref(&domain))
             .map_err(|e| WebError::InternalError(e.to_string()))?;
         log::info!("Pi-hole API: removed '{}' from blocklist", domain);
         handle_json_response(

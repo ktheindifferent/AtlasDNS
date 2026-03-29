@@ -132,7 +132,7 @@ impl DeviceTracker {
             .into_iter()
             .map(|(ip, (count, blocked, domains, last_seen))| {
                 let mut top: Vec<(String, u64)> = domains.into_iter().collect();
-                top.sort_by(|a, b| b.1.cmp(&a.1));
+                top.sort_by_key(|b| std::cmp::Reverse(b.1));
                 top.truncate(10);
                 ClientStats {
                     client_ip: ip,
@@ -144,7 +144,7 @@ impl DeviceTracker {
             })
             .collect();
 
-        clients.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        clients.sort_by_key(|b| std::cmp::Reverse(b.query_count));
         clients
     }
 
@@ -171,7 +171,7 @@ impl DeviceTracker {
             *counts.entry(entry.domain.clone()).or_insert(0) += 1;
         }
         let mut sorted: Vec<(String, u64)> = counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
         sorted.truncate(n);
         sorted
     }

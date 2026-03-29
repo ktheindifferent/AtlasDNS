@@ -468,7 +468,7 @@ impl HealthCheckAnalyticsHandler {
             score *= 0.9; // Penalty for slow responses
         }
         
-        score.max(0.0).min(100.0)
+        score.clamp(0.0, 100.0)
     }
 
     /// Store in history

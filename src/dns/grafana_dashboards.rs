@@ -978,6 +978,6 @@ mod tests {
     fn test_alert_rules() {
         let alerts = GrafanaDashboardGenerator::generate_alert_rules();
         let rules = &alerts["groups"][0]["rules"];
-        assert!(rules.as_array().unwrap().len() > 0);
+        assert!(!rules.as_array().unwrap().is_empty());
     }
 }

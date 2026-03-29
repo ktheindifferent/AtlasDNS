@@ -586,12 +586,11 @@ impl WebhookHandler {
                     }
                     // Circuit breaker timeout expired, close it
                     drop(states);
-                    self.endpoint_states.write().get_mut(endpoint_id)
-                        .map(|s| {
-                            s.circuit_breaker_open = false;
-                            s.circuit_breaker_opened_at = None;
-                            s.consecutive_failures = 0;
-                        });
+                    if let Some(s) = self.endpoint_states.write().get_mut(endpoint_id) {
+                        s.circuit_breaker_open = false;
+                        s.circuit_breaker_opened_at = None;
+                        s.consecutive_failures = 0;
+                    }
                 }
             }
         }
