@@ -2081,7 +2081,7 @@ impl ApiV2Handler {
             let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
             for e in &entries { *counts.entry(e.domain.clone()).or_insert(0) += 1; }
             let mut sorted: Vec<_> = counts.into_iter().collect();
-            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
             sorted.truncate(limit);
             sorted.into_iter().map(|(d, c)| json!({ "domain": d, "count": c })).collect::<Vec<_>>()
         }).unwrap_or_default();
@@ -2103,7 +2103,7 @@ impl ApiV2Handler {
                 *counts.entry(e.domain.clone()).or_insert(0) += 1;
             }
             let mut sorted: Vec<_> = counts.into_iter().collect();
-            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
             sorted.truncate(limit);
             sorted.into_iter().map(|(d, c)| json!({ "domain": d, "count": c })).collect::<Vec<_>>()
         }).unwrap_or_default();

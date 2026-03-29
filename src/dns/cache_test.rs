@@ -128,7 +128,7 @@ mod tests {
         
         // Should now have one domain
         let domains = cache.list().unwrap();
-        assert!(domains.len() > 0);
+        assert!(!domains.is_empty());
     }
 
     #[test]

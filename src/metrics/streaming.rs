@@ -91,6 +91,12 @@ pub struct MetricsStream {
     backpressure_limit: usize,
 }
 
+impl Default for MetricsStream {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MetricsStream {
     /// Create a new metrics stream
     pub fn new() -> Self {

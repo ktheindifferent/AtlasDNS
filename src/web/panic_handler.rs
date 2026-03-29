@@ -1,8 +1,7 @@
-/// Panic Recovery Middleware for Web Server
-/// 
-/// Provides automatic recovery from panics in request handlers,
-/// ensuring the server continues running even when individual requests fail.
-
+//! Panic Recovery Middleware for Web Server
+//!
+//! Provides automatic recovery from panics in request handlers,
+//! ensuring the server continues running even when individual requests fail.
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::thread;
@@ -189,6 +188,12 @@ struct ThreadMonitor {
     thread_name: String,
     panic_count: u64,
     last_panic: Option<std::time::Instant>,
+}
+
+impl Default for PanicMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PanicMonitor {

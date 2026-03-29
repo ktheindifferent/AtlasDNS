@@ -19,8 +19,8 @@ impl SessionMiddleware {
             .find(|h| h.field.as_str() == "Authorization")
             .and_then(|h| {
                 let value: String = h.value.clone().into();
-                if value.starts_with("Bearer ") {
-                    Some(value[7..].to_string())
+                if let Some(stripped) = value.strip_prefix("Bearer ") {
+                    Some(stripped.to_string())
                 } else {
                     None
                 }

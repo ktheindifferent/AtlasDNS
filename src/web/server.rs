@@ -527,7 +527,6 @@ impl<'a> WebServer<'a> {
             // Local device discovery (mDNS)
             (Method::Get, ["devices"]) => self.devices_page(request),
             (Method::Get, ["api", "devices"]) => self.devices_api(request),
-            (Method::Get, ["api", "mdns", "devices"]) => self.devices_api(request),
 
             // GeoIP lookup
             (Method::Get, ["api", "geoip", "lookup", ip]) => self.geoip_lookup(request, ip),
@@ -1653,7 +1652,7 @@ impl<'a> WebServer<'a> {
 
         // ── Top allowed domains bar chart ───────────────────────────────────
         let mut top_allowed_vec: Vec<(String, u64)> = top_allowed_raw.into_iter().collect();
-        top_allowed_vec.sort_by(|a, b| b.1.cmp(&a.1));
+        top_allowed_vec.sort_by_key(|b| std::cmp::Reverse(b.1));
         let max_allowed = top_allowed_vec.first().map(|(_, c)| *c).unwrap_or(1).max(1);
         let top_allowed_domains: Vec<serde_json::Value> = top_allowed_vec.iter().take(10).map(|(d, c)| {
             serde_json::json!({ "domain": d, "count": c, "bar_pct": c * 100 / max_allowed })
@@ -2775,7 +2774,8 @@ impl<'a> WebServer<'a> {
         
         // Calculate average latency
         let avg_latency_ms = if doh_metrics.total_queries > 0 {
-            (doh_metrics.total_response_time_us / doh_metrics.total_queries) as f64 / 1000.0
+            (doh_metrics.total_response_time_us.checked_div(doh_metrics.total_queries)
+                .unwrap_or(0) as f64) / 1000.0
         } else {
             0.0
         };
@@ -2878,7 +2878,7 @@ impl<'a> WebServer<'a> {
             "failovers": stats.failovers,
             "avg_routing_time_us": stats.avg_routing_time_us,
             "requests_per_sec": if stats.avg_routing_time_us > 0 {
-                1_000_000 / stats.avg_routing_time_us
+                1_000_000u64.checked_div(stats.avg_routing_time_us).unwrap_or(0)
             } else { 0 },
             "queries_by_region": stats.queries_by_region,
             "queries_by_datacenter": stats.queries_by_dc,
@@ -3489,13 +3489,13 @@ impl<'a> WebServer<'a> {
         }
 
         let mut top_blocked_domains: Vec<_> = blocked_domain_counts.into_iter().collect();
-        top_blocked_domains.sort_by(|a, b| b.1.cmp(&a.1));
+        top_blocked_domains.sort_by_key(|b| std::cmp::Reverse(b.1));
         let top_blocked_domains: Vec<_> = top_blocked_domains.iter().take(10)
             .map(|(d, c)| serde_json::json!({ "domain": d, "count": c }))
             .collect();
 
         let mut top_blocked_clients: Vec<_> = blocked_client_counts.into_iter().collect();
-        top_blocked_clients.sort_by(|a, b| b.1.cmp(&a.1));
+        top_blocked_clients.sort_by_key(|b| std::cmp::Reverse(b.1));
         let top_blocked_clients: Vec<_> = top_blocked_clients.iter().take(10)
             .map(|(ip, c)| serde_json::json!({ "client_ip": ip, "count": c }))
             .collect();
@@ -3823,7 +3823,7 @@ impl<'a> WebServer<'a> {
                 "queries_by_region": stats.queries_by_region,
                 "queries_by_datacenter": stats.queries_by_dc,
                 "requests_per_second": if stats.avg_routing_time_us > 0 { 
-                    1_000_000 / stats.avg_routing_time_us 
+                    1_000_000u64.checked_div(stats.avg_routing_time_us).unwrap_or(0)
                 } else { 0 }
             }
         });

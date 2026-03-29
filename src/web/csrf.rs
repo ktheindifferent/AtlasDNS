@@ -1,8 +1,7 @@
-/// CSRF Protection Module
-/// 
-/// Provides Cross-Site Request Forgery (CSRF) protection for web forms
-/// using synchronizer token pattern.
-
+//! CSRF Protection Module
+//!
+//! Provides Cross-Site Request Forgery (CSRF) protection for web forms
+//! using synchronizer token pattern.
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};

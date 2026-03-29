@@ -442,7 +442,7 @@ impl QueryRoot {
             .collect();
         
         // Sort by query count descending
-        distributions.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        distributions.sort_by_key(|b| std::cmp::Reverse(b.query_count));
         
         Ok(distributions)
     }
@@ -529,7 +529,7 @@ impl QueryRoot {
                 });
             }
             // Sort by count (descending)
-            distributions.sort_by(|a, b| b.count.cmp(&a.count));
+            distributions.sort_by_key(|b| std::cmp::Reverse(b.count));
         } else {
             // Fallback to default distribution if no real data yet
             distributions = vec![
@@ -600,7 +600,7 @@ impl QueryRoot {
         }
         
         // Sort by query count (descending)
-        domains.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        domains.sort_by_key(|b| std::cmp::Reverse(b.query_count));
         
         Ok(domains)
     }
@@ -766,7 +766,7 @@ impl QueryRoot {
             })
             .collect();
         
-        top_threat_sources.sort_by(|a, b| b.query_count.cmp(&a.query_count));
+        top_threat_sources.sort_by_key(|b| std::cmp::Reverse(b.query_count));
         top_threat_sources.truncate(10); // Top 10 threat sources
 
         // Create event timeline (hourly buckets)
@@ -883,7 +883,8 @@ impl QueryRoot {
             };
             
             let avg_response_time = if metrics.query_count > 0 {
-                (metrics.total_response_time_us / metrics.query_count) as f64 / 1000.0
+                (metrics.total_response_time_us.checked_div(metrics.query_count)
+                    .unwrap_or(0) as f64) / 1000.0
             } else {
                 0.0
             };
@@ -1184,7 +1185,7 @@ impl QueryRoot {
         // Require authentication to search
         let _user_ctx = require_auth(ctx)?;
         let search_term = query.trim().to_lowercase();
-        let search_limit = limit.unwrap_or(50).max(1).min(100) as usize;
+        let search_limit = limit.unwrap_or(50).clamp(1, 100) as usize;
         
         if search_term.len() < 2 {
             return Ok(SearchResults {

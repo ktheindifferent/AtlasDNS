@@ -1,8 +1,7 @@
-/// DNS Query Retry Policy and Circuit Breaker Implementation
-/// 
-/// Provides retry logic with exponential backoff and circuit breaker pattern
-/// to handle upstream server failures gracefully.
-
+//! DNS Query Retry Policy and Circuit Breaker Implementation
+//!
+//! Provides retry logic with exponential backoff and circuit breaker pattern
+//! to handle upstream server failures gracefully.
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;

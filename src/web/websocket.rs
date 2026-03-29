@@ -13,6 +13,10 @@ use sysinfo::{System, SystemExt, CpuExt};
 use crate::dns::context::ServerContext;
 use crate::web::Result;
 
+// Import WebSocket functionality
+use base64;
+use sha1::{Sha1, Digest};
+
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -139,15 +143,35 @@ impl WebSocketManager {
             });
 
         if upgrade_header.is_some() && connection_header.is_some() && ws_key.is_some() {
-            // For now, return an SSE stream as a fallback until full WebSocket is implemented
-            // This provides real-time functionality while maintaining compatibility
-            self.create_sse_stream()
+            // Perform WebSocket handshake
+            let key = ws_key.unwrap();
+            let accept_key = Self::generate_websocket_accept_key(&key);
+            
+            // Create WebSocket response
+            let response = Response::empty(101)
+                .with_header(Header::from_bytes(&b"Upgrade"[..], &b"websocket"[..]).expect("static header"))
+                .with_header(Header::from_bytes(&b"Connection"[..], &b"Upgrade"[..]).expect("static header"))
+                .with_header(Header::from_bytes(&b"Sec-WebSocket-Accept"[..], accept_key.as_bytes()).expect("static header"));
+            
+            log::info!("WebSocket handshake completed successfully");
+            
+            Ok(response.boxed())
         } else {
             // Not a WebSocket request, return error
             Ok(Response::from_string("WebSocket upgrade required")
                 .with_status_code(400)
                 .boxed())
         }
+    }
+
+    /// Generate WebSocket accept key according to RFC 6455
+    fn generate_websocket_accept_key(key: &str) -> String {
+        const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        let concat = format!("{}{}", key, WS_GUID);
+        let mut hasher = Sha1::new();
+        hasher.update(concat.as_bytes());
+        let result = hasher.finalize();
+        base64::encode(&result)
     }
 
     /// Create Server-Sent Events stream as WebSocket fallback

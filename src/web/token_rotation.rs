@@ -1,9 +1,8 @@
 #![allow(dead_code)]
-/// Secure Session Token Rotation System
-///
-/// Provides automatic token rotation for enhanced security,
-/// preventing session fixation attacks and limiting token exposure.
-
+//! Secure Session Token Rotation System
+//!
+//! Provides automatic token rotation for enhanced security,
+//! preventing session fixation attacks and limiting token exposure.
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -490,9 +489,11 @@ mod tests {
     #[test]
     fn test_token_expiry() {
         let user_manager = Arc::new(UserManager::new());
-        let mut config = TokenRotationConfig::default();
-        config.max_token_age = Duration::from_millis(100);
-        config.grace_period = Duration::from_millis(50);
+        let config = TokenRotationConfig {
+            max_token_age: Duration::from_millis(100),
+            grace_period: Duration::from_millis(50),
+            ..Default::default()
+        };
         
         let manager = TokenRotationManager::new(config, user_manager);
         let token = manager.generate_secure_token("user", "salt");

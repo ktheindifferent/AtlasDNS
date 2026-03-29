@@ -1,9 +1,8 @@
 #![allow(dead_code, unused_comparisons)]
-/// Input validation module for web endpoints
-///
-/// Provides comprehensive input validation and sanitization for all web handlers
-/// to prevent injection attacks, ensure data integrity, and enforce business rules.
-
+//! Input validation module for web endpoints
+//!
+//! Provides comprehensive input validation and sanitization for all web handlers
+//! to prevent injection attacks, ensure data integrity, and enforce business rules.
 use regex::Regex;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -104,8 +103,8 @@ impl std::error::Error for ValidationError {}
 /// Validate a DNS domain name according to RFC 1035
 pub fn validate_dns_name(name: &str) -> Result<String, ValidationError> {
     // Remove trailing dot if present
-    let name = if name.ends_with('.') {
-        &name[..name.len() - 1]
+    let name = if let Some(stripped) = name.strip_suffix('.') {
+        stripped
     } else {
         name
     };
@@ -344,11 +343,7 @@ pub fn sanitize_log(input: &str) -> String {
 pub fn validate_mx_priority(priority: u16) -> Result<u16, ValidationError> {
     // MX priority is a 16-bit value, all values are technically valid
     // but we can add business logic constraints
-    if priority > 65535 {
-        return Err(ValidationError::InvalidRecordType(
-            format!("MX priority {} exceeds maximum", priority)
-        ));
-    }
+    // Note: priority > 65535 is impossible since priority is u16 (max 65535)
     Ok(priority)
 }
 

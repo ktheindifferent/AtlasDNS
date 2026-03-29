@@ -526,7 +526,6 @@ impl DnsFirewall {
     }
 
     /// Internal helper methods
-    
     fn is_allowlisted(&self, packet: &DnsPacket, client_ip: IpAddr) -> bool {
         let allowlists = self.allowlists.read();
         

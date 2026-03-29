@@ -1,8 +1,7 @@
-/// Enhanced Rate Limiting for Web API
-/// 
-/// Provides per-IP and per-user rate limiting with configurable limits,
-/// time windows, and automatic cleanup of expired entries.
-
+//! Enhanced Rate Limiting for Web API
+//!
+//! Provides per-IP and per-user rate limiting with configurable limits,
+//! time windows, and automatic cleanup of expired entries.
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, RwLock};

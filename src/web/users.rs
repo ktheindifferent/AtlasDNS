@@ -234,6 +234,12 @@ pub struct UserManager {
     storage: Option<Arc<PersistentStorage>>,
 }
 
+impl Default for UserManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UserManager {
     /// Create an in-memory-only `UserManager` with a default admin account.
     pub fn new() -> Self {
@@ -908,7 +914,7 @@ impl UserManager {
     pub fn get_audit_log(&self, limit: Option<usize>) -> Result<Vec<SecurityAuditEvent>, String> {
         let audit_log = self.audit_log.read().map_err(|_| "Failed to acquire lock")?;
         let mut events = audit_log.clone();
-        events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)); // Most recent first
+        events.sort_by_key(|b| std::cmp::Reverse(b.timestamp)); // Most recent first
         
         if let Some(limit) = limit {
             events.truncate(limit);
@@ -926,7 +932,7 @@ impl UserManager {
             .cloned()
             .collect();
         
-        events.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        events.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
         
         if let Some(limit) = limit {
             events.truncate(limit);

@@ -1,9 +1,8 @@
 #![allow(dead_code)]
-/// Graceful Shutdown Handler for DNS Server
-///
-/// Provides coordinated shutdown of all server components with
-/// connection draining and resource cleanup.
-
+//! Graceful Shutdown Handler for DNS Server
+//!
+//! Provides coordinated shutdown of all server components with
+//! connection draining and resource cleanup.
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
 use tokio::sync::{broadcast, oneshot};

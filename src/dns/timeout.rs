@@ -1,9 +1,8 @@
 #![allow(dead_code)]
-/// DNS Query Timeout Handler
-///
-/// Provides configurable timeout handling for DNS queries with proper
-/// cancellation and resource cleanup.
-
+//! DNS Query Timeout Handler
+//!
+//! Provides configurable timeout handling for DNS queries with proper
+//! cancellation and resource cleanup.
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;

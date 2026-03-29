@@ -17,7 +17,7 @@ use atlas::dns::prometheus_server::PrometheusServer;
 use atlas::web::server::WebServer;
 use atlas::privilege_escalation::{has_admin_privileges, escalate_privileges, port_requires_privileges};
 use atlas::dns::security::{ThreatIntelManager, ThreatIntelConfig};
-use atlas::dns::mdns::{MdnsListener, MdnsRegistry};
+use atlas::dns::mdns::{MdnsResponder, MdnsDevice, MdnsRegistry, MdnsListener};
 use atlas::dns::clustering::{ClusterConfig, ClusterRole, ZoneTransferPayload, ZoneTransferEntry, CLUSTER_GOSSIP_PORT, CLUSTER_ZONE_TRANSFER_PORT};
 use atlas::dns::bench::{BenchConfig, run_bench};
 use atlas::dns::protocol::QueryType;

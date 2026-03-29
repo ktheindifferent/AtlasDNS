@@ -1,8 +1,7 @@
-/// Secure Password Storage and Handling
-/// 
-/// Provides secure password handling to avoid storing plaintext passwords
-/// in memory, using zeroing, encryption at rest, and secure comparison.
-
+//! Secure Password Storage and Handling
+//!
+//! Provides secure password handling to avoid storing plaintext passwords
+//! in memory, using zeroing, encryption at rest, and secure comparison.
 use std::sync::Arc;
 use std::fmt;
 use parking_lot::RwLock;
@@ -95,6 +94,12 @@ struct EncryptedPassword {
     encrypted_hash: Vec<u8>,
     /// Nonce for encryption
     nonce: Vec<u8>,
+}
+
+impl Default for SecurePasswordStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SecurePasswordStore {
